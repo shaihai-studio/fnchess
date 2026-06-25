@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>函数棋 - Function Chess</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div id="summa-container"></div>
+
+    <!-- 顶部信息栏 -->
+    <header class="header" id="header">
+        <div class="score-display">
+            <span class="player">玩家A</span>
+            <span class="score" id="score-a">0</span>
+            <span>分</span>
+        </div>
+        
+        <h1 class="game-title">函数棋</h1>
+        
+        <div class="round-info" id="round-display">
+            <span>回合</span>
+            <span class="current"><span id="current-round">1</span> / <span id="total-rounds">8</span></span>
+        </div>
+        
+        <div class="score-display">
+            <span class="player">玩家B</span>
+            <span class="score" id="score-b">0</span>
+            <span>分</span>
+        </div>
+    </header>
+    
+    <!-- 主容器 -->
+    <div class="main-container">
+        <!-- 左侧 Canvas 区域 -->
+        <section class="canvas-section">
+            <canvas id="game-canvas"></canvas>
+        </section>
+        
+        <!-- 右侧控制面板 -->
+        <aside class="control-panel">
+            <!-- 计时器 -->
+            <div class="panel-card timer-display">
+                <h3>剩余时间</h3>
+                <div class="timer-value" id="timer">40</div>
+            </div>
+            
+            <!-- 当前玩家 -->
+            <div class="panel-card player-display">
+                <h3>当前玩家</h3>
+                <div class="player-value" id="current-player">玩家 B</div>
+            </div>
+            
+            <!-- 阶段提示 -->
+            <div class="panel-card phase-display">
+                <h3>当前阶段</h3>
+                <div class="phase-hint" id="phase-hint">请点击棋盘选择目标网格</div>
+            </div>
+            
+            <!-- 表达式构建区 -->
+            <div class="panel-card">
+                <h3>函数表达式</h3>
+                <div class="expression-display" id="expression-display">
+                    <span class="placeholder">点击元素构建表达式...</span>
+                </div>
+            </div>
+            
+            <!-- 按钮组 -->
+            <div class="panel-card">
+                <div class="button-group">
+                    <button class="btn btn-primary" id="confirm-btn">确认目标</button>
+                    <button class="btn btn-secondary" id="clear-btn">清除</button>
+                    <button class="btn btn-exit" id="exit-btn">退出对局</button>
+                </div>
+            </div>
+            
+            <!-- 退出确认气泡框 -->
+            <div class="exit-confirm-popover" id="exit-confirm-popover">
+                <p>确定要退出当前对局吗？</p>
+                <div class="popover-buttons">
+                    <button class="btn btn-small btn-confirm-exit" id="confirm-exit-btn">确认退出</button>
+                    <button class="btn btn-small btn-cancel" id="cancel-exit-btn">取消</button>
+                </div>
+            </div>
+            
+            <!-- 消息提示 -->
+            <div class="panel-card message-panel" id="message-panel">
+                <div class="message" id="message"></div>
+            </div>
+        </aside>
+    </div>
+    
+    <!-- 底部元素拖拽区 -->
+    <section class="elements-section" id="elements-container">
+        <!-- 动态生成 -->
+    </section>
+    
+    <!-- 开始界面模态框 -->
+    <div class="modal" id="start-modal">
+        <div class="modal-content">
+            <h2>函数棋</h2>
+            <p>
+                一款基于函数的策略对抗游戏<br>
+                一方选择目标，另一方构造函数<br>
+                精准命中目标，避开禁止区域！
+            </p>
+            
+            <div class="round-select">
+                <label for="round-select">选择回合数：</label>
+                <select id="round-select">
+                    <option value="4">4 回合（快速对战）</option>
+                    <option value="8" selected>8 回合（标准对战）</option>
+                    <option value="12">12 回合（深度对战）</option>
+                    <option value="16">16 回合（持久战）</option>
+                    <option value="20">20 回合（极限挑战）</option>
+                    <option value="24">24 回合（终极对决）</option>
+                </select>
+            </div>
+            
+            <div class="difficulty-select">
+                <label for="difficulty-select">选择难度/模式：</label>
+                <select id="difficulty-select">
+                    <option value="easy" selected>简单 - 1个目标格</option>
+                    <option value="normal">普通 - 1个目标格</option>
+                    <option value="hard">困难 - 2个目标格</option>
+                    <option value="expert">专家 - 3个目标格</option>
+                    <option value="test">测试模式 - 自由绘图</option>
+                </select>
+                <small id="difficulty-hint" style="display: block; margin-top: 5px; opacity: 0.7;">简单模式：1个目标格，四则运算无法被锁定，每回合+20秒</small>
+            </div>
+                        
+            <!-- 游戏模式切换 -->
+            <div class="mode-select">
+                <div class="mode-toggle">
+                    <button class="mode-btn active" id="mode-local" data-mode="local">👥 本地对战</button>
+                    <button class="mode-btn" id="mode-ai" data-mode="ai">🤖 人机对战</button>
+                </div>
+                <small id="mode-hint" style="display: block; margin-top: 5px; opacity: 0.7;">本地对战：两位玩家轮流操作</small>
+            </div>
+                        
+            <button class="btn btn-primary" id="start-btn" style="width: 100;">开始游戏</button>
+        </div>
+    </div>
+    
+    <!-- 游戏结束模态框 -->
+    <div class="modal" id="game-over-modal" style="display: none;">
+        <div class="modal-content">
+            <h2>游戏结束</h2>
+            <div class="winner-text" id="winner"></div>
+            <div class="final-scores" id="final-scores"></div>
+            <button class="btn btn-primary" id="view-report-btn" style="width: 100%; margin-bottom: 10px;">查看游戏报告</button>
+            <button class="btn btn-primary" id="restart-btn" style="width: 100%;">重新开始</button>
+        </div>
+    </div>
+    
+    <!-- 游戏报告模态框 -->
+    <div class="modal" id="report-modal" style="display: none;">
+        <div class="modal-content report-modal-content">
+            <h2>游戏报告</h2>
+            <div id="report-content"></div>
+            <button class="btn btn-secondary" id="close-report-btn" style="width: 100%; margin-top: 20px;">关闭</button>
+        </div>
+    </div>
+    
+    <!-- 加载 JavaScript 模块 -->
+    <script src="js/GridSystem.js"></script>
+    <script src="js/CollisionDetector.js"></script>
+    <script src="js/函数复杂度运算/function-complexity-analyzer.js"></script>
+    <script src="js/FunctionParser.js"></script>
+    <script src="js/FunctionRenderer.js"></script>
+    <!-- 全局音频管理器和角色管理器 -->
+    <script src="js/AudioManager.js"></script>
+    <!-- SummaAnimator 必须在 SummaCharacter 之前加载 -->
+    <script src="Summa形象处理/SummaAnimator.js"></script>
+    <script src="Summa形象处理/SummaCharacter.js"></script>
+    
+    <!-- Ai和控制器 -->
+    <script src="js/AIController.js"></script>
+    <script src="js/GameController.js"></script>
+    <script src="js/UIController.js"></script>
+    <script src="js/SummaTrainer.js"></script>
+    
+    <script>
+        // 初始化游戏
+        document.addEventListener('DOMContentLoaded', () => {
+            // 创建核心组件
+            const gridSystem = new GridSystem('game-canvas');
+            const gameController = new GameController();
+            
+            // 创建UI控制器
+            const uiController = new UIController(gridSystem, gameController);
+            
+            // 创建Summa训练器
+            const summaTrainer = new SummaTrainer(gameController, gridSystem);
+            
+            // 将训练器暴露到全局，方便控制台调用
+            window.summaTrainer = summaTrainer;
+            window.gameController = gameController;
+            window.uiController = uiController;
+            
+            // 显示开始界面
+            document.getElementById('start-modal').style.display = 'flex';
+            
+            console.log('函数棋游戏已加载完成！');
+            console.log('游戏模块:', {
+                gridSystem: !!gridSystem,
+                gameController: !!gameController,
+                uiController: !!uiController,
+                summaTrainer: !!summaTrainer
+            });
+            
+            console.log('\n=== Summa训练器已就绪 ===');
+            console.log('使用方法：');
+            console.log('1. 开始训练: summaTrainer.startTraining({totalGames: 1000, difficulty: "hard"})');
+            console.log('2. 停止训练: summaTrainer.stopTraining()');
+            console.log('3. 查看统计: summaTrainer.getTrainingStats()');
+            console.log('4. 加载数据: summaTrainer.loadTrainingData()');
+            console.log('========================\n');
+        });
+    </script>
+</body>
+</html>
