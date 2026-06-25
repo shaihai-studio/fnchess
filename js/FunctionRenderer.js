@@ -24,11 +24,6 @@ class FunctionRenderer {
         // 动画绘制控制
         this.animationFrameId = null;
         this.isDrawing = false;
-
-        // 调试绘制
-        this.debugEnabled = false;
-        this.lastDebugSegments = [];
-        this.lastDebugReasons = [];
     }
 
     cancelDrawing() {
@@ -40,8 +35,6 @@ class FunctionRenderer {
     }
 
     clearRenderCache() {
-        this.lastDebugSegments = [];
-        this.lastDebugReasons = [];
     }
 
     // ========== 自适应样式（保持原版） ==========
@@ -300,43 +293,13 @@ class FunctionRenderer {
      * ln(...) 走专用轻量采样，其他走 CurvePlotter.plotCurve()
      */
     _sampleToSegments(expr, xMin, xMax) {
-        const cleanExpr = expr.toLowerCase().replace(/\s/g, '');
 
         if (/(?:^|[^a-z])ln\s*(?:\(|x|X)/i.test(expr)) {
             const lnSeg = this._buildLnSegments(expr, xMin, xMax);
-            this.lastDebugSegments = lnSeg;
-            this.lastDebugReasons = [];
             return lnSeg;
         }
 
         const segments = this._denseResampleSegments(expr, xMin, xMax);
-        const reasons = [];
-        const debugAst = this.parser.parse(expr);
-
-        if (segments.length <= 1) {
-            reasons.push({ x: xMin, y: null, reason: '连续性判断失败' });
-        }
-
-        for (let i = 1; i < segments.length; i++) {
-            const prev = segments[i - 1];
-            const next = segments[i];
-            const a = prev[prev.length - 1];
-            const b = next[0];
-            if (!a || !b) continue;
-            const dx = Math.abs(b.x - a.x);
-            const ya = this.parser.evaluateAst(debugAst, a.x);
-            const yb = this.parser.evaluateAst(debugAst, b.x);
-            const midX = (a.x + b.x) / 2;
-            const ym = this.parser.evaluateAst(debugAst, midX);
-            let reason = '连续性判断失败';
-            if (!Number.isFinite(ya) || !Number.isFinite(yb)) reason = '视口外';
-            else if (!Number.isFinite(ym)) reason = '二次采样未命中';
-            else if (Math.abs((yb - ya) / Math.max(dx, 1e-12)) > 240) reason = '变化过大';
-            reasons.push({ x: midX, y: Number.isFinite(ym) ? ym : null, reason });
-        }
-
-        this.lastDebugSegments = segments;
-        this.lastDebugReasons = reasons;
         return segments;
     }
 
@@ -658,11 +621,6 @@ class FunctionRenderer {
     _drawViaGeoGebra(expr, color) {
         const ctx = this.gridSystem.ctx;
         const view = this._buildView();
-        this.debugEnabled = !!this.debugEnabled;
-        if (this.debugEnabled) {
-            this.lastDebugSegments = [];
-            this.lastDebugReasons = [];
-        }
 
         // 设置绘制样式
         ctx.strokeStyle = color || this.colors.function;
@@ -908,7 +866,6 @@ class FunctionRenderer {
             this.parser.clearCache();
         }
 
-        if (this.debugEnabled) this.drawDebugOverlay();
         return this._segmentsToPoints(segments);
     }
 
@@ -1014,96 +971,6 @@ class FunctionRenderer {
             ctx.lineTo(p.x, p.y);
         }
         ctx.stroke();
-    }
-
-    drawDebugOverlay() {
-        if (!this.debugEnabled) return;
-        const ctx = this.gridSystem.ctx;
-        const segments = this.lastDebugSegments || [];
-        const reasons = this.lastDebugReasons || [];
-        ctx.save();
-        for (const seg of segments) {
-            for (const p of seg) {
-                const c = this.gridSystem.mathToCanvas(p.x, p.y);
-                ctx.fillStyle = 'rgba(96, 165, 250, 1)';
-                ctx.strokeStyle = 'rgba(255,255,255,0.95)';
-                ctx.lineWidth = 1.8;
-                ctx.beginPath();
-                ctx.arc(c.x, c.y, 5, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.stroke();
-            }
-        }
-        for (const item of reasons) {
-            if (!item) continue;
-            const p = item.y === null ? this.gridSystem.mathToCanvas(item.x, 0) : this.gridSystem.mathToCanvas(item.x, item.y);
-            ctx.fillStyle = 'rgba(248, 113, 113, 1)';
-            ctx.strokeStyle = 'rgba(255,255,255,1)';
-            ctx.lineWidth = 2.5;
-            ctx.beginPath();
-            ctx.arc(p.x, p.y, 10, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.stroke();
-            ctx.fillStyle = 'rgba(15,23,42,0.95)';
-            ctx.font = 'bold 12px system-ui, sans-serif';
-            const label = (item.reason || '断点').slice(0, 8);
-            const textW = ctx.measureText(label).width;
-            const labelH = 18;
-            ctx.fillRect(p.x + 12, p.y - labelH - 4, textW + 10, labelH);
-            ctx.fillStyle = '#fff';
-            ctx.fillText(label, p.x + 16, p.y + 2);
-        }
-        this.drawDebugPanel(ctx, segments, reasons);
-        ctx.restore();
-    }
-
-    drawDebugPanel(ctx, segments, reasons) {
-        const rows = [
-            `主采样段: ${segments.length}`,
-            `断点原因数: ${reasons.length}`,
-        ];
-        const reasonMap = new Map();
-        for (const r of reasons) reasonMap.set(r.reason, (reasonMap.get(r.reason) || 0) + 1);
-        for (const [k, v] of reasonMap) rows.push(`${k}: ${v}`);
-        rows.push(`调试开关: ${this.debugEnabled ? '开启' : '关闭'}`);
-
-        const padX = 18, padY = 12;
-        const lineHeight = 20;
-        const titleH = 28;
-        // 测量最长行的宽度
-        ctx.font = '12px system-ui, sans-serif';
-        let maxW = ctx.measureText('调试面板').width;
-        for (const r of rows) maxW = Math.max(maxW, ctx.measureText(r).width);
-        const boxW = maxW + padX * 2 + 8;
-        const boxH = padY * 2 + titleH + rows.length * lineHeight;
-
-        ctx.save();
-        ctx.fillStyle = 'rgba(2, 6, 23, 0.9)';
-        ctx.strokeStyle = 'rgba(96,165,250,0.85)';
-        ctx.lineWidth = 1.5;
-        if (typeof ctx.roundRect === 'function') {
-            ctx.beginPath();
-            ctx.roundRect(10, 10, boxW, boxH, 8);
-            ctx.fill();
-            ctx.stroke();
-        } else {
-            ctx.beginPath();
-            ctx.rect(10, 10, boxW, boxH);
-            ctx.fill();
-            ctx.stroke();
-        }
-        let y = 10 + padY + 16;
-        ctx.fillStyle = '#e2e8f0';
-        ctx.font = 'bold 13px system-ui, sans-serif';
-        ctx.fillText('调试面板', 10 + padX, y);
-        y += lineHeight + 2;
-        ctx.font = '12px system-ui, sans-serif';
-        for (let i = 0; i < rows.length; i++) {
-            ctx.fillStyle = i < 2 ? '#93c5fd' : (i === rows.length - 1 ? '#94a3b8' : '#cbd5e1');
-            ctx.fillText(rows[i], 10 + padX, y);
-            y += lineHeight;
-        }
-        ctx.restore();
     }
 
     isPointVisible(point, size) {

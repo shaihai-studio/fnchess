@@ -20,7 +20,7 @@ class SummaTrainer {
         
         const modalHtml = `
             <div id="summa-train-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:9999; justify-content:center; align-items:center; flex-direction:column; color:white; font-family:monospace;">
-                <h2 style="margin-bottom: 20px; font-size: 24px; text-shadow: 0 0 10px #00d4ff;">⚙️ Summa 神经网络深度训练中...</h2>
+                <h2 style="margin-bottom: 20px; font-size: 24px; text-shadow: 0 0 10px #00d4ff;">Summa 神经网络深度训练中...</h2>
                 <div style="width: 60%; max-width: 600px; height: 20px; background: #333; border-radius: 10px; overflow: hidden; border: 1px solid #00d4ff; box-shadow: 0 0 15px rgba(0,212,255,0.4);">
                     <div id="summa-train-bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #00d4ff, #00ff88); transition: width 0.1s ease-out;"></div>
                 </div>

@@ -63,7 +63,6 @@ class UIController {
         this.confirmBtn = document.getElementById('confirm-btn');
         this.clearBtn = document.getElementById('clear-btn');
         this.exitBtn = document.getElementById('exit-btn');
-        this.debugBtn = null;
         
         // 退出气泡框元素
         this.exitPopover = document.getElementById('exit-confirm-popover');
@@ -95,6 +94,10 @@ class UIController {
         this.startBtn = document.getElementById('start-btn');
         this.roundSelect = document.getElementById('round-select');
         this.difficultySelect = document.getElementById('difficulty-select');
+        this.roundStepper = document.getElementById('round-stepper');
+        this.roundValue = document.getElementById('round-value');
+        this.difficultyStepper = document.getElementById('difficulty-stepper');
+        this.difficultyValue = document.getElementById('difficulty-value');
         this.difficultyHint = document.getElementById('difficulty-hint');
         this.header = document.getElementById('header');
         
@@ -102,6 +105,7 @@ class UIController {
         this.modeLocalBtn = document.getElementById('mode-local');
         this.modeAiBtn = document.getElementById('mode-ai');
         this.modeCampaignBtn = document.getElementById('mode-campaign');
+        this.modeTestBtn = document.getElementById('mode-test');
         this.modeHint = document.getElementById('mode-hint');
         this.selectedMode = 'local'; // 默认本地对战
         this.developerMode = false;
@@ -138,6 +142,8 @@ class UIController {
         this.campaignCurrentLevelId = null;
         this.campaignCurrentLevelBestRecord = null;
         this.battleUiHidden = false;
+        this.campaignDrawDelayOptions = [0, 1000, 5000];
+        this.campaignDrawDelay = this.getCampaignDrawDelaySetting();
 
         // AI 存档管理面板
         this.aiModeHint = document.getElementById('ai-mode-hint');
@@ -149,12 +155,15 @@ class UIController {
                 this.updateDifficultyHint();
             });
         }
+        this.initStartSelectors();
+        this.refreshStartSelectorDisplay();
         
         // 绑定模式切换按钮
-        if (this.modeLocalBtn && this.modeAiBtn && this.modeCampaignBtn) {
+        if (this.modeLocalBtn && this.modeAiBtn && this.modeCampaignBtn && this.modeTestBtn) {
             this.modeLocalBtn.addEventListener('click', () => this.selectMode('local'));
             this.modeAiBtn.addEventListener('click', () => this.selectMode('ai'));
             this.modeCampaignBtn.addEventListener('click', () => this.selectMode('campaign'));
+            this.modeTestBtn.addEventListener('click', () => this.selectMode('test'));
         }
 
         // AI 管理面板按钮
@@ -184,14 +193,17 @@ class UIController {
         bind('campaign-back-btn', () => this.playUIButtonSound(() => this.showCampaignDifficulty()));
         bind('campaign-reset-btn', () => this.playUIButtonSound(() => this.resetCampaignProgress()));
         bind('campaign-diff-easy', () => this.playUIButtonSound(() => this.openCampaignLevels('easy')));
+        bind('campaign-return-difficulty-btn', () => this.playUIButtonSound(() => this.returnCampaignToDifficulty()));
+        bind('campaign-home-btn', () => this.playUIButtonSound(() => this.returnToCampaignLevelSelect()));
+        bind('campaign-retry-btn', () => this.playUIButtonSound(() => this.retryCampaignLevel()));
+        bind('campaign-next-btn', () => this.playUIButtonSound(() => this.goToNextCampaignLevel()));
         bind('campaign-diff-normal', () => this.playUIButtonSound(() => this.openCampaignLevels('normal')));
         bind('campaign-diff-hard', () => this.playUIButtonSound(() => this.openCampaignLevels('hard')));
         bind('campaign-diff-expert', () => this.playUIButtonSound(() => this.openCampaignLevels('expert')));
         bind('campaign-diff-unsolvable', () => this.playUIButtonSound(() => this.openCampaignLevels('unsolvable')));
-        bind('campaign-home-btn', () => this.playUIButtonSound(() => this.returnToCampaignLevelSelect()));
-        bind('campaign-retry-btn', () => this.playUIButtonSound(() => this.retryCampaignLevel()));
-        bind('campaign-next-btn', () => this.playUIButtonSound(() => this.goToNextCampaignLevel()));
         this.refreshUnsovableDifficultyVisibility();
+        this.addCampaignDrawDelayToggle();
+        this.updateCampaignDrawDelayToggleVisibility();
 
     }
     
@@ -199,36 +211,217 @@ class UIController {
      * 更新难度选择提示
      */
     updateDifficultyHint() {
-        const difficulty = this.difficultySelect.value;
-        const hints = {
-            'easy': '简单模式：1个目标格，四则运算无法被锁定，每回合+20秒',
-            'normal': '普通模式：2个目标格，标准规则',
-            'expert': '专家模式：3个目标格',
-            'test': '测试模式：自由绘图，无目标格，函数持续显示'
-        };
-        this.difficultyHint.textContent = hints[difficulty] || hints['normal'];
-        
-        // 测试模式不支持AI对战
-        if (this.modeAiBtn && this.modeLocalBtn) {
-            if (difficulty === 'test') {
-                // 禁用AI按钮
-                this.modeAiBtn.disabled = true;
-                this.modeAiBtn.style.opacity = '0.5';
-                this.modeAiBtn.style.cursor = 'not-allowed';
-                this.modeAiBtn.title = '测试模式不支持AI对战';
-                
-                // 如果当前是AI模式，切换到本地模式
-                if (this.selectedMode === 'ai') {
-                    this.selectMode('local');
-                }
-            } else {
-                // 启用AI按钮
-                this.modeAiBtn.disabled = false;
-                this.modeAiBtn.style.opacity = '1';
-                this.modeAiBtn.style.cursor = 'pointer';
-                this.modeAiBtn.title = '';
-            }
+        const difficulty = this.difficultySelect ? this.difficultySelect.value : (this.difficultyOptions?.[this.currentDifficultyIndex || 0]?.value || 'easy');
+        if (this.difficultyHint) {
+            this.difficultyHint.textContent = '';
         }
+
+        this.syncModeButtonsFromDifficulty();
+        this.refreshStartSelectorDisplay();
+    }
+
+    initStartSelectors() {
+        this.roundOptions = [
+            { value: 8, label: '8 回合（快速对战）' },
+            { value: 12, label: '12 回合（深度对战）' },
+            { value: 16, label: '16 回合（持久战）' },
+            { value: 20, label: '20 回合（极限挑战）' },
+            { value: 24, label: '24 回合（终极对决）' }
+        ];
+        this.difficultyOptions = [
+            { value: 'easy', label: '简单 - 1个目标格' },
+            { value: 'normal', label: '普通 - 2个目标格' },
+            { value: 'expert', label: '专家 - 3个目标格' }
+        ];
+        const currentRoundValue = this.roundSelect ? Number(this.roundSelect.value || 8) : 8;
+        const currentDifficultyValue = this.difficultySelect ? this.difficultySelect.value : 'easy';
+        this.currentRoundIndex = Math.max(0, this.roundOptions.findIndex(o => o.value === currentRoundValue));
+        this.currentDifficultyIndex = Math.max(0, this.difficultyOptions.findIndex(o => o.value === currentDifficultyValue));
+        if (this.currentRoundIndex < 0) this.currentRoundIndex = 0;
+        if (this.currentDifficultyIndex < 0) this.currentDifficultyIndex = 0;
+        this.bindStepperButtons();
+        this.refreshStartSelectorDisplay();
+        this.syncStartSelectionState();
+    }
+
+    bindStepperButtons() {
+        const bind = (id, fn) => {
+            const el = document.getElementById(id);
+            if (el) el.addEventListener('click', fn);
+        };
+        bind('round-prev', () => this.stepRound(-1));
+        bind('round-next', () => this.stepRound(1));
+        bind('difficulty-prev', () => this.stepDifficulty(-1));
+        bind('difficulty-next', () => this.stepDifficulty(1));
+    }
+
+
+    stepRound(direction) {
+        if (this.selectedMode === 'campaign') return;
+        const len = this.roundOptions.length;
+        const current = this.currentRoundIndex ?? 0;
+        const next = (current + direction + len) % len;
+        this.currentRoundIndex = next;
+        if (this.roundSelect) this.roundSelect.value = String(this.roundOptions[next].value);
+        this.playSelectorChangeFeedback(this.roundStepper || this.roundValue);
+        this.refreshStartSelectorDisplay();
+        this.syncStartSelectionState();
+    }
+
+    stepDifficulty(direction) {
+        if (this.selectedMode === 'campaign') return;
+        const len = this.difficultyOptions.length;
+        const current = this.currentDifficultyIndex ?? 0;
+        const next = (current + direction + len) % len;
+        this.currentDifficultyIndex = next;
+        const nextValue = this.difficultyOptions[next].value;
+        if (this.difficultySelect) {
+            this.difficultySelect.value = nextValue;
+            this.difficultySelect.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        this.playSelectorChangeFeedback(this.difficultyStepper || this.difficultyValue);
+        this.refreshStartSelectorDisplay();
+        this.updateDifficultyHint();
+        this.syncStartSelectionState();
+    }
+
+    playSelectorChangeFeedback(host) {
+        if (window.audioManager) window.audioManager.playClick();
+        if (!host) return;
+        host.classList.remove('selector-change');
+        void host.offsetWidth;
+        host.classList.add('selector-change');
+        clearTimeout(this._selectorChangeTimeout);
+        this._selectorChangeTimeout = setTimeout(() => host.classList.remove('selector-change'), 220);
+    }
+
+    refreshStartSelectorDisplay() {
+        if (this.roundValue && this.roundOptions && this.roundOptions.length) {
+            const idx = Math.min(this.roundOptions.length - 1, Math.max(0, this.currentRoundIndex || 0));
+            const option = this.roundOptions[idx];
+            this.roundValue.textContent = option.label;
+            this.roundValue.dataset.value = String(option.value);
+            this.roundValue.style.color = this.getRoundColor(option.value);
+            this.applyStepperColors('round', option.value);
+        }
+        if (this.difficultyValue && this.difficultyOptions && this.difficultyOptions.length) {
+            const idx = Math.min(this.difficultyOptions.length - 1, Math.max(0, this.currentDifficultyIndex || 0));
+            const option = this.difficultyOptions[idx];
+            this.difficultyValue.textContent = option.label;
+            this.difficultyValue.dataset.value = option.value;
+            this.difficultyValue.style.color = this.getDifficultyColor(option.value);
+            this.applyStepperColors('difficulty', option.value);
+        }
+        if (this.difficultyHint) {
+            this.difficultyHint.textContent = '';
+        }
+        this.applyStartModeLayout();
+    }
+
+    syncStartSelectionState() {
+        this.syncModeButtonsFromDifficulty();
+        this.refreshStartSelectorDisplay();
+        this.applyStartModeLayout();
+    }
+
+    syncModeButtonsFromDifficulty() {
+        const difficulty = this.difficultySelect ? this.difficultySelect.value : 'easy';
+        if (!this.modeAiBtn || !this.modeLocalBtn || !this.modeCampaignBtn || !this.modeTestBtn) return;
+
+        this.modeLocalBtn.classList.toggle('active', this.selectedMode === 'local');
+        this.modeAiBtn.classList.toggle('active', this.selectedMode === 'ai');
+        this.modeCampaignBtn.classList.toggle('active', this.selectedMode === 'campaign');
+        this.modeTestBtn.classList.toggle('active', this.selectedMode === 'test');
+
+        if (this.modeAiBtn) {
+            this.modeAiBtn.disabled = false;
+            this.modeAiBtn.style.opacity = '1';
+            this.modeAiBtn.style.cursor = 'pointer';
+            this.modeAiBtn.title = '';
+        }
+
+        const lockSelectors = this.selectedMode === 'campaign' || this.selectedMode === 'test';
+        this.setStartSelectorsEnabled(!lockSelectors);
+        [this.roundStepper, this.difficultyStepper].forEach(el => {
+            if (!el) return;
+            el.classList.toggle('disabled', lockSelectors);
+        });
+    }
+
+    applyStartModeLayout() {
+        const layout = document.querySelector('.start-settings-layout');
+        const left = document.querySelector('.start-modes-left');
+        const right = document.querySelector('.start-selectors-right');
+        if (!layout || !left || !right) return;
+        const isNarrow = window.innerWidth < 720;
+        layout.style.flexDirection = isNarrow ? 'column' : 'row';
+        left.style.flexBasis = isNarrow ? 'auto' : '170px';
+        right.style.flexBasis = isNarrow ? 'auto' : '1';
+    }
+
+    setStartSelectorsEnabled(enabled) {
+        const controls = [this.roundStepper, this.difficultyStepper, this.roundValue, this.difficultyValue];
+        controls.forEach(el => {
+            if (!el) return;
+            el.style.pointerEvents = enabled ? '' : 'none';
+            el.style.opacity = enabled ? '' : '0.55';
+        });
+        if (this.roundSelect) this.roundSelect.disabled = !enabled;
+        if (this.difficultySelect) this.difficultySelect.disabled = !enabled;
+    }
+
+    applyStepperColors(kind, value) {
+        const prev = kind === 'round' ? document.getElementById('round-prev') : document.getElementById('difficulty-prev');
+        const next = kind === 'round' ? document.getElementById('round-next') : document.getElementById('difficulty-next');
+        const valueEl = kind === 'round' ? this.roundValue : this.difficultyValue;
+        const theme = kind === 'round'
+            ? {
+                8: { bg: 'rgba(96, 165, 250, 0.12)', fg: '#7a9bb5', shadow: 'rgba(96,165,250,0.10)' },
+                12: { bg: 'rgba(52, 211, 153, 0.12)', fg: '#6b9f8e', shadow: 'rgba(52,211,153,0.10)' },
+                16: { bg: 'rgba(251, 191, 36, 0.12)', fg: '#b8944a', shadow: 'rgba(251,191,36,0.10)' },
+                20: { bg: 'rgba(249, 115, 22, 0.12)', fg: '#b87a4e', shadow: 'rgba(249,115,22,0.10)' },
+                24: { bg: 'rgba(244, 63, 94, 0.12)', fg: '#b06e6e', shadow: 'rgba(244,63,94,0.10)' }
+            }
+            : {
+                easy: { bg: 'rgba(34, 197, 94, 0.12)', fg: '#6b9f6e', shadow: 'rgba(34,197,94,0.10)' },
+                normal: { bg: 'rgba(59, 130, 246, 0.12)', fg: '#6b84a8', shadow: 'rgba(59,130,246,0.10)' },
+                expert: { bg: 'rgba(245, 158, 11, 0.12)', fg: '#b8944a', shadow: 'rgba(245,158,11,0.10)' },
+                test: { bg: 'rgba(168, 85, 247, 0.12)', fg: '#8b7bb0', shadow: 'rgba(168,85,247,0.10)' }
+            };
+        const t = theme[value] || { bg: 'rgba(255,255,255,0.12)', fg: '#e5e7eb', shadow: 'rgba(255,255,255,0.12)' };
+        [prev, next].forEach(btn => {
+            if (!btn) return;
+            btn.style.background = t.bg;
+            btn.style.color = t.fg;
+            btn.style.boxShadow = `0 0 14px ${t.shadow}`;
+        });
+        if (valueEl) {
+            valueEl.style.transition = 'transform 0.18s ease, color 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease';
+            valueEl.style.color = t.fg;
+            valueEl.style.borderColor = t.fg;
+            valueEl.style.boxShadow = `0 0 18px ${t.shadow}`;
+        }
+    }
+
+    getRoundColor(value) {
+        const map = {
+            8: '#7a9bb5',
+            12: '#6b9f8e',
+            16: '#b8944a',
+            20: '#b87a4e',
+            24: '#b06e6e'
+        };
+        return map[value] || '#b0bdd0';
+    }
+
+    getDifficultyColor(value) {
+        const map = {
+            easy: '#6b9f6e',
+            normal: '#6b84a8',
+            expert: '#b8944a',
+            test: '#8b7bb0'
+        };
+        return map[value] || '#b0bdd0';
     }
     
     /**
@@ -249,41 +442,58 @@ class UIController {
         
         // 更新按钮状态
         const isCampaign = mode === 'campaign';
-        // 闯关模式时禁用回合数和难度选择，否则恢复
-        if (this.roundSelect) {
-            this.roundSelect.disabled = isCampaign;
-            this.roundSelect.style.opacity = isCampaign ? '0.5' : '1';
+        const isTest = mode === 'test';
+        if (this.roundStepper) this.roundStepper.classList.remove('selector-change');
+        if (this.difficultyStepper) this.difficultyStepper.classList.remove('selector-change');
+        // 闯关模式和测试模式都禁用回合数与难度选择，但开始按钮仍然可用
+        const lockSelectors = isCampaign || isTest;
+        if (this.roundStepper) {
+            this.roundStepper.classList.toggle('disabled', lockSelectors);
         }
-        if (this.difficultySelect) {
-            this.difficultySelect.disabled = isCampaign;
-            this.difficultySelect.style.opacity = isCampaign ? '0.5' : '1';
+        if (this.difficultyStepper) {
+            this.difficultyStepper.classList.toggle('disabled', lockSelectors);
         }
+        this.setStartSelectorsEnabled(!lockSelectors);
         if (this.difficultyHint) {
-            this.difficultyHint.style.display = isCampaign ? 'none' : 'block';
+            this.difficultyHint.style.display = 'none';
         }
+        this.syncStartSelectionState();
+        this.refreshStartSelectorDisplay();
+        this.updateCampaignDrawDelayToggleVisibility();
 
         if (mode === 'local') {
             this.modeLocalBtn.classList.add('active');
             this.modeAiBtn.classList.remove('active');
             this.modeCampaignBtn.classList.remove('active');
+            this.modeTestBtn.classList.remove('active');
             this.modeHint.textContent = '本地对战：两位玩家轮流操作';
             if (this.campaignPanel) this.campaignPanel.style.display = 'none';
             this.restoreBattleUI();
-        } else {
-            if (mode === 'campaign') {
-                this.modeCampaignBtn.classList.add('active');
-                this.modeLocalBtn.classList.remove('active');
-                this.modeAiBtn.classList.remove('active');
-                this.modeHint.textContent = '闯关模式：通关解锁下一关';
-                if (this.campaignPanel) this.campaignPanel.style.display = 'none';
-                // 不再自动打开 campaign-modal，等用户点"开始游戏"再进入关卡选择
-                return;
-            }
+        } else if (mode === 'ai') {
             this.modeAiBtn.classList.add('active');
             this.modeLocalBtn.classList.remove('active');
             this.modeCampaignBtn.classList.remove('active');
+            this.modeTestBtn.classList.remove('active');
             this.modeHint.textContent = '人机对战：你将对抗AI Summa';
             if (this.campaignPanel) this.campaignPanel.style.display = 'none';
+            this.restoreBattleUI();
+        } else if (mode === 'campaign') {
+            this.modeCampaignBtn.classList.add('active');
+            this.modeLocalBtn.classList.remove('active');
+            this.modeAiBtn.classList.remove('active');
+            this.modeTestBtn.classList.remove('active');
+            this.modeHint.textContent = '闯关模式：通关解锁下一关';
+            if (this.campaignPanel) this.campaignPanel.style.display = 'none';
+            this.setStartSelectorsEnabled(false);
+            return;
+        } else if (mode === 'test') {
+            this.modeTestBtn.classList.add('active');
+            this.modeLocalBtn.classList.remove('active');
+            this.modeAiBtn.classList.remove('active');
+            this.modeCampaignBtn.classList.remove('active');
+            this.modeHint.textContent = '测试模式：自由绘图，已绘制函数会保留在画布上';
+            if (this.campaignPanel) this.campaignPanel.style.display = 'none';
+            this.setStartSelectorsEnabled(false);
             this.restoreBattleUI();
         }
     }
@@ -547,6 +757,7 @@ class UIController {
 
         this.gameController.on('campaignLevelLoaded', (data) => {
             try {
+                this.updateCampaignDrawDelayToggleVisibility();
                 // 闯关：隐藏计时器与回合数显示
                 if (this.timerElement && this.timerElement.parentElement) {
                     this.timerElement.parentElement.style.display = 'none';
@@ -778,9 +989,9 @@ class UIController {
         this.confirmBtn.addEventListener('click', () => this.handleConfirm());
         this.clearBtn.addEventListener('click', () => this.handleClear());
         this.exitBtn.addEventListener('click', () => this.handleExitClick());
-        this.setupDebugToggle();
         this.restartBtn.addEventListener('click', () => this.handleRestart());
         this.startBtn.addEventListener('click', () => this.handleStart());
+        this.bindStartKeyboardSupport();
         if (this.viewReportBtn) {
             this.viewReportBtn.addEventListener('click', () => this.showGameReport());
         }
@@ -798,20 +1009,62 @@ class UIController {
         
         // 表达式显示区点击删除与光标移动
         this.expressionDisplay.addEventListener('click', (e) => this.handleExpressionClick(e));
+        this.bindExpressionScrollSupport();
         
         // 键盘输入事件
-        document.addEventListener('keydown', (e) => this.handleKeyboardInput(e));
+        window.addEventListener('keydown', (e) => this.handleKeyboardInput(e), true);
         
         // 初始化拖拽元素
         this.initDraggableElements();
     }
+
+    bindExpressionScrollSupport() {
+        if (!this.expressionDisplay || this._expressionScrollBound) return;
+        this._expressionScrollBound = true;
+        this.expressionDisplay.style.overflowY = 'auto';
+        this.expressionDisplay.style.overflowX = 'hidden';
+        this.expressionDisplay.style.whiteSpace = 'normal';
+        this.expressionDisplay.style.scrollBehavior = 'smooth';
+        this.expressionDisplay.style.touchAction = 'pan-y';
+        this.expressionDisplay.addEventListener('wheel', (e) => {
+            if (this.gameController?.currentPhase !== 'input_function') return;
+            const hasVerticalOverflow = this.expressionDisplay.scrollHeight > this.expressionDisplay.clientHeight + 2;
+            if (!hasVerticalOverflow) return;
+            e.preventDefault();
+            this.expressionDisplay.scrollTop += e.deltaY;
+        }, { passive: false });
+    }
     
+    handleStartSelectorKeys(e) {
+        if (!this.startModal || this.startModal.style.display === 'none') return false;
+        const targetTag = e.target && e.target.tagName ? e.target.tagName.toLowerCase() : '';
+        if (targetTag === 'input' || targetTag === 'textarea') return false;
+        if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+            e.preventDefault();
+            const active = document.activeElement;
+            if (this.roundStepper?.contains(active) || this.roundValue?.contains(active)) {
+                this.stepRound(e.key === 'ArrowRight' ? 1 : -1);
+                return true;
+            }
+            if (this.difficultyStepper?.contains(active) || this.difficultyValue?.contains(active)) {
+                this.stepDifficulty(e.key === 'ArrowRight' ? 1 : -1);
+                return true;
+            }
+            // 默认优先切换难度，方便在开始界面直接用左右键调整
+            this.stepDifficulty(e.key === 'ArrowRight' ? 1 : -1);
+            return true;
+        }
+        return false;
+    }
+
     /**
      * 处理键盘输入
      */
     handleKeyboardInput(e) {
         const phase = this.gameController.currentPhase;
         const key = e.key;
+
+        if (this.handleStartSelectorKeys(e)) return;
 
         // 闯关胜利界面快捷键
         if (this.campaignVictoryModal && this.campaignVictoryModal.style.display !== 'none') {
@@ -2000,10 +2253,6 @@ class UIController {
     async prepareRenderCanvas() {
         // 只清理浏览器内存中的临时引用，不删除本地存档/AI模型/关卡数据等持久化数据
         this._renderTempState = null;
-        if (this.renderer) {
-            this.renderer.lastDebugSegments = [];
-            this.renderer.lastDebugReasons = [];
-        }
         // 只重绘当前棋盘显示，不能清掉 target / forbidden / usedCells
         if (this.gridSystem && typeof this.gridSystem.draw === 'function') {
             this.gridSystem.draw();
@@ -2018,11 +2267,93 @@ class UIController {
         }));
     }
 
+    getCampaignDrawDelaySetting() {
+        try {
+            const raw = localStorage.getItem('function_chess_campaign_draw_delay');
+            const value = Number(raw);
+            return this.campaignDrawDelayOptions.includes(value) ? value : 0;
+        } catch (e) {
+            return 0;
+        }
+    }
+
+    setCampaignDrawDelaySetting(value) {
+        const next = this.campaignDrawDelayOptions.includes(Number(value)) ? Number(value) : 0;
+        this.campaignDrawDelay = next;
+        try {
+            localStorage.setItem('function_chess_campaign_draw_delay', String(next));
+        } catch (e) { }
+        this.updateCampaignDrawDelayToggle();
+    }
+
+    addCampaignDrawDelayToggle() {
+        if (document.getElementById('campaign-draw-delay-toggle')) return;
+        const host = this.confirmBtn?.parentElement;
+        if (!host) return;
+        const wrap = document.createElement('div');
+        wrap.id = 'campaign-draw-delay-toggle';
+        wrap.style.display = 'none';
+        wrap.style.alignItems = 'center';
+        wrap.style.gap = '4px';
+        wrap.style.marginLeft = '8px';
+        wrap.style.padding = '2px 4px';
+        wrap.style.borderRadius = '999px';
+        wrap.style.background = 'rgba(255,255,255,0.08)';
+        wrap.style.border = '1px solid rgba(255,255,255,0.12)';
+        wrap.style.userSelect = 'none';
+        wrap.innerHTML = `
+            <span style="font-size:11px;color:#e5e7eb;opacity:.85;">延迟</span>
+            <button class="campaign-delay-btn" data-delay="0">0s</button>
+            <button class="campaign-delay-btn" data-delay="1000">1s</button>
+            <button class="campaign-delay-btn" data-delay="5000">5s</button>
+        `;
+        const styleBtn = (btn) => {
+            btn.style.minWidth = '30px';
+            btn.style.height = '22px';
+            btn.style.padding = '0 6px';
+            btn.style.borderRadius = '999px';
+            btn.style.border = 'none';
+            btn.style.fontSize = '11px';
+            btn.style.cursor = 'pointer';
+        };
+        wrap.querySelectorAll('.campaign-delay-btn').forEach(btn => {
+            styleBtn(btn);
+            btn.addEventListener('click', () => {
+                if (window.audioManager) window.audioManager.playClick();
+                this.setCampaignDrawDelaySetting(btn.dataset.delay);
+            });
+        });
+        host.appendChild(wrap);
+        this.updateCampaignDrawDelayToggle();
+    }
+
+    updateCampaignDrawDelayToggleVisibility() {
+        const wrap = document.getElementById('campaign-draw-delay-toggle');
+        if (!wrap) return;
+        wrap.style.display = this.gameController?.gameMode === 'campaign' ? 'inline-flex' : 'none';
+    }
+
+    updateCampaignDrawDelayToggle() {
+        const wrap = document.getElementById('campaign-draw-delay-toggle');
+        if (!wrap) return;
+        wrap.querySelectorAll('.campaign-delay-btn').forEach(btn => {
+            const active = Number(btn.dataset.delay) === this.campaignDrawDelay;
+            btn.style.background = active ? '#4d8c5e' : 'rgba(255,255,255,0.12)';
+            btn.style.color = active ? '#fff' : '#e5e7eb';
+            btn.style.boxShadow = active ? '0 0 0 1px rgba(255,255,255,0.18) inset' : 'none';
+        });
+    }
+
     async renderAndEvaluate(expression) {
         await this.prepareRenderCanvas();
 
         // 1. 渲染用采样（标准精度）- 等待绘制完成
         await this.renderer.drawFunction(expression, true);
+
+        // 闯关模式：图像绘制完成后额外延迟一小段时间再进行后续判定与反馈
+        if (this.gameController && this.gameController.gameMode === 'campaign' && this.campaignDrawDelay > 0) {
+            await new Promise(resolve => setTimeout(resolve, this.campaignDrawDelay));
+        }
 
         // 渲染后再刷新一次画布显示，避免首次绘图时调试层/函数层未稳定
         await this.postRenderRefresh();
@@ -2135,7 +2466,7 @@ class UIController {
         popup.className = 'score-popup';
         popup.textContent = scoreChange >= 0 ? `+${scoreChange}` : `${scoreChange}`;
         // 非负数（包括+0）显示绿色，负数显示红色
-        popup.style.color = scoreChange >= 0 ? '#22c55e' : '#ef4444';
+        popup.style.color = scoreChange >= 0 ? '#5b9e6e' : '#ef4444';
         
         // 定位气泡
         const rect = scoreElement.getBoundingClientRect();
@@ -2157,7 +2488,7 @@ class UIController {
         const canvas = this.gridSystem.canvas;
         
         if (type === 'target') {
-            canvas.style.boxShadow = '0 0 30px #22c55e';
+            canvas.style.boxShadow = '0 0 30px #5b9e6e';
         } else if (type === 'forbidden' || type === 'miss') {
             canvas.style.boxShadow = '0 0 30px #ef4444';
         }
@@ -2246,6 +2577,12 @@ class UIController {
         if (window.audioManager) window.audioManager.playClick();
         this.hideExitConfirm();
         
+        // 闯关模式：退出按钮改为返回难度选择界面
+        if (this.gameController.gameMode === 'campaign') {
+            this.returnCampaignToDifficulty();
+            return;
+        }
+        
         // 如果是测试模式，执行退出测试逻辑
         if (this.gameController.isTestMode()) {
             this.exitTestMode();
@@ -2318,15 +2655,34 @@ class UIController {
         
         // 恢复退出按钮样式和文本
         if (this.exitBtn) {
-            this.exitBtn.textContent = '退出对局';
-            this.exitBtn.className = 'btn btn-exit';
+            if (this.gameController.gameMode === 'campaign') {
+                this.exitBtn.textContent = '返回难度';
+                this.exitBtn.className = 'btn btn-exit';
+            } else {
+                this.exitBtn.textContent = '退出对局';
+                this.exitBtn.className = 'btn btn-exit';
+            }
         }
         
         // 返回开始界面
         this.startModal.style.display = 'flex';
         this.showMessage('');
+        this.refreshStartSelectorDisplay();
     }
     
+    bindStartKeyboardSupport() {
+        if (this._startKeyBound) return;
+        this._startKeyBound = true;
+        document.addEventListener('keydown', (e) => {
+            if (e.key !== 'Enter') return;
+            if (!this.startModal || this.startModal.style.display === 'none') return;
+            const targetTag = e.target && e.target.tagName ? e.target.tagName.toLowerCase() : '';
+            if (['input', 'textarea', 'select'].includes(targetTag)) return;
+            e.preventDefault();
+            this.handleStart();
+        });
+    }
+
     /**
      * 处理开始游戏
      */
@@ -2345,21 +2701,20 @@ class UIController {
             return;
         }
 
-        const rounds = parseInt(this.roundSelect.value);
-        const difficulty = this.difficultySelect.value;
+        const rounds = parseInt(this.roundSelect?.value || this.roundOptions?.[this.currentRoundIndex || 0]?.value || 8);
         let gameMode = this.selectedMode;
         
-        // 测试模式不支持AI对战，强制使用本地模式
-        if (difficulty === 'test') {
-            if (gameMode === 'ai') {
-                console.log('[UI] 测试模式不支持AI对战，自动切换为本地模式');
-                gameMode = 'local';
-                this.selectMode('local'); // 更新UI
-            }
+        // 测试模式：难度设为 'test'，gameMode 用 local
+        let difficulty;
+        if (gameMode === 'test') {
+            difficulty = 'test';
+            gameMode = 'local';
+        } else {
+            difficulty = this.difficultySelect?.value || this.difficultyOptions?.[this.currentDifficultyIndex || 0]?.value || 'easy';
         }
         
         // AI 模式：先检查是否训练，未训练则训练
-        if (gameMode === 'ai' && window.summaTrainer && difficulty !== 'test') {
+        if (gameMode === 'ai' && window.summaTrainer) {
             if (this.aiModeHint) this.aiModeHint.textContent = '正在检查 AI 训练状态...';
             
             let shouldTrain = false;
@@ -2672,11 +3027,26 @@ class UIController {
         this.refreshCampaignStartUI();
     }
 
+    returnCampaignToDifficulty() {
+        this.hideCampaignVictory();
+        this.resetBattleGrid();
+        this.gameController.resetGame();
+        this.campaignCurrentLevelId = null;
+        this.campaignCurrentLevelBestRecord = null;
+        if (this.campaignModal) this.campaignModal.style.display = 'flex';
+        this.showCampaignDifficulty();
+        this.updateCampaignDrawDelayToggleVisibility();
+        this.restoreBattleUI();
+        const badge = document.getElementById('campaign-level-badge');
+        if (badge) badge.style.display = 'none';
+    }
+
     openCampaignUI() {
         if (this.startModal) this.startModal.style.display = 'none';
         if (this.campaignModal) this.campaignModal.style.display = 'flex';
         this.showCampaignDifficulty();
         this.hideBattleUI();
+        this.updateCampaignDrawDelayToggleVisibility();
         // 尝试静默加载一次（服务器环境可直接成功）
         this.loadCampaignPack().then(() => this.updateCampaignGlobalProgressText());
     }
@@ -2721,6 +3091,7 @@ class UIController {
 
     restoreBattleUI() {
         this.battleUiHidden = false;
+        this.updateCampaignDrawDelayToggleVisibility();
         if (this.header) {
             this.header.classList.remove('campaign-mode');
         }
@@ -2809,8 +3180,30 @@ class UIController {
         display.innerHTML = `<span class="lrsigma-label">LRΣ =</span> <span class="lrsigma-int">${intPart}</span><span class="lrsigma-dec">${decPart}</span>`;
     }
 
-    resetCampaignProgress() {
+    async resetCampaignProgress() {
         try {
+            const firstConfirm = await this.showGameDialog({
+                title: '重置闯关进度',
+                message: '你确定要重置所有闯关进度吗？\n此操作会清空已解锁关卡、星星和最佳记录。',
+                options: [
+                    { label: '取消', value: false },
+                    { label: '重置', value: true }
+                ],
+                showSkip: false
+            });
+            if (!firstConfirm) return;
+
+            const secondConfirm = await this.showGameDialog({
+                title: '再次确认',
+                message: '请再次确认：重置后将无法恢复已保存的闯关数据。\n真的要继续吗？',
+                options: [
+                    { label: '取消', value: false },
+                    { label: '确认重置', value: true }
+                ],
+                showSkip: false
+            });
+            if (!secondConfirm) return;
+
             localStorage.removeItem('function_chess_campaign_cleared');
             localStorage.removeItem('function_chess_campaign_stars');
             for (let i = 1; i <= 90; i++) {
@@ -2820,6 +3213,7 @@ class UIController {
             this.campaignCurrentLevelBestRecord = null;
             this.showMessage('✅ 闯关进度已重置', 'success');
             this.updateCampaignGlobalProgressText(0);
+            this.refreshUnsovableDifficultyVisibility();
         } catch (e) {
             this.showMessage('❌ 重置失败', 'error');
         }
@@ -2872,21 +3266,21 @@ class UIController {
             bgColor = 'rgba(239, 68, 68, 0.15)';
             borderColor = 'rgba(239, 68, 68, 0.5)';
         } else if (currentLevelId >= 70) { // 专家（70-81）
-            color = '#f97316';
-            bgColor = 'rgba(249, 115, 22, 0.15)';
-            borderColor = 'rgba(249, 115, 22, 0.5)';
+            color = '#b87a4e';
+            bgColor = 'rgba(249, 115, 22, 0.10)';
+            borderColor = 'rgba(249, 115, 22, 0.3)';
         } else if (currentLevelId >= 54) { // 困难（54-69）
-            color = '#eab308';
-            bgColor = 'rgba(234, 179, 8, 0.15)';
-            borderColor = 'rgba(234, 179, 8, 0.5)';
+            color = '#b8944a';
+            bgColor = 'rgba(234, 179, 8, 0.10)';
+            borderColor = 'rgba(234, 179, 8, 0.3)';
         } else if (currentLevelId >= 30) { // 普通（30-53）
-            color = '#84cc16';
-            bgColor = 'rgba(132, 204, 22, 0.15)';
-            borderColor = 'rgba(132, 204, 22, 0.5)';
+            color = '#7a9e3a';
+            bgColor = 'rgba(132, 204, 22, 0.10)';
+            borderColor = 'rgba(132, 204, 22, 0.3)';
         } else { // 简单（1-29）
-            color = '#22c55e';
-            bgColor = 'rgba(34, 197, 94, 0.15)';
-            borderColor = 'rgba(34, 197, 94, 0.5)';
+            color = '#5b9e6e';
+            bgColor = 'rgba(34, 197, 94, 0.10)';
+            borderColor = 'rgba(34, 197, 94, 0.3)';
         }
 
         badge.className = `campaign-level-badge`;
@@ -3330,40 +3724,8 @@ class UIController {
         this.confirmBtn.parentElement.insertBefore(btn, this.confirmBtn);
     }
 
-    setupDebugToggle() {
-        if (this.debugBtn) return;
-        const host = this.confirmBtn?.parentElement;
-        if (!host) return;
-        const btn = document.createElement('button');
-        btn.id = 'debug-toggle-btn';
-        btn.className = 'zoom-btn';
-        btn.textContent = '调试';
-        btn.title = '显示采样点和断点调试信息';
-        btn.style.background = '#3b82f6';
-        btn.style.color = '#fff';
-        btn.style.minWidth = '54px';
-        btn.style.height = '34px';
-        btn.style.borderRadius = '999px';
-        btn.style.fontSize = '12px';
-        btn.addEventListener('click', () => {
-            const next = !(this.renderer.debugEnabled);
-            this.renderer.debugEnabled = next;
-            btn.textContent = next ? '调试✓' : '调试';
-            btn.title = next ? '关闭采样点和断点调试信息' : '显示采样点和断点调试信息';
-            this.showMessage(next ? '已开启调试可视化' : '已关闭调试可视化');
-            if (this.gameController.isTestMode()) {
-                this.redrawAllTestFunctions();
-            } else {
-                this.gridSystem.draw();
-            }
-        });
-        host.appendChild(btn);
-        this.debugBtn = btn;
-        this.renderer.debugEnabled = false;
-    }
-    
     /**
-     * 处理重新开始
+     * 处理返回主页
      */
     handleRestart() {
         if (window.audioManager) window.audioManager.playClick();
@@ -3372,9 +3734,10 @@ class UIController {
         // 如果在测试模式，先退出测试模式
         if (this.gameController.isTestMode()) {
             this.exitTestMode();
-        } else {
-            this.startModal.style.display = 'flex';
         }
+        
+        // 返回主页
+        this.startModal.style.display = 'flex';
     }
     
     /**
@@ -3457,6 +3820,7 @@ class UIController {
                 this.initDraggableElements(); // 刷新为函数构建视图
                 break;
             case 'evaluate':
+            case 'init':
                 hint = '正在评估...';
                 this.confirmBtn.disabled = true;
                 break;
@@ -3643,6 +4007,9 @@ class UIController {
         `;
         
         this.reportContentElement.innerHTML = html;
+        this.reportContentElement.scrollTop = 0;
+        this.reportContentElement.style.overflowY = 'auto';
+        this.reportContentElement.style.maxHeight = 'calc(90vh - 100px)';
         this.reportModal.style.display = 'flex';
     }
     

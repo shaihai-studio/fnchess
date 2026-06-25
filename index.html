@@ -106,38 +106,49 @@
     <!-- 开始界面模态框 -->
     <div class="modal" id="start-modal">
         <div class="modal-content">
-            <h2>函数棋</h2>
-            
-            <div class="round-select">
-                <label for="round-select">选择回合数：</label>
-                <select id="round-select">
-                    <option value="8" selected>8 回合（快速对战）</option>
-                    <option value="12">12 回合（深度对战）</option>
-                    <option value="16">16 回合（持久战）</option>
-                    <option value="20">20 回合（极限挑战）</option>
-                    <option value="24">24 回合（终极对决）</option>
-                </select>
-            </div>
-            
-            <div class="difficulty-select">
-                <label for="difficulty-select">选择难度/模式：</label>
-                <select id="difficulty-select">
-                    <option value="easy" selected>简单 - 1个目标格</option>
-                    <option value="normal">普通 - 2个目标格</option>
-                    <option value="expert">专家 - 3个目标格</option>
-                    <option value="test">测试模式 - 自由绘图</option>
-                </select>
-                <small id="difficulty-hint" style="display: block; margin-top: 5px; opacity: 0.7;">简单模式：1个目标格</small>
-            </div>
+            <div class="start-settings-layout">
+                <!-- 左侧：标题图片 + 难度/回合选择 -->
+                <div class="start-left-column">
+                    <img class="start-modal-title-image" src="images/MainTitle.png" alt="函数棋">
+                    
+                    <div class="start-selectors-left">
+                        <div class="selector-row difficulty-select">
+                            <div class="stepper-selector" id="difficulty-stepper">
+                                <button type="button" class="stepper-arrow" id="difficulty-prev" aria-label="上一个难度">←</button>
+                                <div class="stepper-value" id="difficulty-value">简单 - 1个目标格</div>
+                                <button type="button" class="stepper-arrow" id="difficulty-next" aria-label="下一个难度">→</button>
+                            </div>
+                            <small id="difficulty-hint" style="display:none; margin-top: 5px; opacity: 0.7;"></small>
+                        </div>
                         
-            <!-- 游戏模式切换 -->
-            <div class="mode-select">
-                <div class="mode-toggle">
-                    <button class="mode-btn active" id="mode-local" data-mode="local">👥 本地对战</button>
-                    <button class="mode-btn" id="mode-ai" data-mode="ai">🤖 人机对战</button>
-                    <button class="mode-btn" id="mode-campaign" data-mode="campaign">🧩 闯关模式</button>
+                        <div class="selector-row round-select">
+                            <div class="stepper-selector" id="round-stepper" tabindex="0">
+                                <button type="button" class="stepper-arrow" id="round-prev" aria-label="减少回合数">←</button>
+                                <div class="stepper-value" id="round-value" tabindex="0">8 回合（快速对战）</div>
+                                <button type="button" class="stepper-arrow" id="round-next" aria-label="增加回合数">→</button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                <small id="mode-hint" style="display: block; margin-top: 5px; opacity: 0.7;">本地对战：两位玩家轮流操作</small>
+
+                <!-- 右侧：模式按钮 + 开始按钮 -->
+                <div class="start-right-column">
+                    <div class="mode-select start-modes-right">
+                        <div class="mode-toggle mode-toggle-vertical">
+                            <button class="mode-btn active" id="mode-local" data-mode="local">本地对战</button>
+                            <button class="mode-btn" id="mode-ai" data-mode="ai">人机对战</button>
+                            <button class="mode-btn" id="mode-campaign" data-mode="campaign">闯关模式</button>
+                            <button class="mode-btn" id="mode-test" data-mode="test">测试模式</button>
+                        </div>
+                        <small id="mode-hint" style="display: block; margin-top: 5px; opacity: 0.7;">本地对战：两位玩家轮流操作</small>
+                    </div>
+
+                    <div class="start-action-area">
+                        <button class="start-image-btn" id="start-btn" type="button" aria-label="开始游戏">
+                            <img src="images/StartButton.png" alt="开始游戏">
+                        </button>
+                    </div>
+                </div>
             </div>
 
             <!-- 闯关模式选关 -->
@@ -151,9 +162,7 @@
                 </select>
                 <small id="campaign-progress" style="display:block; margin-top:6px; opacity:0.7;"></small>
             </div>
-            <small id="developer-hint" style="display:block; margin: 8px 0 0; opacity:0.55;">按 Tab 可进入开发者模式，关卡不再受解锁限制</small>
-                        
-            <button class="btn btn-primary" id="start-btn" style="width: 100;">开始游戏</button>
+            
         </div>
     </div>
 
@@ -210,7 +219,7 @@
             <div class="winner-text" id="winner"></div>
             <div class="final-scores" id="final-scores"></div>
             <button class="btn btn-primary" id="view-report-btn" data-arrow style="width: 100%; margin-bottom: 10px;">查看游戏报告</button>
-            <button class="btn btn-primary" id="restart-btn" data-arrow style="width: 100%;">重新开始</button>
+            <button class="btn btn-primary" id="restart-btn" data-arrow style="width: 100%;">返回主页</button>
         </div>
     </div>
 
