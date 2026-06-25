@@ -1,0 +1,3 @@
+class PlotterAlgo {
+  compute() {}
+}

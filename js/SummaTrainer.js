@@ -8,6 +8,7 @@ class SummaTrainer {
         this.progressModal = null;
         this.progressBar = null;
         this.progressText = null;
+        this.progressLog = null;
         this.isTraining = false;
         
         // 我们会针对不同难度存储模型

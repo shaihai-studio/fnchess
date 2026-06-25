@@ -117,6 +117,17 @@ class UIController {
         this.campaignStepLevels = document.getElementById('campaign-step-levels');
         this.campaignGlobalProgress = document.getElementById('campaign-global-progress');
         this.campaignStarProgress = document.getElementById('campaign-star-progress');
+        
+        // Summa训练弹窗
+        this.summaDialog = document.getElementById('summa-train-dialog');
+        this.summaDialogTitle = document.getElementById('summa-dialog-title');
+        this.summaDialogMessage = document.getElementById('summa-dialog-message');
+        this.summaDialogOptions = document.getElementById('summa-dialog-options');
+        this.summaDialogInputArea = document.getElementById('summa-dialog-input-area');
+        this.summaDialogInput = document.getElementById('summa-dialog-input');
+        
+        // 绑定弹窗内部按钮事件
+        this.bindSummaDialogEvents();
         this.campaignLevelTitle = document.getElementById('campaign-level-title');
         this.campaignLevelProgress = document.getElementById('campaign-level-progress');
         this.campaignLevelGrid = document.getElementById('campaign-level-grid');
@@ -126,7 +137,11 @@ class UIController {
         this.campaignCurrentLevelId = null;
         this.campaignCurrentLevelBestRecord = null;
         this.battleUiHidden = false;
-        
+
+        // AI 存档管理面板
+        this.aiModeHint = document.getElementById('ai-mode-hint');
+        this.aiManageBtn = document.getElementById('ai-manage-btn');
+
         // 绑定难度选择提示更新
         if (this.difficultySelect && this.difficultyHint) {
             this.difficultySelect.addEventListener('change', () => {
@@ -140,6 +155,14 @@ class UIController {
             this.modeAiBtn.addEventListener('click', () => this.selectMode('ai'));
             this.modeCampaignBtn.addEventListener('click', () => this.selectMode('campaign'));
         }
+
+        // AI 管理面板按钮
+        if (this.aiManageBtn) {
+            this.aiManageBtn.addEventListener('click', () => {
+                if (window.summaTrainer) window.summaTrainer.showPanel();
+            });
+        }
+
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Tab') {
                 this.developerMode = true;
@@ -224,6 +247,20 @@ class UIController {
         this.selectedMode = mode;
         
         // 更新按钮状态
+        const isCampaign = mode === 'campaign';
+        // 闯关模式时禁用回合数和难度选择，否则恢复
+        if (this.roundSelect) {
+            this.roundSelect.disabled = isCampaign;
+            this.roundSelect.style.opacity = isCampaign ? '0.5' : '1';
+        }
+        if (this.difficultySelect) {
+            this.difficultySelect.disabled = isCampaign;
+            this.difficultySelect.style.opacity = isCampaign ? '0.5' : '1';
+        }
+        if (this.difficultyHint) {
+            this.difficultyHint.style.display = isCampaign ? 'none' : 'block';
+        }
+
         if (mode === 'local') {
             this.modeLocalBtn.classList.add('active');
             this.modeAiBtn.classList.remove('active');
@@ -238,7 +275,7 @@ class UIController {
                 this.modeAiBtn.classList.remove('active');
                 this.modeHint.textContent = '闯关模式：通关解锁下一关';
                 if (this.campaignPanel) this.campaignPanel.style.display = 'none';
-                this.openCampaignUI();
+                // 不再自动打开 campaign-modal，等用户点"开始游戏"再进入关卡选择
                 return;
             }
             this.modeAiBtn.classList.add('active');
@@ -477,8 +514,13 @@ class UIController {
                 data.previousBest = previousBest;
                 if (isNewRecord) {
                     const gainedStars = Math.max(1, Math.min(5, Number(data.score) || 1));
-                    const currentStars = this.getCampaignCollectedStars();
-                    this.setCampaignCollectedStars(currentStars + gainedStars);
+                    const previousStars = this.getCampaignLevelBestStars(levelId);
+                    // 只在获得更高星星时更新总数
+                    if (gainedStars > previousStars) {
+                        const currentStars = this.getCampaignCollectedStars();
+                        this.setCampaignCollectedStars(currentStars + (gainedStars - previousStars));
+                        this.setCampaignLevelBestStars(levelId, gainedStars);
+                    }
                     this.setCampaignLevelBestRecord(levelId, length);
                     setTimeout(() => {
                         if (this.campaignCurrentLevelId === levelId) {
@@ -599,6 +641,132 @@ class UIController {
     }
     
     /**
+     * 绑定 Summa 训练弹窗事件
+     */
+    bindSummaDialogEvents() {
+        // 输入框取消按钮
+        document.getElementById('summa-dialog-input-cancel')?.addEventListener('click', () => {
+            this.summaDialogResolve && this.summaDialogResolve(null);
+            this.hideSummaDialog();
+        });
+        
+        // 输入框确认按钮
+        document.getElementById('summa-dialog-input-confirm')?.addEventListener('click', () => {
+            const value = this.summaDialogInput.value;
+            this.summaDialogResolve && this.summaDialogResolve(value);
+            this.hideSummaDialog();
+        });
+        
+        // 输入框回车确认
+        this.summaDialogInput?.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                const value = this.summaDialogInput.value;
+                this.summaDialogResolve && this.summaDialogResolve(value);
+                this.hideSummaDialog();
+            }
+        });
+    }
+    
+    /**
+     * 显示 Summa 训练弹窗
+     * @param {Object} options - 弹窗配置
+     * @param {string} options.title - 标题
+     * @param {string} options.message - 消息文本
+     * @param {Array} options.options - 选项数组 [{label, value, desc}]
+     * @param {boolean} options.showInput - 是否显示输入框
+     * @param {string} options.inputPlaceholder - 输入框占位符
+     * @param {string} options.defaultValue - 输入框默认值
+     * @param {boolean} options.showSkip - 是否显示跳过按钮
+     * @param {string} options.skipText - 跳过按钮文本
+     * @returns {Promise} 返回用户选择结果
+     */
+    showGameDialog(options) {
+        return new Promise((resolve) => {
+            this.summaDialogResolve = resolve;
+            
+            const {
+                title = '提示',
+                message = '',
+                options: optButtons = [],
+                showInput = false,
+                inputPlaceholder = '',
+                defaultValue = '',
+                showSkip = true,
+                skipText = '跳过，直接使用现有模型'
+            } = options;
+            
+            // 设置内容
+            this.summaDialogTitle.textContent = title;
+            this.summaDialogMessage.innerHTML = message.replace(/\n/g, '<br>');
+            
+            // 清空并设置选项
+            this.summaDialogOptions.innerHTML = '';
+            
+            if (showInput) {
+                // 显示输入模式
+                this.summaDialogOptions.style.display = 'none';
+                this.summaDialogInputArea.style.display = 'block';
+                this.summaDialogInput.value = defaultValue;
+                this.summaDialogInput.placeholder = inputPlaceholder;
+                setTimeout(() => this.summaDialogInput.focus(), 100);
+            } else {
+                // 显示选项按钮模式
+                this.summaDialogOptions.style.display = 'grid';
+                this.summaDialogInputArea.style.display = 'none';
+                
+                optButtons.forEach(opt => {
+                    const btn = document.createElement('button');
+                    btn.className = 'summa-dialog-option-btn';
+                    btn.innerHTML = `${opt.label}${opt.desc ? `<span>${opt.desc}</span>` : ''}`;
+                    btn.addEventListener('click', () => {
+                        resolve(opt.value);
+                        this.hideSummaDialog();
+                    });
+                    this.summaDialogOptions.appendChild(btn);
+                });
+                
+                if (showSkip) {
+                    // 创建跳过和退出按钮的容器
+                    const buttonContainer = document.createElement('div');
+                    buttonContainer.className = 'summa-dialog-secondary-buttons';
+                    
+                    const skipBtn = document.createElement('button');
+                    skipBtn.className = 'summa-dialog-skip-btn';
+                    skipBtn.textContent = skipText;
+                    skipBtn.addEventListener('click', () => {
+                        resolve(null);
+                        this.hideSummaDialog();
+                    });
+                    
+                    // 添加退出按钮（返回开始界面）
+                    const exitBtn = document.createElement('button');
+                    exitBtn.className = 'summa-dialog-exit-btn';
+                    exitBtn.textContent = '退出';
+                    exitBtn.addEventListener('click', () => {
+                        this.hideSummaDialog();
+                        this.startModal.style.display = 'flex';
+                    });
+                    
+                    buttonContainer.appendChild(skipBtn);
+                    buttonContainer.appendChild(exitBtn);
+                    this.summaDialogOptions.appendChild(buttonContainer);
+                }
+            }
+            
+            // 显示弹窗
+            this.summaDialog.style.display = 'flex';
+        });
+    }
+    
+    /**
+     * 隐藏 Summa 训练弹窗
+     */
+    hideSummaDialog() {
+        this.summaDialog.style.display = 'none';
+        this.summaDialogResolve = null;
+    }
+    
+    /**
      * 绑定DOM事件
      */
     bindEvents() {
@@ -704,6 +872,30 @@ class UIController {
             // i 键输入虚数单位 i
             e.preventDefault();
             this.addElementToExpression('i');
+        } else if (key === 's' || key === 'S') {
+            // s 键输入 sin
+            e.preventDefault();
+            this.addElementToExpression('sin');
+        } else if (key === 'c' || key === 'C') {
+            // c 键输入 cos
+            e.preventDefault();
+            this.addElementToExpression('cos');
+        } else if (key === 't' || key === 'T') {
+            // t 键输入 tan
+            e.preventDefault();
+            this.addElementToExpression('tan');
+        } else if (key === 'a' || key === 'A') {
+            // a 键输入 abs
+            e.preventDefault();
+            this.addElementToExpression('abs');
+        } else if (key === 'r' || key === 'R') {
+            // r 键输入 sqrt
+            e.preventDefault();
+            this.addElementToExpression('sqrt');
+        } else if (key === 'l' || key === 'L') {
+            // l 键输入 ln
+            e.preventDefault();
+            this.addElementToExpression('ln');
         } else if (key === 'Backspace') {
             e.preventDefault();
             // 删除光标前的一个元素
@@ -733,6 +925,9 @@ class UIController {
                 this.cursorIndex++;
                 this.updateExpressionDisplay();
             }
+        } else if (key === 'ArrowUp' || key === 'ArrowDown') {
+            e.preventDefault();
+            this.handleVerticalCursorMove(key === 'ArrowUp' ? -1 : 1);
         } else if (key === 'Home') {
             e.preventDefault();
             this.cursorIndex = 0;
@@ -1348,7 +1543,7 @@ class UIController {
         }
         
         // 函数类元素自动添加括号
-        const functionElements = ['sin', 'cos', 'tan', 'abs', 'exp', 'ln', 'log'];
+        const functionElements = ['sin', 'cos', 'tan', 'abs', 'exp', 'ln', 'log', 'sqrt'];
         if (functionElements.includes(element)) {
             // 插入函数名和括号：[sin, (, )]
             this.expressionElements.splice(this.cursorIndex, 0, element, '(', ')');
@@ -1383,8 +1578,18 @@ class UIController {
         this.currentExpression = this.expressionElements.join('');
         this.expressionDisplay.innerHTML = '';
         
+        // 添加 "y =" 前缀（始终显示）
+        const prefix = document.createElement('span');
+        prefix.className = 'expression-prefix';
+        prefix.textContent = 'y =';
+        this.expressionDisplay.appendChild(prefix);
+        
         if (this.expressionElements.length === 0) {
-            this.expressionDisplay.innerHTML = '<span class="placeholder">点击元素或键盘输入构建表达式...</span>';
+            // 表达式为空时显示闪烁的光标
+            const cursorSpan = document.createElement('span');
+            cursorSpan.className = 'cursor';
+            cursorSpan.textContent = '|';
+            this.expressionDisplay.appendChild(cursorSpan);
             this.cursorIndex = 0;
             return;
         }
@@ -1450,28 +1655,203 @@ class UIController {
         }
         
         // 如果点击的是空白区域，则将光标移动到点击位置
-        // 计算点击位置相对于容器左边缘的偏移量
         const rect = this.expressionDisplay.getBoundingClientRect();
         const clickX = e.clientX - rect.left;
+        const clickY = e.clientY; // 使用绝对Y坐标来匹配元素
         
-        // 遍历所有子节点，找到点击位置对应的索引
-        let totalWidth = 0;
-        let newIndex = 0;
+        // 收集所有表达式的元素（排除 cursor），按Y坐标分组
+        const lineGroups = new Map(); // key: 行的Y坐标, value: [{elementIndex, left, right, center}]
+        const elementIndices = []; // 记录每个子元素对应的 expressionElements 索引
         
         for (let i = 0; i < this.expressionDisplay.children.length; i++) {
             const child = this.expressionDisplay.children[i];
-            const childRect = child.getBoundingClientRect();
-            const childCenter = childRect.left - rect.left + childRect.width / 2;
             
-            // 如果点击位置在当前元素的中心左侧，则光标放在该元素之前
-            if (clickX < childCenter) {
-                newIndex = i;
-                break;
+            // 跳过 cursor 元素
+            if (child.classList.contains('cursor')) continue;
+            
+            // 只有有 index 的才是表达式元素
+            if (child.dataset.index === undefined) continue;
+            
+            const childRect = child.getBoundingClientRect();
+            const childLeft = childRect.left - rect.left;
+            const childRight = childLeft + childRect.width;
+            const childCenter = childLeft + childRect.width / 2;
+            const childTop = Math.round(childRect.top);
+            const elementIndex = parseInt(child.dataset.index);
+            
+            if (!lineGroups.has(childTop)) {
+                lineGroups.set(childTop, []);
             }
-            newIndex = i + 1;
+            lineGroups.get(childTop).push({ 
+                elementIndex, // 对应 expressionElements 的索引
+                left: childLeft, 
+                right: childRight, 
+                center: childCenter 
+            });
+            elementIndices.push({ childIndex: i, elementIndex });
         }
         
-        this.cursorIndex = newIndex;
+        if (lineGroups.size === 0) {
+            // 没有表达式元素，光标移到开头
+            this.cursorIndex = 0;
+            this.updateExpressionDisplay();
+            return;
+        }
+        
+        // 找出点击位置所在的行（按Y坐标匹配）
+        let targetLine = null;
+        let minYDiff = Infinity;
+        
+        for (const lineY of lineGroups.keys()) {
+            const yDiff = Math.abs(lineY - clickY);
+            if (yDiff < minYDiff) {
+                minYDiff = yDiff;
+                targetLine = lineGroups.get(lineY);
+            }
+        }
+        
+        // 在目标行中查找光标位置
+        let newCursorIndex = 0;
+        
+        if (targetLine) {
+            // 按 left 排序
+            targetLine.sort((a, b) => a.left - b.left);
+            
+            // 在该行中找到点击X位置对应的元素
+            for (let i = 0; i < targetLine.length; i++) {
+                const item = targetLine[i];
+                if (clickX < item.center) {
+                    newCursorIndex = item.elementIndex;
+                    break;
+                }
+                newCursorIndex = item.elementIndex + 1;
+            }
+        } else {
+            // 没有找到目标行，使用最近的元素
+            const allItems = [];
+            for (const line of lineGroups.values()) {
+                allItems.push(...line);
+            }
+            allItems.sort((a, b) => a.left - b.left);
+            
+            for (let i = 0; i < allItems.length; i++) {
+                if (clickX < allItems[i].center) {
+                    newCursorIndex = allItems[i].elementIndex;
+                    break;
+                }
+                newCursorIndex = allItems[i].elementIndex + 1;
+            }
+        }
+        
+        this.cursorIndex = newCursorIndex;
+        this.updateExpressionDisplay();
+    }
+    
+    /**
+     * 处理上下键垂直移动光标
+     * @param {number} direction - 1表示向下，-1表示向上
+     */
+    handleVerticalCursorMove(direction) {
+        const phase = this.gameController.currentPhase;
+        if (phase !== 'input_function') return;
+        if (this.expressionElements.length === 0) return;
+        
+        const rect = this.expressionDisplay.getBoundingClientRect();
+        
+        // 收集所有元素的位置信息
+        const allItems = [];
+        for (let i = 0; i < this.expressionDisplay.children.length; i++) {
+            const child = this.expressionDisplay.children[i];
+            if (child.classList.contains('cursor')) continue;
+            if (child.dataset.index === undefined) continue;
+            
+            const childRect = child.getBoundingClientRect();
+            allItems.push({
+                index: parseInt(child.dataset.index),
+                y: Math.round(childRect.top),
+                left: childRect.left,
+                right: childRect.right,
+                center: childRect.left + childRect.width / 2
+            });
+        }
+        
+        if (allItems.length === 0) return;
+        
+        // 获取当前光标位置
+        let cursorY = null;
+        let cursorX = null;
+        
+        for (let i = 0; i < this.expressionDisplay.children.length; i++) {
+            const child = this.expressionDisplay.children[i];
+            if (child.classList.contains('cursor')) {
+                const childRect = child.getBoundingClientRect();
+                cursorY = Math.round(childRect.top);
+                cursorX = childRect.left + childRect.width / 2;
+                break;
+            }
+        }
+        
+        // 如果没找到光标，使用末尾位置
+        if (cursorY === null) {
+            const lastItem = allItems[allItems.length - 1];
+            if (lastItem) {
+                cursorY = lastItem.y;
+                cursorX = lastItem.right + 20;
+            }
+        }
+        
+        if (cursorY === null) return;
+        
+        // 收集所有不同的Y坐标（行）
+        const yValues = [...new Set(allItems.map(item => item.y))].sort((a, b) => a - b);
+        
+        // 找到当前行索引 - 使用最近匹配而非精确匹配，防止因微小偏移导致匹配失败
+        let currentLineIdx = yValues.indexOf(cursorY);
+        if (currentLineIdx === -1 && cursorY !== null) {
+            // 精确匹配失败时，找最近的行
+            let minDiff = Infinity;
+            for (let i = 0; i < yValues.length; i++) {
+                const diff = Math.abs(yValues[i] - cursorY);
+                if (diff < minDiff) { minDiff = diff; currentLineIdx = i; }
+            }
+        }
+        
+        // 计算目标行
+        const targetLineIdx = currentLineIdx + direction;
+        if (targetLineIdx < 0 || targetLineIdx >= yValues.length) return;
+        
+        const targetY = yValues[targetLineIdx];
+        
+        // 找到目标行中的所有元素
+        const targetItems = allItems.filter(item => item.y === targetY).sort((a, b) => a.index - b.index);
+        
+        if (targetItems.length === 0) return;
+        
+        // 找到最近的插入位置
+        let bestIndex = 0;
+        let minDist = Infinity;
+        
+        // 检查每个可能的插入位置
+        for (let pos = 0; pos <= targetItems.length; pos++) {
+            let x;
+            if (pos === 0) {
+                x = targetItems[0].left - 10;
+            } else if (pos === targetItems.length) {
+                x = targetItems[pos - 1].right + 10;
+            } else {
+                x = (targetItems[pos - 1].right + targetItems[pos].left) / 2;
+            }
+            
+            const dist = Math.abs(x - cursorX);
+            if (dist < minDist) {
+                minDist = dist;
+                bestIndex = pos === 0 ? targetItems[0].index : 
+                           (pos === targetItems.length ? targetItems[pos - 1].index + 1 : 
+                            targetItems[pos - 1].index + 1);
+            }
+        }
+        
+        this.cursorIndex = bestIndex;
         this.updateExpressionDisplay();
     }
     
@@ -1923,11 +2303,9 @@ class UIController {
             window.audioManager.playClick();
         }
         
-        // 闯关模式
+        // 闯关模式：进入关卡选择界面（难度选择）
         if (this.selectedMode === 'campaign') {
-            this.startModal.style.display = 'none';
-            const startId = this.campaignLevelSelect ? Number(this.campaignLevelSelect.value) : 1;
-            await this.startCampaign(startId);
+            this.openCampaignUI();
             return;
         }
 
@@ -1944,36 +2322,88 @@ class UIController {
             }
         }
         
+        // AI 模式：先检查是否训练，未训练则训练
         if (gameMode === 'ai' && window.summaTrainer && difficulty !== 'test') {
-            this.startModal.style.display = 'none';
+            if (this.aiModeHint) this.aiModeHint.textContent = '正在检查 AI 训练状态...';
             
             let shouldTrain = false;
             let trainAmount = 50000;
             
+            // 检查该难度是否已训练
             if (window.summaTrainer.isModelTrained(difficulty)) {
-                const choice = prompt(`检测到已有 [${difficulty}] 模型。\n若想给神经网络继续升维，请输入新一轮训练刻度：1000000, 5000000, 20000000, 100000000\n留空或点击取消则直接读取现有记忆进入游戏。`);
-                if (choice && parseInt(choice) > 0) {
-                    trainAmount = parseInt(choice);
+                // 检测到已有模型，询问用户是否继续升维训练
+                const choice = await this.showGameDialog({
+                    title: '检测到已有模型',
+                    message: `检测到 [${difficulty}] 难度的神经网络模型。<br><br>若想给神经网络继续升维训练，请选择一个训练规模：`,
+                    options: [
+                        { label: '1,000,000', value: 1000000, desc: '快速训练' },
+                        { label: '5,000,000', value: 5000000, desc: '标准训练' },
+                        { label: '20,000,000', value: 20000000, desc: '深度训练' },
+                        { label: '100,000,000', value: 100000000, desc: '极限训练' }
+                    ],
+                    showSkip: true,
+                    skipText: '跳过，使用现有模型直接开始'
+                });
+                
+                if (choice && choice > 0) {
+                    trainAmount = choice;
                     shouldTrain = true;
                 }
             } else {
-                shouldTrain = true;
-                const choice = prompt(`欢迎唤醒 Summa。首次必须推演地图拓扑算力。\n请设置神经网世代规模（选项：1000000, 5000000, 20000000, 100000000）：`, "1000000");
-                if (choice && parseInt(choice) > 0) {
-                    trainAmount = parseInt(choice);
+                // 未训练，询问用户是否训练
+                const wantTrain = await this.showGameDialog({
+                    title: '唤醒 Summa',
+                    message: `AI 尚未针对「${difficulty}」难度进行训练。<br><br>首次必须推演地图拓扑算力，请选择训练规模：`,
+                    options: [
+                        { label: '1,000,000', value: 1000000, desc: '快速入门' },
+                        { label: '5,000,000', value: 5000000, desc: '标准训练' },
+                        { label: '20,000,000', value: 20000000, desc: '深度学习' },
+                        { label: '100,000,000', value: 100000000, desc: '极限挑战' }
+                    ],
+                    showSkip: true,
+                    skipText: '暂不训练，取消开始'
+                });
+                
+                if (wantTrain && wantTrain > 0) {
+                    trainAmount = wantTrain;
+                    shouldTrain = true;
                 }
             }
             
             if (shouldTrain) {
+                if (this.aiModeHint) this.aiModeHint.textContent = '正在训练 AI，请稍候...';
+                this.startModal.style.display = 'none';
+                // 重新训练前删除旧模型
                 localStorage.removeItem(`summa_model_v2_${difficulty}`);
                 await window.summaTrainer.startTraining(difficulty, trainAmount);
+            } else if (window.summaTrainer.isModelTrained(difficulty)) {
+                // 用户跳过但已有模型，直接开始游戏
+            } else {
+                // 用户取消且未训练，返回
+                this.startModal.style.display = 'flex';
+                return;
             }
+            
+            // 训练完成或已训练，开始游戏
+            this.startModal.style.display = 'none';
+            this.gameController.initGame(rounds, difficulty, gameMode);
+            if (this.aiModeHint) this.aiModeHint.textContent = 'AI 模式已启动，Summa 正在对战';
+            
+            // 测试模式特殊初始化
+            if (this.gameController.isTestMode()) {
+                this.initTestModeUI();
+            }
+            return;
         } else {
             this.startModal.style.display = 'none';
         }
-        
+
         this.gameController.initGame(rounds, difficulty, gameMode);
-        
+
+        if (this.aiModeHint && gameMode === 'ai') {
+            this.aiModeHint.textContent = 'AI 模式已启动，Summa 正在对战';
+        }
+
         // 测试模式特殊初始化
         if (this.gameController.isTestMode()) {
             this.initTestModeUI();
@@ -2006,6 +2436,24 @@ class UIController {
         }
     }
 
+    // 获取单个关卡的最高星星数
+    getCampaignLevelBestStars(levelId) {
+        try {
+            const raw = localStorage.getItem(`function_chess_campaign_best_stars_${levelId}`);
+            const v = raw ? Number(raw) : 0;
+            return Number.isFinite(v) ? v : 0;
+        } catch (e) {
+            return 0;
+        }
+    }
+
+    // 设置单个关卡的最高星星数
+    setCampaignLevelBestStars(levelId, stars) {
+        try {
+            localStorage.setItem(`function_chess_campaign_best_stars_${levelId}`, String(Math.max(0, Number(stars) || 0)));
+        } catch (e) { }
+    }
+
     setCampaignCollectedStars(stars) {
         try {
             localStorage.setItem('function_chess_campaign_stars', String(Math.max(0, Number(stars) || 0)));
@@ -2017,12 +2465,13 @@ class UIController {
         const totalSlots = 500;
         const filled = Math.max(0, Math.min(totalSlots, Number(starCount) || 0));
         const pct = Math.max(0, Math.min(100, (filled / totalSlots) * 100));
+        const starSvg = `<svg class="star filled" viewBox="0 0 120 120" aria-hidden="true"><path d="M60 14c3.1 0 5.6 1.6 6.9 4.3l11.3 22.9 25.3 3.7c3 .5 5.5 2.5 6.5 5.4 1 2.9.3 6-1.9 8.2L90 74.5l4.5 25.1c.5 3.1-.7 6.2-3.1 8-2.5 1.8-5.8 2.1-8.5.7L60 96.1 37.1 108.3c-2.7 1.4-6 .1-8.5-.7-2.4-1.8-3.6-4.9-3.1-8L30 74.5 12.9 54.5c-2.2-2.2-2.9-5.3-1.9-8.2 1-2.9 3.5-4.9 6.5-5.4l25.3-3.7L54.1 18.3C55.4 15.6 57.9 14 61 14Z"/></svg>`;
         this.campaignStarProgress.innerHTML = `
             <div class="campaign-star-bar">
                 <div class="campaign-star-bar-fill" style="width:${pct}%;"></div>
                 <div class="campaign-star-bar-glow" style="width:${pct}%;"></div>
             </div>
-            <span class="star-count">${filled}/${totalSlots}🌟</span>
+            <span class="star-count">${filled}/${totalSlots}${starSvg}</span>
         `;
     }
 
@@ -2284,6 +2733,44 @@ class UIController {
         if (this.campaignStarProgress) {
             this.renderCampaignStarProgress(starCount);
         }
+        // 更新LRΣ显示
+        this.updateCampaignLRSigmaDisplay(cleared);
+    }
+
+    // 计算LRΣ = Σ(100/(10+b))，b为已通关关卡的best score
+    calculateLRSigma(cleared) {
+        if (!cleared || cleared <= 0) return 0;
+        let sum = 0;
+        for (let i = 1; i <= cleared; i++) {
+            const best = this.getCampaignLevelBestRecord(i);
+            if (best !== null && best > 0) {
+                sum += 100 / (10 + best);
+            }
+        }
+        return sum;
+    }
+
+    // 更新LRΣ显示
+    updateCampaignLRSigmaDisplay(cleared = null) {
+        const container = document.getElementById('campaign-lrsigma-container');
+        const display = document.getElementById('campaign-lrsigma-display');
+        if (!container || !display) return;
+        
+        if (cleared === null) {
+            cleared = this.getCampaignClearedMax();
+        }
+        
+        if (cleared <= 0) {
+            container.style.display = 'none';
+            return;
+        }
+        
+        container.style.display = 'flex';
+        const lrSigma = this.calculateLRSigma(cleared);
+        // 显示格式：LRΣ = 整数部分大，小数部分靠上与整数底部齐平，精确到6位小数
+        const intPart = Math.floor(lrSigma);
+        const decPart = (lrSigma - intPart).toFixed(6).substring(1); // 去掉前导0
+        display.innerHTML = `<span class="lrsigma-label">LRΣ =</span> <span class="lrsigma-int">${intPart}</span><span class="lrsigma-dec">${decPart}</span>`;
     }
 
     resetCampaignProgress() {
@@ -2292,6 +2779,7 @@ class UIController {
             localStorage.removeItem('function_chess_campaign_stars');
             for (let i = 1; i <= 90; i++) {
                 localStorage.removeItem(`function_chess_campaign_best_${i}`);
+                localStorage.removeItem(`function_chess_campaign_best_stars_${i}`);
             }
             this.campaignCurrentLevelBestRecord = null;
             this.showMessage('✅ 闯关进度已重置', 'success');
@@ -2365,11 +2853,36 @@ class UIController {
         for (let id = range.start; id <= range.end; id++) {
             const cell = document.createElement('div');
             cell.className = `campaign-level-cell ${range.cls}`;
-            cell.textContent = String(id);
 
             const locked = !this.developerMode && id > unlockedMax;
             if (locked) cell.classList.add('locked');
             if (id <= cleared) cell.classList.add('cleared');
+
+            // 检查通关后获得的星星
+            const stars = this.getCampaignLevelBestStars(id);
+            const hasStars = id <= cleared && stars > 0;
+
+            // 创建星星显示区
+            {
+                const starsContainer = document.createElement('div');
+                starsContainer.className = 'campaign-cell-stars';
+                for (let i = 1; i <= 5; i++) {
+                    const star = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                    star.setAttribute('viewBox', '0 0 120 120');
+                    star.setAttribute('aria-hidden', 'true');
+                    star.classList.add('star');
+                    if (hasStars && i <= stars) star.classList.add('filled');
+                    star.innerHTML = '<path d="M60 14c3.1 0 5.6 1.6 6.9 4.3l11.3 22.9 25.3 3.7c3 .5 5.5 2.5 6.5 5.4 1 2.9.3 6-1.9 8.2L90 74.5l4.5 25.1c.5 3.1-.7 6.2-3.1 8-2.5 1.8-5.8 2.1-8.5.7L60 96.1 37.1 108.3c-2.7 1.4-6 .1-8.5-.7-2.4-1.8-3.6-4.9-3.1-8L30 74.5 12.9 54.5c-2.2-2.2-2.9-5.3-1.9-8.2 1-2.9 3.5-4.9 6.5-5.4l25.3-3.7L54.1 18.3C55.4 15.6 57.9 14 61 14Z"/>';
+                    starsContainer.appendChild(star);
+                }
+                cell.appendChild(starsContainer);
+            }
+
+            // 创建关卡数字
+            const numberSpan = document.createElement('span');
+            numberSpan.className = 'campaign-cell-number';
+            numberSpan.textContent = String(id);
+            cell.appendChild(numberSpan);
 
             cell.addEventListener('click', async () => {
                 if (locked) return;

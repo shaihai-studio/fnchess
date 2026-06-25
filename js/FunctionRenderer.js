@@ -1,36 +1,31 @@
 /**
  * FunctionRenderer 模块
- * 负责函数采样与绘制
- * 采样精度 Δx ≤ 0.01
- * 处理函数断点（如 1/x）
+ * 函数采样与绘制 —— 内部调用 geogebra-lite 引擎（CurvePlotter + Cohen-Sutherland 裁剪）
+ * 保留动画绘制和发光效果
+ * 外部接口不变：drawFunction, sampleFunction, cancelDrawing, convertToPolyline, clear, getYAtX 等
  */
 class FunctionRenderer {
     constructor(gridSystem) {
         this.gridSystem = gridSystem;
         this.parser = new FunctionParser();
-        
-        // 采样配置
-        this.deltaX = 0.01; // 采样精度
-        this.maxDeltaY = 100; // 最大Y变化，超过视为断点
-        
-        // 碰撞检测专用高精度采样配置
-        this.collisionDeltaX = 0.002; // 碰撞检测使用更高精度（5倍）
-        this.collisionMaxDeltaY = 500; // 碰撞检测允许更高的斜率
-        
+
+        // 采样配置（保留供外部查询和 sampleFallback 使用）
+        this.deltaX = 0.001;
+        this.maxDeltaY = 100;
+        this.collisionDeltaX = 0.0002;
+        this.collisionMaxDeltaY = 500;
+
         // 颜色配置
         this.colors = {
             function: '#ffffff',
             glow: 'rgba(255, 255, 255, 0.3)'
         };
-        
+
         // 动画绘制控制
         this.animationFrameId = null;
         this.isDrawing = false;
     }
-    
-    /**
-     * 取消正在进行的绘制
-     */
+
     cancelDrawing() {
         if (this.animationFrameId) {
             cancelAnimationFrame(this.animationFrameId);
@@ -38,497 +33,550 @@ class FunctionRenderer {
         }
         this.isDrawing = false;
     }
-    
-    /**
-     * 根据坐标系范围获取自适应光晕大小
-     * @returns {number} 光晕大小
-     */
+
+    // ========== 自适应样式（保持原版） ==========
+
     getAdaptiveGlowSize() {
         const range = this.gridSystem.range;
-        // 坐标系范围越小，光晕越大（小范围时函数图像更突出）
-        if (range <= 5) {
-            return 15; // 小范围：强光晕
-        } else if (range <= 10) {
-            return 12; // 中范围：较强光晕
-        } else if (range <= 20) {
-            return 8;  // 大范围：中等光晕
-        } else if (range <= 35) {
-            return 5;  // 较大范围：轻微光晕
-        } else {
-            return 2;  // 超大范围：几乎无光晕
-        }
+        if (range <= 5) return 15;
+        if (range <= 10) return 12;
+        if (range <= 20) return 8;
+        if (range <= 35) return 5;
+        return 2;
     }
-    
-    /**
-     * 根据坐标系范围获取自适应线条粗细
-     * @returns {number} 线条宽度
-     */
+
     getAdaptiveLineWidth() {
         const range = this.gridSystem.range;
-        // 坐标系范围越大，线条越细
-        if (range <= 5) {
-            return 3;  // 小范围：粗线条
-        } else if (range <= 10) {
-            return 2.5; // 中范围：较粗线条
-        } else if (range <= 20) {
-            return 2;  // 大范围：标准线条
-        } else if (range <= 35) {
-            return 1.5; // 较大范围：细线条
-        } else {
-            return 1;  // 超大范围：最细线条
-        }
+        if (range <= 5) return 3;
+        if (range <= 10) return 2.5;
+        if (range <= 20) return 2;
+        if (range <= 35) return 1.5;
+        return 1;
     }
-    
-    /**
-     * 根据坐标系范围获取自适应绘制批次大小
-     * 范围越大，batchSize越大（实际绘制更快），但视觉上感觉略慢
-     * @returns {number} 每帧绘制的点数
-     */
+
     getAdaptiveBatchSize() {
         const range = this.gridSystem.range;
-        // 坐标系范围越大，batchSize越大（实际绘制更快）
-        // 但由于范围扩大，视觉上会感觉略慢
-        if (range <= 5) {
-            return 25;  // 小范围：标准速度
-        } else if (range <= 10) {
-            return 35;  // 中范围：较快
-        } else if (range <= 20) {
-            return 50;  // 大范围：更快
-        } else if (range <= 35) {
-            return 70;  // 较大范围：很快
-        } else {
-            return 100; // 超大范围：最快
-        }
+        if (range <= 5) return 25;
+        if (range <= 10) return 35;
+        if (range <= 20) return 50;
+        if (range <= 35) return 70;
+        return 100;
     }
-    
-    /**
-     * 根据坐标系范围获取自适应光晕颜色（透明度）
-     * @param {string} color - 基础颜色（hex格式，如 '#ff6b6b'）
-     * @returns {string} 带透明度的光晕颜色
-     */
+
     getAdaptiveGlowColor(color = null) {
         const range = this.gridSystem.range;
-        
-        // 坐标系范围越大，光晕越浅（透明度越低）
         let alpha;
-        if (range <= 5) {
-            alpha = 0.5;  // 小范围：较深光晕
-        } else if (range <= 10) {
-            alpha = 0.4;  // 中范围：中等深度光晕
-        } else if (range <= 20) {
-            alpha = 0.3;  // 大范围：标准光晕
-        } else if (range <= 35) {
-            alpha = 0.2;  // 较大范围：较浅光晕
-        } else {
-            alpha = 0.1;  // 超大范围：最浅光晕
-        }
-        
-        // 将 hex 颜色转换为 rgba
+        if (range <= 5) alpha = 0.5;
+        else if (range <= 10) alpha = 0.4;
+        else if (range <= 20) alpha = 0.3;
+        else if (range <= 35) alpha = 0.2;
+        else alpha = 0.1;
+
         if (color && color.startsWith('#')) {
             const r = parseInt(color.slice(1, 3), 16);
             const g = parseInt(color.slice(3, 5), 16);
             const b = parseInt(color.slice(5, 7), 16);
             return `rgba(${r}, ${g}, ${b}, ${alpha})`;
         }
-        
-        // 默认白色光晕
         return `rgba(255, 255, 255, ${alpha})`;
     }
-    
-    /**
-     * 采样函数（Desmos风格：符号分析 + 分段采样）
-     * @param {string} expression - 函数表达式
-     * @param {number} xMin - x 最小值
-     * @param {number} xMax - x 最大值
-     * @param {boolean} forCollision - 是否为碰撞检测采样（使用更高精度）
-     * @returns {Array} 采样点数组 [{x, y}, ...]
-     */
-    sampleFunction(expression, xMin, xMax, forCollision = false) {
-        const range = this.gridSystem.getRange();
-        
-        // 扩展采样范围
-        const sampleMin = Math.max(xMin, range.min - 1);
-        const sampleMax = Math.min(xMax, range.max + 1);
-        
-        const deltaX = forCollision ? this.collisionDeltaX : this.deltaX;
-        
-        // Desmos风格：符号分析断点 + 分段采样
-        return this.sampleWithDiscontinuities(expression, sampleMin, sampleMax, deltaX);
-    }
-    
-    /**
-     * 符号分析：找出函数表达式中的所有断点
-     */
-    findDiscontinuities(expression, xMin, xMax) {
-        const discontinuities = [];
-        if (!expression) return discontinuities;
-        const cleanExpr = expression.toLowerCase().replace(/\s/g, '');
-        
-        // 1. tan(x) 的断点：π/2 + nπ
-        if (cleanExpr.includes('tan')) {
-            for (let n = -100; n <= 100; n++) {
-                const asymptote = Math.PI / 2 + n * Math.PI;
-                if (asymptote >= xMin && asymptote <= xMax) {
-                    discontinuities.push(asymptote);
-                }
-            }
-        }
-        
-        // 2. cot(x) 的断点：nπ
-        if (cleanExpr.includes('cot')) {
-            for (let n = -100; n <= 100; n++) {
-                const asymptote = n * Math.PI;
-                if (asymptote >= xMin && asymptote <= xMax) {
-                    discontinuities.push(asymptote);
-                }
-            }
-        }
-        
-        // 3. sec(x) 的断点：π/2 + nπ
-        if (cleanExpr.includes('sec')) {
-            for (let n = -100; n <= 100; n++) {
-                const asymptote = Math.PI / 2 + n * Math.PI;
-                if (asymptote >= xMin && asymptote <= xMax) {
-                    discontinuities.push(asymptote);
-                }
-            }
-        }
-        
-        // 4. csc(x) 的断点：nπ
-        if (cleanExpr.includes('csc')) {
-            for (let n = -100; n <= 100; n++) {
-                const asymptote = n * Math.PI;
-                if (asymptote >= xMin && asymptote <= xMax) {
-                    discontinuities.push(asymptote);
-                }
-            }
-        }
-        
-        // 5. ln(x)、log(x) 的定义域：x > 0
-        if (cleanExpr.includes('ln(') || cleanExpr.includes('log(')) {
-            if (cleanExpr === 'ln(x)' || cleanExpr === 'log(x)') {
-                if (0 >= xMin && 0 <= xMax) {
-                    discontinuities.push(0);
-                }
-            }
-        }
-        
-        return [...new Set(discontinuities)].sort((a, b) => a - b);
-    }
-    
-    /**
-     * 分段采样（Desmos风格）
-     */
-    sampleWithDiscontinuities(expression, xMin, xMax, deltaX) {
-        const discontinuities = this.findDiscontinuities(expression, xMin, xMax);
-        
-        // Y值限制（视口范围的两倿）
-        const range = this.gridSystem.getRange();
-        const yLimit = (range.max - range.min) * 2;
-        
-        const allPoints = [];
-        let prevX = xMin;
-        const epsilon = deltaX * 0.1;
-        
-        for (const disc of discontinuities) {
-            const segmentEnd = disc - epsilon;
-            if (segmentEnd > prevX) {
-                const segment = this.sampleSegment(expression, prevX, segmentEnd, deltaX, yLimit);
-                allPoints.push(...segment);
-            }
-            
-            allPoints.push({x: disc, y: null, isBreak: true});
-            prevX = disc + epsilon;
-        }
-        
-        if (prevX < xMax) {
-            const lastSegment = this.sampleSegment(expression, prevX, xMax, deltaX, yLimit);
-            allPoints.push(...lastSegment);
-        }
-        
-        return allPoints;
-    }
-    
-    /**
-     * 采样一个连续区间
-     */
-    sampleSegment(expression, xMin, xMax, deltaX, yLimit) {
-        const points = [];
-        
-        for (let x = xMin; x <= xMax; x += deltaX) {
-            const y = this.parser.evaluate(expression, x);
-            
-            if (y !== null && isFinite(y)) {
-                if (Math.abs(y) > yLimit) {
-                    if (points.length > 0 && points[points.length - 1].y !== null) {
-                        points.push({ x: x, y: null, isBreak: true });
-                    }
-                    continue;
-                }
 
-                // 防止跨越隐藏断点（如 abs(x)/x 在 x=0）时被错误连成竖线
-                if (points.length > 0 && points[points.length - 1].y !== null) {
-                    const prevPoint = points[points.length - 1];
-                    if (this.shouldBreakBetweenPoints(expression, prevPoint, { x, y })) {
-                        points.push({ x, y: null, isBreak: true });
-                    }
-                }
+    // ========== 适配层：将 GridSystem 包装为 geogebra-lite 需要的接口 ==========
 
-                points.push({ x, y });
-            } else {
-                if (points.length > 0 && points[points.length - 1].y !== null) {
-                    points.push({ x: x, y: null, isBreak: true });
-                }
-            }
-        }
-        
-        return points;
+    /**
+     * 构造 view 对象，供 geogebra-lite 的 GeneralPathClippedForCurvePlotter 和 CurveSegmentInfo 使用
+     */
+    _buildView() {
+        const gs = this.gridSystem;
+        return {
+            getWidth: () => gs.canvas.width,
+            getHeight: () => gs.canvas.height,
+            toScreenCoordXd: (x) => gs.mathToCanvas(x, 0).x,
+            toScreenCoordYd: (y) => gs.mathToCanvas(0, y).y,
+            isOnView: () => true,
+            getYscale: () => gs.canvas.height / (gs.range * 2),
+            isSegmentOffView: (a, b) => {
+                const left = gs.mathToCanvas(a[0], a[1]);
+                const right = gs.mathToCanvas(b[0], b[1]);
+                const w = gs.canvas.width, h = gs.canvas.height;
+                return (left.x < 0 && right.x < 0) || (left.x > w && right.x > w) ||
+                       (left.y < 0 && right.y < 0) || (left.y > h && right.y > h);
+            },
+            getMaxBend: () => Math.tan(10 * Math.PI / 180),
+            getMaxBendOffScreen: () => Math.tan(45 * Math.PI / 180),
+            getEuclidianController: () => ({ addZoomerAnimationListener() {}, removeZoomerAnimationListener() {} }),
+            getSettings: () => null
+        };
     }
 
     /**
-     * 判断两个有效采样点之间是否应强制断开，避免竖线伪连接
+     * 构造 curve adapter，供 CurveSegmentPlotter.evaluateCurve() 使用
+     * geogebra-lite 的 curve 接口要求：evaluateCurve(x, out) → out[0]=x, out[1]=y
      */
-    shouldBreakBetweenPoints(expression, p1, p2) {
-        const dy = Math.abs(p2.y - p1.y);
-
-        // 规则1：明显跳变且异号（典型 jump discontinuity）
-        const signChanged = p1.y * p2.y < 0;
-        if (signChanged && Math.abs(p1.y) > 0.5 && Math.abs(p2.y) > 0.5 && dy > 1) {
-            return true;
-        }
-
-        // 规则2：中点不可算，说明中间存在未采到的不连续点
-        const midX = (p1.x + p2.x) / 2;
-        const midY = this.parser.evaluate(expression, midX);
-        if (midY === null || !isFinite(midY)) {
-            return true;
-        }
-
-        return false;
+    _buildAdapter(expr) {
+        const parser = this.parser;
+        return {
+            expr,
+            newDoubleArray() { return [0, 0]; },
+            isFunctionInX() { return true; },
+            getMinDistX() { return 1e-4; },
+            evaluateCurve(x, out) {
+                out[0] = x;
+                out[1] = parser.evaluate(expr, x);
+            },
+            updateExpandedFunctions() {},
+            distanceMax(a, b) { return Math.max(Math.abs(a[0] - b[0]), Math.abs(a[1] - b[1])); }
+        };
     }
-    
+
+    // ========== CapturingPath：捕获数学坐标 segments 供动画回放 ==========
+
     /**
-     * 绘制函数
-     * @param {string} expression - 函数表达式
-     * @param {boolean} animate - 是否使用动画绘制
-     * @param {string} color - 函数颜色（可选，用于测试模式）
-     * @returns {Promise<Array>} 返回采样点数组
+     * CapturingPath 继承 PathPlotter，但不绘制到 Canvas。
+     * 它记录每次 moveTo / lineTo 的数学坐标，形成 segments 数组。
+     * 每个 segment 是一个连续曲线段（数学坐标点数组），segment 之间代表断点。
      */
-    async drawFunction(expression, animate = true, color = null) {
-        const range = this.gridSystem.getRange();
-        const points = this.sampleFunction(expression, range.min, range.max);
-        
-        if (animate) {
-            await this.animateDraw(points, color);
-        } else {
-            this.drawPoints(points, color);
-        }
-        
-        return points;
-    }
-    
-    /**
-     * 动画绘制函数
-     * @param {Array} points - 采样点数组
-     * @param {string} color - 自定义颜色（可选）
-     * @returns {Promise}
-     */
-    animateDraw(points, color = null) {
-        return new Promise((resolve) => {
-            // 取消之前的绘制
-            this.cancelDrawing();
-            this.isDrawing = true;
-            
-            const ctx = this.gridSystem.ctx;
-            
-            // 分段绘制：先找出所有连续段
-            const segments = [];
-            let currentSegment = [];
-            
-            for (let i = 0; i < points.length; i++) {
-                if (points[i].y === null) {
-                    // 断点：保存当前段
-                    if (currentSegment.length >= 2) {
-                        segments.push(currentSegment);
-                    }
-                    currentSegment = [];
-                } else {
-                    currentSegment.push(points[i]);
-                }
-            }
-            
-            // 保存最后一段
-            if (currentSegment.length >= 2) {
+    _createCapturingPath(view) {
+        const segments = []; // segments: [ [{x,y}, ...], [{x,y}, ...], ... ]
+        let currentSegment = [];
+
+        const cp = new PathPlotter(null); // 基类
+        const viewRef = view; // 闭包引用
+
+        // 覆盖基类方法
+        cp.firstPoint = function(pos, moveToAllowed) {
+            currentSegment = [{ x: pos[0], y: pos[1] }];
+        };
+
+        cp.lineTo = function(pos) {
+            currentSegment.push({ x: pos[0], y: pos[1] });
+        };
+
+        cp.moveTo = function(pos) {
+            if (currentSegment.length > 0) {
                 segments.push(currentSegment);
             }
-            
-            if (segments.length === 0) {
+            currentSegment = [{ x: pos[0], y: pos[1] }];
+        };
+
+        cp.drawTo = function(pos, lineTo) {
+            if (lineTo === Gap.LINE_TO) {
+                this.lineTo(pos);
+            } else {
+                this.moveTo(pos);
+            }
+        };
+
+        cp.corner = function() {};
+        cp.cornerPos = function(pos) {
+            currentSegment.push({ x: pos[0], y: pos[1] });
+        };
+        cp.cornerXY = function(x, y) {
+            // cornerXY 接收屏幕坐标，这里我们无法完美还原数学坐标，但 corner 在动画中不关键
+        };
+        cp.endPlot = function() {
+            if (currentSegment.length > 0) {
+                segments.push(currentSegment);
+            }
+        };
+
+        cp.newDoubleArray = function() { return [0, 0]; };
+        cp.supports = function() { return true; };
+
+        cp._getSegments = function() { return segments; };
+
+        return cp;
+    }
+
+    // ========== 采样方法 ==========
+
+    /**
+     * 使用 geogebra-lite 引擎采样，返回 segments（数学坐标分段数组）
+     * ln(...) 走专用轻量采样，其他走 CurvePlotter.plotCurve()
+     */
+    _sampleToSegments(expr, xMin, xMax) {
+        const cleanExpr = expr.toLowerCase().replace(/\s/g, '');
+
+        if (/(?:^|[^a-z])ln\s*(?:\(|x|X)/i.test(expr)) {
+            return this._buildLnSegments(expr, xMin, xMax);
+        }
+
+        const adapter = this._buildAdapter(expr);
+        const view = this._buildView();
+        const cp = this._createCapturingPath(view);
+
+        try {
+            CurvePlotter.plotCurve(adapter, xMin, xMax, view, cp, false, Gap.MOVE_TO);
+        } catch (e) {
+            console.warn('[FunctionRenderer] geogebra-lite 采样异常，回退到等步长:', e);
+            return this._fallbackSegments(expr, xMin, xMax);
+        }
+
+        return cp._getSegments();
+    }
+
+    /**
+     * ln(...) 专用轻量采样（参考 geogebra-lite/app.js buildLnPoints）
+     * 返回 segments 格式
+     */
+    _buildLnSegments(expr, xMin, xMax) {
+        const points = this._buildLnPoints(expr, xMin, xMax);
+        // 将 geogebra-lite 格式的 points [{x, y}, {break: true}, ...] 转换为 segments
+        const segments = [];
+        let currentSegment = [];
+
+        for (const p of points) {
+            if (p.break) {
+                if (currentSegment.length > 0) {
+                    segments.push(currentSegment);
+                    currentSegment = [];
+                }
+            } else {
+                currentSegment.push({ x: p.x, y: p.y });
+            }
+        }
+        if (currentSegment.length > 0) {
+            segments.push(currentSegment);
+        }
+
+        return segments;
+    }
+
+    /**
+     * ln(...) 采样（参考 geogebra-lite/app.js buildLnPoints）
+     * 返回 geogebra-lite 格式: [{x, y}, {break: true}, {x, y}, ...]
+     */
+    _buildLnPoints(expr, xMin, xMax) {
+        const width = Math.max(1, this.gridSystem.canvas.width || 800);
+        const baseStep = Math.max((xMax - xMin) / Math.max(7000, width * 30), (xMax - xMin) / 60000);
+        const points = [];
+        let lastValid = false;
+
+        const stepFor = (x, y) => {
+            const ax = Math.abs(x);
+            const ay = Math.abs(y);
+            const s = expr.toLowerCase().replace(/\s+/g, '');
+            let step = baseStep;
+            if (ax < 0.15) step *= 0.06;
+            else if (ax < 0.35) step *= 0.1;
+            else if (ax < 1) step *= 0.18;
+            else if (ax < 3) step *= 0.4;
+            if (s.includes('ln(-x)') || s.includes('ln(-x+') || s.includes('ln(-x-')) step *= 0.65;
+            if (ay > 4) step *= 0.35;
+            if (ay > 8) step *= 0.2;
+            return Math.max(step, baseStep / 30);
+        };
+
+        for (let x = xMin; x <= xMax;) {
+            const y = this.parser.evaluate(expr, x);
+            if (y !== null && isFinite(y)) {
+                if (lastValid && points.length && !points[points.length - 1].break) {
+                    points.push({ x, y });
+                } else {
+                    points.push({ break: true });
+                    points.push({ x, y });
+                }
+                lastValid = true;
+                x += stepFor(x, y);
+            } else {
+                if (points.length && !points[points.length - 1].break) points.push({ break: true });
+                lastValid = false;
+                x += baseStep;
+            }
+        }
+        return points;
+    }
+
+    /**
+     * 等步长回退采样（当 geogebra-lite 异常时使用）
+     */
+    _fallbackSegments(expr, xMin, xMax) {
+        const segments = [];
+        let currentSegment = [];
+        const step = 0.001;
+
+        for (let x = xMin; x <= xMax; x += step) {
+            const y = this.parser.evaluate(expr, x);
+            if (y !== null && isFinite(y)) {
+                currentSegment.push({ x, y });
+            } else {
+                if (currentSegment.length > 0) {
+                    segments.push(currentSegment);
+                    currentSegment = [];
+                }
+            }
+        }
+        if (currentSegment.length > 0) {
+            segments.push(currentSegment);
+        }
+        return segments;
+    }
+
+    // ========== 直接绘制（无动画，geogebra-lite 引擎即时绘制） ==========
+
+    /**
+     * 通过 geogebra-lite 引擎即时绘制函数曲线到 Canvas
+     * ln(...) 走专用采样 + polyline 绘制
+     */
+    _drawViaGeoGebra(expr, color) {
+        const ctx = this.gridSystem.ctx;
+        const view = this._buildView();
+
+        // 设置绘制样式
+        ctx.strokeStyle = color || this.colors.function;
+        ctx.lineWidth = this.getAdaptiveLineWidth();
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        // 光晕效果（测试模式有自定义颜色时不显示）
+        if (!color) {
+            ctx.shadowColor = this.getAdaptiveGlowColor(color);
+            ctx.shadowBlur = this.getAdaptiveGlowSize();
+        }
+
+        // ln(...) 走专用轻量采样
+        if (/(?:^|[^a-z])ln\s*(?:\(|x|X)/i.test(expr)) {
+            const range = this.gridSystem.getRange();
+            const points = this._buildLnPoints(expr, range.min, range.max);
+            this._drawLnPolyline(points, ctx);
+            ctx.shadowBlur = 0;
+            return;
+        }
+
+        // 其他函数：直接通过 GeneralPathClippedForCurvePlotter 绘制
+        const adapter = this._buildAdapter(expr);
+        const range = this.gridSystem.getRange();
+
+        const gp = new GeneralPathClippedForCurvePlotter(view, ctx);
+        ctx.beginPath();
+
+        try {
+            CurvePlotter.plotCurve(adapter, range.min, range.max, view, gp, false, Gap.MOVE_TO);
+        } catch (e) {
+            console.warn('[FunctionRenderer] geogebra-lite 绘制异常，回退到等步长:', e);
+            // 回退到 polyline
+            const segments = this._fallbackSegments(expr, range.min, range.max);
+            this._drawSegmentsImmediate(segments, ctx);
+        }
+
+        ctx.shadowBlur = 0;
+    }
+
+    /**
+     * 绘制 ln points（geogebra-lite 格式：{break: true} 分隔）
+     */
+    _drawLnPolyline(points, ctx) {
+        let started = false;
+        ctx.beginPath();
+        for (const p of points) {
+            if (p.break || p.y === null) {
+                if (started) { ctx.stroke(); ctx.beginPath(); }
+                started = false;
+                continue;
+            }
+            const c = this.gridSystem.mathToCanvas(p.x, p.y);
+            if (!started) {
+                ctx.moveTo(c.x, c.y);
+                started = true;
+            } else {
+                ctx.lineTo(c.x, c.y);
+            }
+        }
+        if (started) ctx.stroke();
+    }
+
+    /**
+     * 即时绘制 segments（回退用）
+     */
+    _drawSegmentsImmediate(segments, ctx) {
+        for (const seg of segments) {
+            if (seg.length < 2) continue;
+            ctx.beginPath();
+            const p0 = this.gridSystem.mathToCanvas(seg[0].x, seg[0].y);
+            ctx.moveTo(p0.x, p0.y);
+            for (let i = 1; i < seg.length; i++) {
+                const p = this.gridSystem.mathToCanvas(seg[i].x, seg[i].y);
+                ctx.lineTo(p.x, p.y);
+            }
+            ctx.stroke();
+        }
+    }
+
+    // ========== 动画绘制 ==========
+
+    /**
+     * 从 segments 逐帧动画绘制函数曲线
+     */
+    _animateDrawFromSegments(segments, color) {
+        return new Promise((resolve) => {
+            this.cancelDrawing();
+            this.isDrawing = true;
+
+            const ctx = this.gridSystem.ctx;
+            const animationDuration = 600;
+            const startTime = performance.now();
+
+            // 设置绘制样式
+            ctx.strokeStyle = color || this.colors.function;
+            ctx.lineWidth = this.getAdaptiveLineWidth();
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+
+            if (!color) {
+                ctx.shadowColor = this.getAdaptiveGlowColor(color);
+                ctx.shadowBlur = this.getAdaptiveGlowSize();
+            }
+
+            // 计算总点数
+            const totalPoints = segments.reduce((sum, seg) => sum + seg.length, 0);
+            if (totalPoints === 0) {
+                ctx.shadowBlur = 0;
                 this.isDrawing = false;
                 resolve();
                 return;
             }
-            
-            let currentSegmentIndex = 0;
-            let currentPointIndex = 0;
-            const batchSize = this.getAdaptiveBatchSize();
-            
-            const drawFrame = () => {
-                // 如果绘制被取消，提前结束
+
+            // 每段已绘制到的索引
+            const segmentProgress = segments.map(() => 0);
+
+            const drawFrame = (currentTime) => {
                 if (!this.isDrawing) {
+                    ctx.shadowBlur = 0;
                     resolve();
                     return;
                 }
-                
-                ctx.strokeStyle = color || this.colors.function;
-                ctx.lineWidth = this.getAdaptiveLineWidth();
-                ctx.lineCap = 'round';
-                ctx.lineJoin = 'round';
-                
-                // 测试模式（有自定义颜色）不显示光晕
-                if (!color) {
-                    // 添加发光效果（自适应大小和深浅）
-                    ctx.shadowColor = this.getAdaptiveGlowColor(color);
-                    ctx.shadowBlur = this.getAdaptiveGlowSize();
-                }
-                
+
+                const elapsed = currentTime - startTime;
+                const progress = Math.min(elapsed / animationDuration, 1);
+                const targetPoints = Math.floor(totalPoints * progress);
                 let pointsDrawn = 0;
-                
-                // 性能优化：每帧将同一段内的多个点合并为单一路径，大幅减少 stroke() 调用次数
-                while (currentSegmentIndex < segments.length && pointsDrawn < batchSize) {
-                    const segment = segments[currentSegmentIndex];
-                    
-                    // 计算本帧内这一段还能绘制多少个点
-                    const remaining = segment.length - 1 - currentPointIndex;
-                    const canDraw = Math.min(remaining, batchSize - pointsDrawn);
-                    
-                    if (canDraw > 0) {
-                        // 将本批次这一段的多个点合并为单一路径一次输出
+
+                for (let segIdx = 0; segIdx < segments.length; segIdx++) {
+                    const segment = segments[segIdx];
+                    const alreadyDrawn = segmentProgress[segIdx];
+                    if (pointsDrawn >= targetPoints) break;
+
+                    const pointsToDraw = Math.min(segment.length, targetPoints - pointsDrawn);
+
+                    if (pointsToDraw > alreadyDrawn && pointsToDraw >= 2) {
                         ctx.beginPath();
-                        const p0 = this.gridSystem.mathToCanvas(
-                            segment[currentPointIndex].x,
-                            segment[currentPointIndex].y
-                        );
-                        ctx.moveTo(p0.x, p0.y);
-                        
-                        for (let k = 1; k <= canDraw; k++) {
-                            const p = this.gridSystem.mathToCanvas(
-                                segment[currentPointIndex + k].x,
-                                segment[currentPointIndex + k].y
+
+                        if (alreadyDrawn === 0) {
+                            const p0 = this.gridSystem.mathToCanvas(segment[0].x, segment[0].y);
+                            ctx.moveTo(p0.x, p0.y);
+                            for (let i = 1; i < pointsToDraw; i++) {
+                                const p = this.gridSystem.mathToCanvas(segment[i].x, segment[i].y);
+                                ctx.lineTo(p.x, p.y);
+                            }
+                        } else {
+                            const startP = this.gridSystem.mathToCanvas(
+                                segment[alreadyDrawn - 1].x, segment[alreadyDrawn - 1].y
                             );
-                            ctx.lineTo(p.x, p.y);
+                            ctx.moveTo(startP.x, startP.y);
+                            for (let i = alreadyDrawn; i < pointsToDraw; i++) {
+                                const p = this.gridSystem.mathToCanvas(segment[i].x, segment[i].y);
+                                ctx.lineTo(p.x, p.y);
+                            }
                         }
+
                         ctx.stroke();
-                        
-                        currentPointIndex += canDraw;
-                        pointsDrawn += canDraw;
+                        segmentProgress[segIdx] = pointsToDraw;
                     }
-                    
-                    // 当前段绘制完成，跳到下一段
-                    if (currentPointIndex >= segment.length - 1) {
-                        currentSegmentIndex++;
-                        currentPointIndex = 0;
-                    }
+
+                    pointsDrawn += segment.length;
                 }
-                
-                // 重置阴影
-                ctx.shadowBlur = 0;
-                
-                if (currentSegmentIndex < segments.length && this.isDrawing) {
+
+                if (progress < 1 && this.isDrawing) {
                     this.animationFrameId = requestAnimationFrame(drawFrame);
                 } else {
+                    ctx.shadowBlur = 0;
                     this.isDrawing = false;
                     this.animationFrameId = null;
                     resolve();
                 }
             };
-            
-            drawFrame();
+
+            this.animationFrameId = requestAnimationFrame(drawFrame);
         });
     }
-    
+
+    // ========== 外部接口 ==========
+
     /**
-     * 直接绘制所有点（无动画）
-     * @param {Array} points - 采样点数组
-     * @param {string} color - 自定义颜色（可选）
+     * 采样函数（供碰撞检测使用）
+     * 返回原格式 [{x, y}, {x, y: null, isBreak: true}, ...]
      */
-    drawPoints(points, color = null) {
-        const ctx = this.gridSystem.ctx;
-        
-        ctx.strokeStyle = color || this.colors.function;
-        ctx.lineWidth = this.getAdaptiveLineWidth();
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        
-        // 测试模式（有自定义颜色）不显示光晕
-        if (!color) {
-            // 添加发光效果（自适应大小）
-            ctx.shadowColor = this.colors.glow;
-            ctx.shadowBlur = this.getAdaptiveGlowSize();
-        }
-        
-        // 遍历所有点，遇到断点就停止当前线段
-        let currentSegment = [];
-        
-        for (let i = 0; i < points.length; i++) {
-            const point = points[i];
-            
-            if (point.y === null) {
-                // 断点：绘制当前线段并清空
-                this.drawSegment(currentSegment, ctx);
-                currentSegment = [];
-            } else {
-                currentSegment.push(point);
+    sampleFunction(expression, xMin, xMax, forCollision = false) {
+        const range = this.gridSystem.getRange();
+        const sampleMin = Math.max(xMin, range.min - 1);
+        const sampleMax = Math.min(xMax, range.max + 1);
+
+        const segments = this._sampleToSegments(expression, sampleMin, sampleMax);
+
+        // 将 segments 转换回原格式 points
+        const points = [];
+        for (let i = 0; i < segments.length; i++) {
+            const seg = segments[i];
+            if (i > 0) {
+                points.push({ x: 0, y: null, isBreak: true });
+            }
+            for (const p of seg) {
+                points.push({ x: p.x, y: p.y });
             }
         }
-        
-        // 绘制最后一段
-        if (currentSegment.length > 1) {
-            this.drawSegment(currentSegment, ctx);
-        }
-        
-        ctx.shadowBlur = 0;
+
+        return points;
     }
-    
+
     /**
-     * 绘制一段连续曲线
-     * 性能优化：将整段合并为单一路径，只调用一次 stroke()
+     * 绘制函数（主入口）
+     * @param {string} expression - 函数表达式
+     * @param {boolean} animate - 是否使用动画绘制
+     * @param {string} color - 自定义颜色（可选）
+     * @returns {Promise<Array>} 采样点数组
      */
-    drawSegment(segment, ctx) {
-        if (segment.length < 2) return;
-        
-        ctx.beginPath();
-        const p0 = this.gridSystem.mathToCanvas(segment[0].x, segment[0].y);
-        ctx.moveTo(p0.x, p0.y);
-        
-        for (let i = 1; i < segment.length; i++) {
-            const p = this.gridSystem.mathToCanvas(segment[i].x, segment[i].y);
-            ctx.lineTo(p.x, p.y);
+    async drawFunction(expression, animate = true, color = null) {
+        const range = this.gridSystem.getRange();
+
+        if (animate) {
+            // 采样 segments → 动画绘制
+            const segments = this._sampleToSegments(expression, range.min, range.max);
+            await this._animateDrawFromSegments(segments, color);
+            // 返回原格式 points
+            return this._segmentsToPoints(segments);
+        } else {
+            // 直接通过 geogebra-lite 引擎绘制
+            this._drawViaGeoGebra(expression, color);
+            // 同时采样用于返回
+            const segments = this._sampleToSegments(expression, range.min, range.max);
+            return this._segmentsToPoints(segments);
         }
-        
-        ctx.stroke();
     }
-    
+
     /**
-     * 检查点是否在 Canvas 可视范围内
-     * @param {Object} point - {x, y} Canvas 坐标
-     * @param {number} size - Canvas 大小
-     * @returns {boolean}
+     * 将 segments 转换为原格式 points
      */
-    isPointVisible(point, size) {
-        return point.x >= -50 && point.x <= size + 50 && 
-               point.y >= -50 && point.y <= size + 50;
+    _segmentsToPoints(segments) {
+        const points = [];
+        for (let i = 0; i < segments.length; i++) {
+            const seg = segments[i];
+            if (i > 0) {
+                points.push({ x: 0, y: null, isBreak: true });
+            }
+            for (const p of seg) {
+                points.push({ x: p.x, y: p.y });
+            }
+        }
+        return points;
     }
-    
+
     /**
      * 将采样点转换为折线（用于碰撞检测）
-     * @param {Array} points - 采样点数组
-     * @returns {Array} 折线点数组
      */
     convertToPolyline(points) {
         const polyline = [];
         for (const p of points) {
             if (p.y === null || p.isBreak) {
-                // 遇到断点或无效值，插入 null 作为分隔符
                 polyline.push(null);
             } else {
                 polyline.push({ x: p.x, y: p.y });
@@ -536,44 +584,82 @@ class FunctionRenderer {
         }
         return polyline;
     }
-    
+
     /**
      * 清除函数图像（重绘网格）
      */
     clear() {
         this.gridSystem.draw();
     }
-    
+
     /**
      * 预览函数（快速绘制，用于输入时预览）
-     * @param {string} expression - 函数表达式
      */
     previewFunction(expression) {
-        // 先清除之前的函数
         this.gridSystem.draw();
-        
-        // 快速绘制（降低采样精度），但仍按断点分段，避免预览时出现竖线伪连接
-        const range = this.gridSystem.getRange();
-        const previewDeltaX = 0.05; // 预览时使用较低精度
-
-        const points = this.sampleWithDiscontinuities(
-            expression,
-            range.min,
-            range.max,
-            previewDeltaX
-        );
-
-        this.drawPoints(points);
+        this._drawViaGeoGebra(expression, null);
     }
-    
+
     /**
      * 获取函数在特定 x 值处的 y 值
-     * @param {string} expression - 函数表达式
-     * @param {number} x - x 值
-     * @returns {number|null}
      */
     getYAtX(expression, x) {
         return this.parser.evaluate(expression, x);
+    }
+
+    /**
+     * 等步长兼容采样（旧接口）
+     */
+    sampleFallback(expression, xMin, xMax) {
+        const segments = this._fallbackSegments(expression, xMin, xMax);
+        return this._segmentsToPoints(segments);
+    }
+
+    /**
+     * 即时绘制点数组（旧接口兼容，供 drawPoints 调用）
+     */
+    drawPoints(points, color = null) {
+        const ctx = this.gridSystem.ctx;
+        ctx.strokeStyle = color || this.colors.function;
+        ctx.lineWidth = this.getAdaptiveLineWidth();
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        if (!color) {
+            ctx.shadowColor = this.colors.glow;
+            ctx.shadowBlur = this.getAdaptiveGlowSize();
+        }
+
+        let currentSegment = [];
+        for (let i = 0; i < points.length; i++) {
+            const point = points[i];
+            if (point.y === null) {
+                this._drawSingleSegment(currentSegment, ctx);
+                currentSegment = [];
+            } else {
+                currentSegment.push(point);
+            }
+        }
+        if (currentSegment.length > 1) {
+            this._drawSingleSegment(currentSegment, ctx);
+        }
+        ctx.shadowBlur = 0;
+    }
+
+    _drawSingleSegment(segment, ctx) {
+        if (segment.length < 2) return;
+        ctx.beginPath();
+        const p0 = this.gridSystem.mathToCanvas(segment[0].x, segment[0].y);
+        ctx.moveTo(p0.x, p0.y);
+        for (let i = 1; i < segment.length; i++) {
+            const p = this.gridSystem.mathToCanvas(segment[i].x, segment[i].y);
+            ctx.lineTo(p.x, p.y);
+        }
+        ctx.stroke();
+    }
+
+    isPointVisible(point, size) {
+        return point.x >= -50 && point.x <= size + 50 &&
+               point.y >= -50 && point.y <= size + 50;
     }
 }
 

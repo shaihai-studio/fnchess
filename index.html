@@ -180,6 +180,9 @@
                         <div id="campaign-star-progress" class="campaign-star-progress"></div>
                         <small id="campaign-global-progress" style="opacity:0.75;"></small>
                     </div>
+                    <div id="campaign-lrsigma-container" style="width: 100%; text-align: center; margin-top: 4px;">
+                        <small id="campaign-lrsigma-display" style="color: #a78bfa; font-weight: 500;"></small>
+                    </div>
                     <div style="display:flex; gap:8px;">
                         <button class="btn btn-secondary" id="campaign-reset-btn">重置进度</button>
                         <button class="btn btn-exit" id="campaign-close-btn">返回</button>
@@ -246,12 +249,48 @@
             <button class="btn btn-secondary" id="close-report-btn" style="width: 100%; margin-top: 20px;">关闭</button>
         </div>
     </div>
+
+    <!-- Summa训练选择弹窗 -->
+    <div class="modal" id="summa-train-dialog" style="display: none;">
+        <div class="modal-content summa-dialog-content">
+            <div class="summa-dialog-icon">-∫-</div>
+            <h2 class="summa-dialog-title" id="summa-dialog-title">唤醒 Summa</h2>
+            <p class="summa-dialog-message" id="summa-dialog-message"></p>
+            
+            <!-- 选项按钮容器 -->
+            <div class="summa-dialog-options" id="summa-dialog-options"></div>
+            
+            <!-- 确认按钮（用于prompt输入框） -->
+            <div class="summa-dialog-input-area" id="summa-dialog-input-area" style="display: none;">
+                <input type="text" id="summa-dialog-input" class="summa-dialog-input" placeholder="输入数值...">
+                <div class="summa-dialog-input-buttons">
+                    <button class="btn btn-secondary" id="summa-dialog-input-cancel">取消</button>
+                    <button class="btn btn-primary" id="summa-dialog-input-confirm">确认</button>
+                </div>
+            </div>
+        </div>
+    </div>
     
     <!-- 加载 JavaScript 模块 -->
+    <!-- 响应式布局管理器（优先加载） -->
+    <script src="js/ResponsiveLayout.js"></script>
     <script src="js/GridSystem.js"></script>
     <script src="js/CollisionDetector.js"></script>
     <script src="js/函数复杂度运算/function-complexity-analyzer.js"></script>
     <script src="js/FunctionParser.js"></script>
+    <!-- geogebra-lite 核心引擎（采样+裁剪） -->
+    <script src="geogebra-lite/plot/Gap.js"></script>
+    <script src="geogebra-lite/plot/PathPlotter.js"></script>
+    <script src="geogebra-lite/plot/CurveSegmentInfo.js"></script>
+    <script src="geogebra-lite/plot/SegmentParams.js"></script>
+    <script src="geogebra-lite/plot/CurvePlotterStackItem.js"></script>
+    <script src="geogebra-lite/plot/CurvePlotterStack.js"></script>
+    <script src="geogebra-lite/plot/CurvePlotterUtils.js"></script>
+    <script src="geogebra-lite/plot/TupleNeighbours.js"></script>
+    <script src="geogebra-lite/plot/LabelPositionCalculator.js"></script>
+    <script src="geogebra-lite/plot/GeneralPathClippedForCurvePlotter.js"></script>
+    <script src="geogebra-lite/plot/CurveSegmentPlotter.js"></script>
+    <script src="geogebra-lite/plot/CurvePlotter.js"></script>
     <script src="js/FunctionRenderer.js"></script>
     <!-- 全局音频管理器和角色管理器 -->
     <script src="js/AudioManager.js"></script>

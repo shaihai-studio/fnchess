@@ -9,6 +9,7 @@ class AIController {
         this.parser = new FunctionParser();
         this.name = "Summa";
         this.isThinking = false;
+        this.activeArchiveId = null;
 
         // ── 挑衅反转学习系统 ────────────────────────────────────────────
         this.failedPuzzle = null;         // Summa 无法破解的局面快照
@@ -276,7 +277,7 @@ class AIController {
             for (const cell of this.pendingRevengePuzzle.forbiddenCells) {
                 if (placedCount >= maxForbidden) break;
                 if (this.isValidForbiddenPosition(cell.x, cell.y)) {
-                    this.gameController.addForbiddenCell({ ...cell });
+                    this.gameController.addForbiddenCell({ x: cell.x, y: cell.y });
                     placedCount++;
                 }
             }
@@ -1512,11 +1513,13 @@ class AIController {
         this.uiController.cursorIndex = 0;
         this.uiController.updateExpressionDisplay();
 
+        /*
         // 在 UI 测试泡泡上显示调试信息（推演了多少次）
         if (window.summaCharacter && this.lastThinkCount) {
             window.summaCharacter.messageBox.textContent = `[深度演算了 ${this.lastThinkCount} 次]`;
             window.summaCharacter.messageBox.classList.add('visible');
         }
+        */
 
         // 逐个添加元素，模拟思考过程
         for (let i = 0; i < tokens.length; i++) {
@@ -1693,7 +1696,8 @@ class AIController {
         this.learnedSolutions.push({
             targetCells: this.pendingRevengePuzzle.targetCells.map(c => ({ ...c })),
             forbiddenCells: this.pendingRevengePuzzle.forbiddenCells.map(c => ({ ...c })),
-            expression
+            expression,
+            archiveId: this.activeArchiveId || null
         });
 
         // 提取结构模板并计入算法
@@ -1708,6 +1712,8 @@ class AIController {
 
         this.failedPuzzle = null;
         this.pendingRevengePuzzle = null;
+        this._saveLearnedData();
+        this._saveArchiveRevengeTraining();
 
         if (window.summaCharacter) {
             window.summaCharacter.say(`"${expression}"……已记录。下次不会再让你得逢了。`, 'determined');
@@ -1739,6 +1745,17 @@ class AIController {
             return { core: expression, original: expression };
         }
         return null;
+    }
+
+    normalizeExpressionInput(expression) {
+        if (!expression) return '';
+        return String(expression)
+            .toLowerCase()
+            .replace(/\s+/g, '')
+            .replace(/×/g, '*')
+            .replace(/÷/g, '/')
+            .replace(/\bxx\b/g, 'x*x')
+            .replace(/\[(.*?)\]/g, '($1)');
     }
 
     // ────────────────────────────────────────────────────────────
@@ -1823,7 +1840,8 @@ class AIController {
                         this.learnedSolutions.push({
                             targetCells: simTargets.map(c => ({ ...c })),
                             forbiddenCells: simForbidden.map(c => ({ ...c })),
-                            expression: adapted
+                            expression: adapted,
+                            archiveId: this.activeArchiveId || null
                         });
                         newSolutions++;
                     }
@@ -2052,12 +2070,28 @@ class AIController {
         }
     }
 
+    _saveArchiveRevengeTraining(archiveId, stats = {}) {
+        if (!archiveId) return;
+        try {
+            const key = `summa_archive_${archiveId}`;
+            const raw = localStorage.getItem(key);
+            const archive = raw ? JSON.parse(raw) : null;
+            if (!archive) return;
+            archive.revengeTraining = {
+                lastTrainedAt: new Date().toISOString(),
+                stats,
+            };
+            localStorage.setItem(key, JSON.stringify(archive));
+        } catch (e) {}
+    }
+
     /**
      * 复仇前现场训练：对失败局面及其变体进行100000局训练
      * @param {Object} puzzle - 失败的局面 {targetCells, forbiddenCells}
      */
     async trainOnFailedPuzzle(puzzle) {
         if (!puzzle || !puzzle.targetCells || puzzle.targetCells.length === 0) return;
+        const archiveId = this.activeArchiveId || null;
 
         const TOTAL_SIMS = 100000;
         const TIME_BUDGET_MS = 100;
@@ -2094,19 +2128,20 @@ class AIController {
 
         const isInsideBoard = (c) => c.x >= -half && c.x < half && c.y >= -half && c.y < half;
         const sameCell = (a, b) => a.x === b.x && a.y === b.y;
-        const addSolutionIfNew = (targets, forbidden, expression) => {
+        const addSolutionIfNew = (targets, forbidden, expr) => {
             const exists = this.learnedSolutions.some(s =>
-                this.solutionMatchesPuzzle(s, targets) && s.expression === expression
+                this.solutionMatchesPuzzle(s, targets) && s.expression === expr && s.archiveId === archiveId
             );
             if (!exists) {
                 this.learnedSolutions.push({
                     targetCells: targets.map(c => ({ ...c })),
                     forbiddenCells: forbidden.map(c => ({ ...c })),
-                    expression
+                    expression: expr,
+                    archiveId
                 });
                 newSolutions++;
             }
-            const tmpl = this._extractTemplate(expression);
+            const tmpl = this._extractTemplate(expr);
             if (tmpl && !this.learnedTemplates.some(t => t.core === tmpl.core)) {
                 this.learnedTemplates.push(tmpl);
                 newTemplates++;
@@ -2142,6 +2177,7 @@ class AIController {
 
         // 保存到 localStorage
         this._saveLearnedData();
+        this._saveArchiveRevengeTraining(archiveId, { newSolutions, newTemplates, elapsed: performance.now() - startTime });
 
         const elapsed = performance.now() - startTime;
         const budgetState = elapsed <= TIME_BUDGET_MS ? '达标' : '超预算';

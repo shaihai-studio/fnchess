@@ -18,9 +18,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                        "forbiddenCells":  [
 
                                           ],
-                       "lockedElements":  [
-
-                                          ]
+                       "lockedElements":  []
                    },
                    {
                        "id":  2,
@@ -33,9 +31,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                        "forbiddenCells":  [
 
                                           ],
-                       "lockedElements":  [
-
-                                          ]
+                       "lockedElements":  []
                    },
                    {
                        "id":  3,
@@ -48,9 +44,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                        "forbiddenCells":  [
 
                                           ],
-                       "lockedElements":  [
-
-                                          ]
+                       "lockedElements":  []
                    },
                    {
                        "id":  4,
@@ -67,9 +61,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                        "forbiddenCells":  [
 
                                           ],
-                       "lockedElements":  [
-
-                                          ]
+                       "lockedElements":  []
                    },
                    {
                        "id":  5,
@@ -86,9 +78,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                        "forbiddenCells":  [
 
                                           ],
-                       "lockedElements":  [
-
-                                          ]
+                       "lockedElements":  []
                    },
                    {
                        "id":  6,
@@ -117,9 +107,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                        "forbiddenCells":  [
 
                                           ],
-                       "lockedElements":  [
-
-                                          ]
+                       "lockedElements":  []
                    },
                    {
                        "id":  7,
@@ -140,9 +128,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                        "forbiddenCells":  [
 
                                           ],
-                       "lockedElements":  [
-
-                                          ]
+                       "lockedElements":  []
                    },
                    {
                        "id":  8,
@@ -175,9 +161,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                        "forbiddenCells":  [
 
                                           ],
-                       "lockedElements":  [
-
-                                          ]
+                       "lockedElements":  []
                    },
                    {
                        "id":  9,
@@ -210,9 +194,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                        "forbiddenCells":  [
 
                                           ],
-                       "lockedElements":  [
-
-                                          ]
+                       "lockedElements":  []
                    },
                    {
                        "id":  10,
@@ -269,9 +251,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                        "forbiddenCells":  [
 
                                           ],
-                       "lockedElements":  [
-
-                                          ]
+                       "lockedElements":  []
                    },
                    {
                        "id":  11,
@@ -400,9 +380,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                        "forbiddenCells":  [
 
                                           ],
-                       "lockedElements":  [
-
-                                          ]
+                       "lockedElements":  []
                    },
                    {
                        "id":  12,
@@ -418,9 +396,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                                                   "y":  1
                                               }
                                           ],
-                       "lockedElements":  [
-
-                                          ]
+                       "lockedElements":  []
                    },
                    {
                        "id":  13,
@@ -460,9 +436,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                                                   "y":  4
                                               }
                                           ],
-                       "lockedElements":  [
-
-                                          ]
+                       "lockedElements":  []
                    },
                    {
                        "id":  14,
@@ -534,9 +508,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                                                   "y":  9
                                               }
                                           ],
-                       "lockedElements":  [
-
-                                          ]
+                       "lockedElements":  []
                    },
                    {
                        "id":  15,
@@ -628,9 +600,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                                                   "y":  9
                                               }
                                           ],
-                       "lockedElements":  [
-
-                                          ]
+                       "lockedElements":  []
                    },
                    {
                        "id":  16,
@@ -650,9 +620,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                                                   "y":  2
                                               }
                                           ],
-                       "lockedElements":  [
-
-                                          ]
+                       "lockedElements":  []
                    },
                    {
                        "id":  17,
@@ -672,9 +640,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                                                   "y":  2
                                               }
                                           ],
-                       "lockedElements":  [
-
-                                          ]
+                       "lockedElements":  []
                    },
                    {
                        "id":  18,
@@ -694,9 +660,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                                                   "y":  6
                                               }
                                           ],
-                       "lockedElements":  [
-
-                                          ]
+                       "lockedElements":  []
                    },
                    {
                        "id":  19,
@@ -716,9 +680,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                                                   "y":  -2
                                               }
                                           ],
-                       "lockedElements":  [
-
-                                          ]
+                       "lockedElements":  []
                    },
                    {
                        "id":  20,
@@ -738,9 +700,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                                                   "y":  2
                                               }
                                           ],
-                       "lockedElements":  [
-
-                                          ]
+                       "lockedElements":  []
                    },
                    {
                        "id":  21,
@@ -760,9 +720,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                                                   "y":  1
                                               }
                                           ],
-                       "lockedElements":  [
-
-                                          ]
+                       "lockedElements":  []
                    },
                    {
                        "id":  22,
@@ -782,9 +740,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                                                   "y":  1
                                               }
                                           ],
-                       "lockedElements":  [
-
-                                          ]
+                       "lockedElements":  []
                    },
                    {
                        "id":  23,
@@ -808,9 +764,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                                                   "y":  2
                                               }
                                           ],
-                       "lockedElements":  [
-
-                                          ]
+                       "lockedElements":  []
                    },
                    {
                        "id":  24,
@@ -1241,9 +1195,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                                                   "y":  2
                                               }
                                           ],
-                       "lockedElements":  [
-
-                                          ]
+                       "lockedElements":  []
                    },
                    {
                        "id":  31,
@@ -1267,9 +1219,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                                                   "y":  2
                                               }
                                           ],
-                       "lockedElements":  [
-
-                                          ]
+                       "lockedElements":  []
                    },
                    {
                        "id":  32,
@@ -1293,9 +1243,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                                                   "y":  2
                                               }
                                           ],
-                       "lockedElements":  [
-
-                                          ]
+                       "lockedElements":  []
                    },
                    {
                        "id":  33,
@@ -1323,9 +1271,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                                                   "y":  -8
                                               }
                                           ],
-                       "lockedElements":  [
-
-                                          ]
+                       "lockedElements":  []
                    },
                    {
                        "id":  34,
@@ -1353,9 +1299,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                                                   "y":  8
                                               }
                                           ],
-                       "lockedElements":  [
-
-                                          ]
+                       "lockedElements":  []
                    },
                    {
                        "id":  35,
@@ -1383,9 +1327,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                                                   "y":  9
                                               }
                                           ],
-                       "lockedElements":  [
-
-                                          ]
+                       "lockedElements":  []
                    },
                    {
                        "id":  36,
@@ -1425,9 +1367,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                                                   "y":  2
                                               }
                                           ],
-                       "lockedElements":  [
-
-                                          ]
+                       "lockedElements":  []
                    },
                    {
                        "id":  37,
@@ -1513,9 +1453,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                                                   "y":  4
                                               }
                                           ],
-                       "lockedElements":  [
-
-                                          ]
+                       "lockedElements":  []
                    },
                    {
                        "id":  40,
@@ -1543,9 +1481,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                                                   "y":  6
                                               }
                                           ],
-                       "lockedElements":  [
-
-                                          ]
+                       "lockedElements":  []
                    },
                    {
                        "id":  41,
@@ -1579,50 +1515,52 @@ window.CAMPAIGN_LEVEL_PACK = {
                                               "tan"
                                           ]
                    },
-                   {
-                       "id":  42,
-                       "targetCells":  [
-                                           {
-                                               "x":  0,
-                                               "y":  -1
-                                           },
-                                           {
-                                               "x":  0,
-                                               "y":  1
-                                           }
-                                       ],
-                       "forbiddenCells":  [
-                                              {
-                                                  "x":  0,
-                                                  "y":  0
-                                              }
-                                          ],
-                       "lockedElements":  [
-                                              "tan"
-                                          ]
-                   },
-                   {
-                       "id":  43,
-                       "targetCells":  [
-                                           {
-                                               "x":  -2,
-                                               "y":  -1
-                                           },
-                                           {
-                                               "x":  -2,
-                                               "y":  1
-                                           }
-                                       ],
-                       "forbiddenCells":  [
-                                              {
-                                                  "x":  -2,
-                                                  "y":  0
-                                              }
-                                          ],
-                       "lockedElements":  [
-                                              "/"
-                                          ]
-                   },
+                                {
+                      "id":  42,
+                      "targetCells":  [
+                                          {
+                                              "x":  0,
+                                              "y":  -1
+                                          },
+                                          {
+                                              "x":  0,
+                                              "y":  1
+                                          }
+                                      ],
+                      "forbiddenCells":  [
+                                             {
+                                                 "x":  0,
+                                                 "y":  0
+                                             }
+                                         ],
+                      "lockedElements":  [
+                                             "tan",
+                                             "abs"
+                                         ]
+                  },
+                                {
+                      "id":  43,
+                      "targetCells":  [
+                                          {
+                                              "x":  -2,
+                                              "y":  -1
+                                          },
+                                          {
+                                              "x":  -2,
+                                              "y":  1
+                                          }
+                                      ],
+                      "forbiddenCells":  [
+                                             {
+                                                 "x":  -2,
+                                                 "y":  0
+                                             }
+                                         ],
+                      "lockedElements":  [
+                                             "/",
+                                             "abs"
+                                         ]
+                  },
                    {
                        "id":  44,
                        "targetCells":  [
@@ -1787,9 +1725,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                                                   "y":  2
                                               }
                                           ],
-                       "lockedElements":  [
-
-                                          ]
+                       "lockedElements":  []
                    },
                    {
                        "id":  46,
@@ -1845,9 +1781,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                                                   "y":  1
                                               }
                                           ],
-                       "lockedElements":  [
-
-                                          ]
+                       "lockedElements":  []
                    },
                    {
                        "id":  47,
@@ -1991,9 +1925,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                                                   "y":  5
                                               }
                                           ],
-                       "lockedElements":  [
-
-                                          ]
+                       "lockedElements":  []
                    },
                    {
                        "id":  48,
@@ -2161,9 +2093,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                                                   "y":  9
                                               }
                                           ],
-                       "lockedElements":  [
-
-                                          ]
+                       "lockedElements":  []
                    },
                    {
                        "id":  49,
@@ -2347,9 +2277,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                                                   "y":  5
                                               }
                                           ],
-                       "lockedElements":  [
-
-                                          ]
+                       "lockedElements":  []
                    },
                    {
                        "id":  50,
@@ -2392,8 +2320,9 @@ window.CAMPAIGN_LEVEL_PACK = {
                                               "*",
                                               "/",
                                               "^",
-                                              "!"
-                                          ]
+                                              "!",
+                                              "abs"
+                                         ]
                    },
                    {
                        "id":  51,
@@ -2555,7 +2484,8 @@ window.CAMPAIGN_LEVEL_PACK = {
                                               "-",
                                               "*",
                                               "/",
-                                              "^"
+                                              "^",
+                                              "abs"
                                           ]
                    },
                    {
@@ -2724,9 +2654,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                                                   "y":  4
                                               }
                                           ],
-                       "lockedElements":  [
-
-                                          ]
+                       "lockedElements":  []
                    },
                    {
                        "id":  53,
@@ -2902,9 +2830,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                                                   "y":  6
                                               }
                                           ],
-                       "lockedElements":  [
-
-                                          ]
+                       "lockedElements":  []
                    },
                    {
                        "id":  54,
@@ -2928,9 +2854,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                                                   "y":  1
                                               }
                                           ],
-                       "lockedElements":  [
-
-                                          ]
+                       "lockedElements":  []
                    },
                    {
                        "id":  55,
@@ -2958,9 +2882,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                                                   "y":  6
                                               }
                                           ],
-                       "lockedElements":  [
-
-                                          ]
+                       "lockedElements":  []
                    },
                    {
                        "id":  56,
@@ -2987,14 +2909,12 @@ window.CAMPAIGN_LEVEL_PACK = {
                                                   "x":  -3,
                                                   "y":  -1
                                               },
-                                              {
+                                                            {
                                                   "x":  -3,
                                                   "y":  0
                                               }
                                           ],
-                       "lockedElements":  [
-
-                                          ]
+                       "lockedElements":  []
                    },
                    {
                        "id":  57,
@@ -3030,9 +2950,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                                                   "y":  1
                                               }
                                           ],
-                       "lockedElements":  [
-
-                                          ]
+                       "lockedElements":  []
                    },
                    {
                        "id":  58,
@@ -3064,9 +2982,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                                                   "y":  0
                                               }
                                           ],
-                       "lockedElements":  [
-
-                                          ]
+                       
                    },
                    {
                        "id":  59,
@@ -3122,9 +3038,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                                                   "y":  0
                                               }
                                           ],
-                       "lockedElements":  [
-
-                                          ]
+                       "lockedElements":  []
                    },
                    {
                        "id":  60,
@@ -3184,9 +3098,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                                                   "y":  3
                                               }
                                           ],
-                       "lockedElements":  [
-
-                                          ]
+                       "lockedElements":  []
                    },
                    {
                        "id":  61,
@@ -3222,9 +3134,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                                                   "y":  2
                                               }
                                           ],
-                       "lockedElements":  [
-
-                                          ]
+                       
                    },
                    {
                        "id":  62,
@@ -3260,9 +3170,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                                                   "y":  4
                                               }
                                           ],
-                       "lockedElements":  [
-
-                                          ]
+                       
                    },
                    {
                        "id":  63,
@@ -3294,9 +3202,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                                                   "y":  4
                                               }
                                           ],
-                       "lockedElements":  [
-                                              "abs"
-                                          ]
+                       "lockedElements":  []
                    },
                    {
                        "id":  64,
@@ -3336,9 +3242,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                                                   "y":  6
                                               }
                                           ],
-                       "lockedElements":  [
-                                              "abs"
-                                          ]
+                       "lockedElements":  []
                    },
                    {
                        "id":  65,
@@ -3534,9 +3438,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                                                   "y":  9
                                               }
                                           ],
-                       "lockedElements":  [
-
-                                          ]
+                       "lockedElements":  []
                    },
                    {
                        "id":  66,
@@ -3604,9 +3506,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                                                   "y":  2
                                               }
                                           ],
-                       "lockedElements":  [
-
-                                          ]
+                       "lockedElements":  []
                    },
                    {
                        "id":  67,
@@ -3686,9 +3586,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                                                   "y":  2
                                               }
                                           ],
-                       "lockedElements":  [
-
-                                          ]
+                       "lockedElements":  []
                    },
                    {
                        "id":  68,
@@ -3796,9 +3694,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                                                   "y":  5
                                               }
                                           ],
-                       "lockedElements":  [
-
-                                          ]
+                       "lockedElements":  []
                    },
                    {
                        "id":  69,
@@ -3878,9 +3774,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                                                   "y":  4
                                               }
                                           ],
-                       "lockedElements":  [
-
-                                          ]
+                       "lockedElements":  []
                    },
                    {
                        "id":  70,
@@ -4001,8 +3895,8 @@ window.CAMPAIGN_LEVEL_PACK = {
                                               }
                                           ],
                        "lockedElements":  [
-
-                                          ]
+                                             "abs"
+                                         ]
                    },
                    {
                        "id":  71,
@@ -4142,7 +4036,8 @@ window.CAMPAIGN_LEVEL_PACK = {
                                           ],
                        "lockedElements":  [
                                               "sqrt"
-                                          ]
+                                          ,
+                                             "abs"]
                    },
                    {
                        "id":  73,
@@ -4287,8 +4182,8 @@ window.CAMPAIGN_LEVEL_PACK = {
                                               }
                                           ],
                        "lockedElements":  [
-
-                                          ]
+                                             "abs"
+                                         ]
                    },
                    {
                        "id":  74,
@@ -4345,8 +4240,8 @@ window.CAMPAIGN_LEVEL_PACK = {
                                               }
                                           ],
                        "lockedElements":  [
-
-                                          ]
+                                             "abs"
+                                         ]
                    },
                    {
                        "id":  75,
@@ -4639,8 +4534,8 @@ window.CAMPAIGN_LEVEL_PACK = {
                                               }
                                           ],
                        "lockedElements":  [
-
-                                          ]
+                                             "abs"
+                                         ]
                    },
                    {
                        "id":  76,
@@ -4668,9 +4563,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                                                   "y":  2
                                               }
                                           ],
-                       "lockedElements":  [
-
-                                          ]
+                       
                    },
                    {
                        "id":  77,
@@ -4714,9 +4607,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                                                   "y":  5
                                               }
                                           ],
-                       "lockedElements":  [
-
-                                          ]
+                       
                    },
                    {
                        "id":  78,
@@ -4829,8 +4720,8 @@ window.CAMPAIGN_LEVEL_PACK = {
                                               }
                                           ],
                        "lockedElements":  [
-
-                                          ]
+                                             "abs"
+                                         ]
                    },
                    {
                        "id":  79,
@@ -4987,8 +4878,8 @@ window.CAMPAIGN_LEVEL_PACK = {
                                               }
                                           ],
                        "lockedElements":  [
-
-                                          ]
+                                             "abs"
+                                         ]
                    },
                    {
                        "id":  80,
@@ -5097,8 +4988,8 @@ window.CAMPAIGN_LEVEL_PACK = {
                                               }
                                           ],
                        "lockedElements":  [
-
-                                          ]
+                                             "abs"
+                                         ]
                    },
                    {
                        "id":  81,
@@ -5191,8 +5082,8 @@ window.CAMPAIGN_LEVEL_PACK = {
                                               }
                                           ],
                        "lockedElements":  [
-
-                                          ]
+                                             "abs"
+                                         ]
                    },
                    {
                        "id":  82,
@@ -5309,8 +5200,8 @@ window.CAMPAIGN_LEVEL_PACK = {
                                               }
                                           ],
                        "lockedElements":  [
-
-                                          ]
+                                             "abs"
+                                         ]
                    },
                    {
                        "id":  83,
@@ -5443,8 +5334,8 @@ window.CAMPAIGN_LEVEL_PACK = {
                                               }
                                           ],
                        "lockedElements":  [
-
-                                          ]
+                                             "abs"
+                                         ]
                    },
                    {
                        "id":  84,
@@ -5765,8 +5656,8 @@ window.CAMPAIGN_LEVEL_PACK = {
                                               }
                                           ],
                        "lockedElements":  [
-
-                                          ]
+                                             "abs"
+                                         ]
                    },
                    {
                        "id":  85,
@@ -6263,8 +6154,8 @@ window.CAMPAIGN_LEVEL_PACK = {
                                               }
                                           ],
                        "lockedElements":  [
-
-                                          ]
+                                             "abs"
+                                         ]
                    },
                    {
                        "id":  86,
@@ -6905,8 +6796,8 @@ window.CAMPAIGN_LEVEL_PACK = {
                                               }
                                           ],
                        "lockedElements":  [
-
-                                          ]
+                                             "abs"
+                                         ]
                    },
                    {
                        "id":  87,
@@ -7327,8 +7218,8 @@ window.CAMPAIGN_LEVEL_PACK = {
                                               }
                                           ],
                        "lockedElements":  [
-
-                                          ]
+                                             "abs"
+                                         ]
                    },
                    {
                        "id":  88,
