@@ -39,6 +39,8 @@ class GridSystem {
         this.minRange = 5;   // 最小范围
         this.maxRange = 50;  // 最大范围
         this.rangeStep = 5;  // 每次缩放步长
+        this.fixedCampaignRange = 10; // 闯关模式固定 20x20
+        this.isCampaignFixedRange = false;
         
         // 防抖定时器
         this.resizeTimeout = null;
@@ -118,10 +120,34 @@ class GridSystem {
     }
     
     /**
+     * 切换闯关模式固定坐标系（20x20）
+     * @param {boolean} enabled
+     */
+    setCampaignFixedRange(enabled) {
+        this.isCampaignFixedRange = !!enabled;
+        if (this.isCampaignFixedRange) {
+            this.range = this.fixedCampaignRange;
+            this.gridSize = this.range * 2;
+            this.resize();
+        } else {
+            // 退出闯关时立即恢复默认对战网格，避免保留 20x20 状态
+            this.range = 5;
+            this.gridSize = 10;
+            this.resize();
+        }
+    }
+    
+    /**
      * 根据回合数更新棋盘范围
      * @param {number} round - 当前回合数（从1开始）
      */
     updateRange(round) {
+        if (this.isCampaignFixedRange) {
+            this.range = this.fixedCampaignRange;
+            this.gridSize = this.range * 2;
+            this.resize();
+            return false;
+        }
         const oldRange = this.range;
         if (round <= 4) {
             // 1-4回合：范围5
@@ -470,6 +496,11 @@ class GridSystem {
      * 绘制历史函数（淡化显示）
      */
     drawHistoryFunctions() {
+        // 闯关模式下不显示历史图像
+        if (this.isCampaignFixedRange) {
+            return;
+        }
+        
         const ctx = this.ctx;
         const currentRound = this.currentRound || 1;
         const currentRange = this.range;
@@ -722,6 +753,9 @@ class GridSystem {
      * @returns {Object} {min, max}
      */
     getRange() {
+        if (this.isCampaignFixedRange) {
+            return { min: -this.fixedCampaignRange, max: this.fixedCampaignRange };
+        }
         return { min: -this.range, max: this.range };
     }
     

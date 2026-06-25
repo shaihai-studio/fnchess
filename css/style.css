@@ -13,6 +13,62 @@ body {
     overflow-x: hidden;
 }
 
+/* 闯关：关卡格子 */
+.campaign-level-cell {
+    height: 54px;
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.18);
+    background: rgba(15, 23, 42, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    cursor: pointer;
+    user-select: none;
+}
+.campaign-level-cell.locked {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+.campaign-level-grid {
+    display: grid;
+    grid-template-columns: repeat(15, minmax(0, 1fr));
+    gap: 6px;
+}
+
+.campaign-difficulty-grid {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.campaign-difficulty-grid .btn {
+    min-height: 60px;
+    aspect-ratio: 1.9 / 1;
+    color: #fff;
+    font-weight: 700;
+}
+
+#campaign-diff-easy { background: linear-gradient(135deg, #22c55e, #16a34a); }
+#campaign-diff-normal { background: linear-gradient(135deg, #84cc16, #65a30d); }
+#campaign-diff-hard { background: linear-gradient(135deg, #eab308, #ca8a04); }
+#campaign-diff-expert { background: linear-gradient(135deg, #f97316, #ea580c); }
+#campaign-diff-unsolvable { background: linear-gradient(135deg, #ef4444, #b91c1c); }
+.campaign-level-badge.easy { color: #22c55e; }
+.campaign-level-badge.normal { color: #84cc16; }
+.campaign-level-badge.hard { color: #eab308; }
+.campaign-level-badge.expert { color: #f97316; }
+.campaign-level-badge.unsolvable { color: #ef4444; }
+.campaign-level-cell.easy { background: rgba(34, 197, 94, 0.25); border-color: rgba(34, 197, 94, 0.55); }
+.campaign-level-cell.normal { background: rgba(132, 204, 22, 0.22); border-color: rgba(132, 204, 22, 0.55); }
+.campaign-level-cell.hard { background: rgba(234, 179, 8, 0.20); border-color: rgba(234, 179, 8, 0.55); }
+.campaign-level-cell.expert { background: rgba(249, 115, 22, 0.20); border-color: rgba(249, 115, 22, 0.55); }
+.campaign-level-cell.unsolvable { background: rgba(239, 68, 68, 0.20); border-color: rgba(239, 68, 68, 0.55); }
+.campaign-level-cell.cleared {
+    box-shadow: 0 0 0 2px rgba(34,197,94,0.35) inset;
+}
+
 /* 顶部信息栏 */
 .header {
     height: 60px;
@@ -30,6 +86,137 @@ body {
     z-index: 100;
 }
 
+.campaign-level-badge {
+    margin-left: auto;
+    display: none;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 12px;
+    border-radius: 999px;
+    font-weight: 800;
+    color: #fff;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.18);
+    min-width: 90px;
+    justify-content: center;
+}
+
+.campaign-level-value {
+    font-size: 18px;
+    line-height: 1;
+}
+
+.campaign-level-label {
+    font-size: 13px;
+    opacity: 0.88;
+}
+
+.campaign-victory-content {
+    text-align: center;
+    min-width: 340px;
+}
+
+.campaign-victory-text {
+    margin: 12px 0 22px;
+    font-size: 18px;
+    color: #dbeafe;
+    line-height: 1.6;
+}
+
+.campaign-victory-stars {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin: 8px 0 6px;
+    line-height: 1;
+}
+
+.campaign-victory-stars .star {
+    width: 40px;
+    height: 40px;
+    display: inline-block;
+    color: rgba(255, 255, 255, 0.18);
+    overflow: visible;
+}
+
+.campaign-victory-stars .star path {
+    fill: currentColor;
+    stroke: rgba(255, 255, 255, 0.95);
+    stroke-width: 4.2;
+    stroke-linejoin: round;
+    stroke-linecap: round;
+    paint-order: stroke fill;
+}
+
+.campaign-victory-stars .star.filled {
+    color: #facc15;
+    filter: drop-shadow(0 0 10px rgba(250, 204, 21, 0.25));
+}
+
+.campaign-star-progress {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+    min-width: 220px;
+}
+
+.campaign-star-bar {
+    position: relative;
+    flex: 1;
+    height: 12px;
+    border-radius: 999px;
+    background: rgba(148, 163, 184, 0.18);
+    overflow: hidden;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08);
+}
+
+.campaign-star-bar-fill {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #facc15, #fde68a, #fbbf24);
+    box-shadow: 0 0 10px rgba(250, 204, 21, 0.45);
+}
+
+.campaign-star-bar-glow {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    border-radius: 999px;
+    background: linear-gradient(90deg, rgba(255,255,255,0.28), rgba(255,255,255,0));
+    mix-blend-mode: screen;
+    pointer-events: none;
+}
+
+.campaign-star-progress .star-count {
+    color: #f8fafc;
+    font-weight: 700;
+    font-size: 13px;
+    white-space: nowrap;
+}
+
+.campaign-victory-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+}
+
+.icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-width: 130px;
+}
+
+.icon-btn .icon {
+    font-size: 18px;
+    line-height: 1;
+}
+
 .score-display {
     display: flex;
     align-items: center;
@@ -45,6 +232,18 @@ body {
 .score-display .score {
     color: #22c55e;
     font-size: 24px;
+}
+
+.header.campaign-mode .score-display {
+    display: none !important;
+}
+
+.header.campaign-mode .round-info {
+    display: none !important;
+}
+
+.header.campaign-mode .player-display {
+    display: none !important;
 }
 
 /* 分数变化气泡 */
@@ -271,6 +470,11 @@ body {
     gap: 10px;
 }
 
+.header.campaign-mode .score-display,
+.header.campaign-mode .round-info {
+    display: none;
+}
+
 .btn {
     flex: 1;
     padding: 12px 20px;
@@ -411,16 +615,35 @@ body {
     right: 20px;
     top: 50%;
     transform: translateY(-50%);
+    width: 40px;               /* 真实的瘦窄碰撞箱宽度 */
+    height: 190px;             /* 真实碰撞箱高度 */
     display: flex;
     flex-direction: column;
     align-items: center;
+    justify-content: center;
     z-index: 1000;
     cursor: grab;
-    user-select: none;
-    -webkit-user-select: none;
-    touch-action: none;
+    pointer-events: none;      /* 禁用原始 root 的点击，防止飞天脱节时被隔空抓取 */
+    /* 增加微弱底色防止纯透明 divs 在某些浏览器中不吃时间 */
+    background: rgba(0, 0, 0, 0.01);
 }
 .summa-root.dragging {
+    cursor: grabbing;
+}
+
+/* 真正的动态碰撞箱：随身体旋转、拉伸，永远死扣在身体躯干上 */
+.summa-hitbox {
+    position: absolute;
+    width: 40px;
+    height: 190px;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: auto;      /* 仅此处开启点击 */
+    cursor: grab;
+    z-index: 10;
+}
+.summa-root.dragging .summa-hitbox {
     cursor: grabbing;
 }
 
@@ -432,6 +655,7 @@ body {
     align-items: center;
     will-change: transform;   /* GPU 加速 */
     transform-origin: center center;  /* 链式物理：绕角色中心旋转 */
+    pointer-events: none;     /* 让超出 root 的部分不可点击 */
 }
 
 /* 立绘 + 眼部叠加容器 */
@@ -443,6 +667,7 @@ body {
     align-items: center;
     justify-content: center;
     transition: transform 150ms ease-in-out;
+    pointer-events: none;
 }
 
 /* 情绪立绘底图 */
@@ -511,7 +736,12 @@ body {
     border: 2px solid #a78bfa;
     font-size: 15px;
     font-weight: bold;
-    max-width: 240px;
+    width: 8em; /* 固定每行约 8 个汉字 */
+    max-width: 8em;
+    white-space: normal;
+    word-break: break-all;
+    overflow-wrap: anywhere;
+    line-height: 1.35;
     opacity: 0;
     /* 绝对定位：脱离文档流，不影响 #summa-body 高度，避免气泡出现时 offsetHeight 变化导致闪现 */
     position: absolute;
@@ -654,6 +884,7 @@ body {
 
 .modal-content {
     background: linear-gradient(135deg, #0f172a, #1e1b4b);
+    position: relative;
     padding: 40px;
     border-radius: 16px;
     text-align: center;
@@ -682,6 +913,15 @@ body {
 .round-select,
 .difficulty-select {
     margin-bottom: 20px;
+}
+
+.mode-select {
+    margin-bottom: 20px;
+}
+
+
+#difficulty-hint {
+    display: none;
 }
 
 .round-select label,
@@ -719,6 +959,20 @@ body {
     display: flex;
     gap: 10px;
 }
+
+.mode-toggle .mode-btn {
+    background: rgba(255,255,255,0.06);
+    color: #e5e7eb;
+    border: 1px solid rgba(255,255,255,0.12);
+}
+
+.mode-toggle .mode-btn[data-mode="local"] { border-color: rgba(59,130,246,0.45); }
+.mode-toggle .mode-btn[data-mode="ai"] { border-color: rgba(245,158,11,0.45); }
+.mode-toggle .mode-btn[data-mode="campaign"] { border-color: rgba(168,85,247,0.45); }
+
+.mode-toggle .mode-btn.active[data-mode="local"] { background: rgba(59,130,246,0.22); color: #93c5fd; }
+.mode-toggle .mode-btn.active[data-mode="ai"] { background: rgba(245,158,11,0.22); color: #fbbf24; }
+.mode-toggle .mode-btn.active[data-mode="campaign"] { background: rgba(168,85,247,0.22); color: #d8b4fe; }
 
 .mode-btn {
     flex: 1;

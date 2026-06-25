@@ -47,6 +47,7 @@ class UIController {
         // 顶部信息栏
         this.scoreAElement = document.getElementById('score-a');
         this.scoreBElement = document.getElementById('score-b');
+        this.scoreDisplays = document.querySelectorAll('.score-display');
         this.roundElement = document.getElementById('current-round');
         this.totalRoundsElement = document.getElementById('total-rounds');
         
@@ -77,6 +78,11 @@ class UIController {
         this.finalScoresElement = document.getElementById('final-scores');
         this.restartBtn = document.getElementById('restart-btn');
         this.viewReportBtn = document.getElementById('view-report-btn');
+        this.campaignVictoryModal = document.getElementById('campaign-victory-modal');
+        this.campaignVictoryText = document.getElementById('campaign-victory-text');
+        this.campaignHomeBtn = document.getElementById('campaign-home-btn');
+        this.campaignRetryBtn = document.getElementById('campaign-retry-btn');
+        this.campaignNextBtn = document.getElementById('campaign-next-btn');
         
         // 游戏报告弹窗
         this.reportModal = document.getElementById('report-modal');
@@ -94,8 +100,32 @@ class UIController {
         // 游戏模式切换按钮
         this.modeLocalBtn = document.getElementById('mode-local');
         this.modeAiBtn = document.getElementById('mode-ai');
+        this.modeCampaignBtn = document.getElementById('mode-campaign');
         this.modeHint = document.getElementById('mode-hint');
         this.selectedMode = 'local'; // 默认本地对战
+        this.developerMode = false;
+
+        // 闯关面板
+        this.campaignPanel = document.getElementById('campaign-panel');
+        this.campaignLevelSelect = document.getElementById('campaign-level-select');
+        this.campaignProgressText = document.getElementById('campaign-progress');
+        this.campaignPack = null;
+
+        // 闯关模式独立UI
+        this.campaignModal = document.getElementById('campaign-modal');
+        this.campaignStepDifficulty = document.getElementById('campaign-step-difficulty');
+        this.campaignStepLevels = document.getElementById('campaign-step-levels');
+        this.campaignGlobalProgress = document.getElementById('campaign-global-progress');
+        this.campaignStarProgress = document.getElementById('campaign-star-progress');
+        this.campaignLevelTitle = document.getElementById('campaign-level-title');
+        this.campaignLevelProgress = document.getElementById('campaign-level-progress');
+        this.campaignLevelGrid = document.getElementById('campaign-level-grid');
+        this.campaignFileInput = document.getElementById('campaign-file-input');
+
+        this.campaignDifficulty = null; // easy/normal/hard/expert/unsolvable
+        this.campaignCurrentLevelId = null;
+        this.campaignCurrentLevelBestRecord = null;
+        this.battleUiHidden = false;
         
         // 绑定难度选择提示更新
         if (this.difficultySelect && this.difficultyHint) {
@@ -105,10 +135,40 @@ class UIController {
         }
         
         // 绑定模式切换按钮
-        if (this.modeLocalBtn && this.modeAiBtn) {
+        if (this.modeLocalBtn && this.modeAiBtn && this.modeCampaignBtn) {
             this.modeLocalBtn.addEventListener('click', () => this.selectMode('local'));
             this.modeAiBtn.addEventListener('click', () => this.selectMode('ai'));
+            this.modeCampaignBtn.addEventListener('click', () => this.selectMode('campaign'));
         }
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Tab') {
+                this.developerMode = true;
+                this.refreshUnsovableDifficultyVisibility();
+                if (this.campaignLevelGrid) {
+                    this.renderCampaignLevelGrid();
+                }
+            }
+        });
+
+        // 闯关UI按钮
+        const bind = (id, fn) => {
+            const el = document.getElementById(id);
+            if (el) el.addEventListener('click', fn);
+        };
+        bind('campaign-close-btn', () => this.closeCampaignUI());
+        bind('campaign-close-btn2', () => this.closeCampaignUI());
+        bind('campaign-back-btn', () => this.showCampaignDifficulty());
+        bind('campaign-reset-btn', () => this.resetCampaignProgress());
+        bind('campaign-diff-easy', () => this.openCampaignLevels('easy'));
+        bind('campaign-diff-normal', () => this.openCampaignLevels('normal'));
+        bind('campaign-diff-hard', () => this.openCampaignLevels('hard'));
+        bind('campaign-diff-expert', () => this.openCampaignLevels('expert'));
+        bind('campaign-diff-unsolvable', () => this.openCampaignLevels('unsolvable'));
+        bind('campaign-home-btn', () => this.returnToCampaignLevelSelect());
+        bind('campaign-retry-btn', () => this.retryCampaignLevel());
+        bind('campaign-next-btn', () => this.goToNextCampaignLevel());
+        this.refreshUnsovableDifficultyVisibility();
+
     }
     
     /**
@@ -119,7 +179,6 @@ class UIController {
         const hints = {
             'easy': '简单模式：1个目标格，四则运算无法被锁定，每回合+20秒',
             'normal': '普通模式：2个目标格，标准规则',
-            'hard': '困难模式：2个目标格',
             'expert': '专家模式：3个目标格',
             'test': '测试模式：自由绘图，无目标格，函数持续显示'
         };
@@ -168,11 +227,26 @@ class UIController {
         if (mode === 'local') {
             this.modeLocalBtn.classList.add('active');
             this.modeAiBtn.classList.remove('active');
+            this.modeCampaignBtn.classList.remove('active');
             this.modeHint.textContent = '本地对战：两位玩家轮流操作';
+            if (this.campaignPanel) this.campaignPanel.style.display = 'none';
+            this.restoreBattleUI();
         } else {
+            if (mode === 'campaign') {
+                this.modeCampaignBtn.classList.add('active');
+                this.modeLocalBtn.classList.remove('active');
+                this.modeAiBtn.classList.remove('active');
+                this.modeHint.textContent = '闯关模式：通关解锁下一关';
+                if (this.campaignPanel) this.campaignPanel.style.display = 'none';
+                this.openCampaignUI();
+                return;
+            }
             this.modeAiBtn.classList.add('active');
             this.modeLocalBtn.classList.remove('active');
+            this.modeCampaignBtn.classList.remove('active');
             this.modeHint.textContent = '人机对战：你将对抗AI Summa';
+            if (this.campaignPanel) this.campaignPanel.style.display = 'none';
+            this.restoreBattleUI();
         }
     }
     
@@ -188,11 +262,21 @@ class UIController {
             this.roundElement.textContent = data.currentRound;
             this.totalRoundsElement.textContent = data.totalRounds;
             this.messageElement.textContent = '';
+            const badge = document.getElementById('campaign-level-badge');
+            if (badge) badge.style.display = 'none';
+            this.campaignDifficulty = null;
+            this.campaignCurrentLevelId = null;
+            this.campaignCurrentLevelBestRecord = null;
             
             // 测试模式特殊提示
             if (data.isTestMode) {
+                this.hideBattleUI();
                 this.showMessage('测试模式：自由构造函数，函数将持续显示在画布上');
+            } else if (data.gameMode === 'campaign') {
+                this.hideBattleUI();
+                this.showMessage('闯关模式：请直接构造函数作答');
             } else {
+                this.restoreBattleUI();
                 this.showMessage('游戏开始！玩家B请选择目标网格');
             }
             
@@ -324,7 +408,8 @@ class UIController {
             this.showEvaluationResult(data);
             
             // 保存函数到历史记录（用于淡化显示）
-            if (data.expression && data.round) {
+            // 闯关模式下不记录历史函数
+            if (data.expression && data.round && !this.gameController.campaignState.active) {
                 // 确保functionHistory存在
                 if (!this.gameController.functionHistory) {
                     this.gameController.functionHistory = [];
@@ -359,11 +444,10 @@ class UIController {
             }
 
             // ── 玩家解析式深度训练 ─────────────────────────────────────────────────
-            // AI 模式下，仅当玩家成功命中目标时，基于其表达式进行参数变形训练
+            // AI 模式下，无论玩家成功与否，都对玩家的解析式进行 10000 局类似局面训练
             if (this.gameController.gameMode === 'ai'
                 && this.gameController.currentPlayer === 'A'
-                && data.expression
-                && data.hitTarget && !data.hitForbidden) {
+                && data.expression) {
                 const trainState = this.gameController.getGameState();
                 // 静默后台训练，不阻塞游戏流程
                 this.aiController.trainOnPlayerExpression(
@@ -371,6 +455,96 @@ class UIController {
                     trainState.roundState.targetCells,
                     trainState.roundState.forbiddenCells
                 );
+            }
+        });
+
+        // 闯关：关卡结果与自动进入下一关/重试
+        this.gameController.on('campaignLevelResult', (data) => {
+            this.refreshCampaignStartUI();
+            const levelId = Number(data.levelId || this.campaignCurrentLevelId || 1);
+            let isNewRecord = false;
+            let previousBest = this.getCampaignLevelBestRecord(levelId);
+            if (data.pass) {
+                const length = this.getCurrentExpressionLength();
+                if (previousBest === null || length < previousBest) {
+                    isNewRecord = true;
+                    this.campaignCurrentLevelBestRecord = previousBest;
+                } else {
+                    this.campaignCurrentLevelBestRecord = previousBest;
+                }
+                data.expressionLength = length;
+                data.isNewRecord = isNewRecord;
+                data.previousBest = previousBest;
+                if (isNewRecord) {
+                    const gainedStars = Math.max(1, Math.min(5, Number(data.score) || 1));
+                    const currentStars = this.getCampaignCollectedStars();
+                    this.setCampaignCollectedStars(currentStars + gainedStars);
+                    this.setCampaignLevelBestRecord(levelId, length);
+                    setTimeout(() => {
+                        if (this.campaignCurrentLevelId === levelId) {
+                            this.campaignCurrentLevelBestRecord = length;
+                            this.updateCampaignGlobalProgressText(this.getCampaignCollectedStars());
+                        }
+                    }, 0);
+                }
+            }
+            setTimeout(() => {
+                try {
+                    if (data.pass) {
+                        this.showCampaignVictory(data);
+                    } else {
+                        this.clearExpression();
+                        this.gameController.setPhase(this.gameController.phases.INPUT_FUNCTION);
+                    }
+                } catch (e) {
+                    console.error('[Campaign] 处理关卡结果失败:', e);
+                }
+            }, 900);
+        });
+
+        this.gameController.on('campaignLevelLoaded', (data) => {
+            try {
+                // 闯关：隐藏计时器与回合数显示
+                if (this.timerElement && this.timerElement.parentElement) {
+                    this.timerElement.parentElement.style.display = 'none';
+                }
+                if (this.currentPlayerElement && this.currentPlayerElement.parentElement) {
+                    this.currentPlayerElement.parentElement.style.display = 'none';
+                }
+                document.querySelectorAll('.score-display').forEach(el => {
+                    el.style.display = 'none';
+                });
+                const roundDisplay = document.getElementById('round-display');
+                if (roundDisplay) roundDisplay.style.display = 'none';
+
+                // 更新顶部回合显示为关卡编号
+                this.roundElement.textContent = data.levelId;
+                this.totalRoundsElement.textContent = data.totalLevels;
+
+                // 清空画布标记与表达式
+                this.gridSystem.clearAll();
+                this.clearExpression();
+
+                // 设置目标与禁区
+                this.gridSystem.setTargetCells(data.roundState.targetCells || []);
+                this.gridSystem.forbiddenCells = data.roundState.forbiddenCells || [];
+                this.gridSystem.draw();
+
+                // 初始化可拖拽元素（会根据 lockedElements 上锁）
+                this.initDraggableElements();
+
+                // 提示
+                const diffName = {
+                    easy: '简单',
+                    normal: '普通',
+                    hard: '困难',
+                    expert: '专家',
+                    unsolvable: '无解'
+                }[data.difficulty] || data.difficulty;
+                this.updateCampaignLevelBadge(data.levelId, data.totalLevels, data.difficulty);
+                this.showMessage(`闯关：关卡 ${data.levelId}（${diffName}）`, 'info');
+            } catch (e) {
+                console.error('[Campaign] campaignLevelLoaded 错误:', e);
             }
         });
         
@@ -470,6 +644,20 @@ class UIController {
     handleKeyboardInput(e) {
         const phase = this.gameController.currentPhase;
         const key = e.key;
+
+        // 闯关胜利界面快捷键
+        if (this.campaignVictoryModal && this.campaignVictoryModal.style.display !== 'none') {
+            if (key === 'Enter') {
+                e.preventDefault();
+                this.goToNextCampaignLevel();
+                return;
+            }
+            if (key === 'Delete' || key === 'Backspace') {
+                e.preventDefault();
+                this.retryCampaignLevel();
+                return;
+            }
+        }
         
         // 回车键确认：在 select_target / set_forbidden / set_locks / input_function 阶段都可用
         if (key === 'Enter') {
@@ -1527,7 +1715,9 @@ class UIController {
      * @param {number} scoreChange - 分数变化（正数为加分，负数为扣分）
      */
     showScorePopup(player, scoreChange) {
+        if (this.gameController && this.gameController.gameMode === 'campaign') return;
         const scoreElement = player === 'A' ? this.scoreAElement : this.scoreBElement;
+        if (!scoreElement) return;
         
         // 创建气泡元素
         const popup = document.createElement('div');
@@ -1646,6 +1836,7 @@ class UIController {
         } else {
             // 普通对战模式：返回开始界面
             this.gameController.resetGame();
+            this.resetBattleGrid();
             document.getElementById('start-modal').style.display = 'flex';
             if (this.gameOverModal) this.gameOverModal.style.display = 'none';
         }
@@ -1732,6 +1923,14 @@ class UIController {
             window.audioManager.playClick();
         }
         
+        // 闯关模式
+        if (this.selectedMode === 'campaign') {
+            this.startModal.style.display = 'none';
+            const startId = this.campaignLevelSelect ? Number(this.campaignLevelSelect.value) : 1;
+            await this.startCampaign(startId);
+            return;
+        }
+
         const rounds = parseInt(this.roundSelect.value);
         const difficulty = this.difficultySelect.value;
         let gameMode = this.selectedMode;
@@ -1778,6 +1977,407 @@ class UIController {
         // 测试模式特殊初始化
         if (this.gameController.isTestMode()) {
             this.initTestModeUI();
+        }
+    }
+
+    async loadCampaignPack() {
+        if (this.campaignPack) return this.campaignPack;
+        this.campaignPack = window.CAMPAIGN_LEVEL_PACK || null;
+        return this.campaignPack;
+    }
+
+    getCampaignClearedMax() {
+        try {
+            const raw = localStorage.getItem('function_chess_campaign_cleared');
+            const v = raw ? Number(raw) : 0;
+            return Number.isFinite(v) ? v : 0;
+        } catch (e) {
+            return 0;
+        }
+    }
+
+    getCampaignCollectedStars() {
+        try {
+            const raw = localStorage.getItem('function_chess_campaign_stars');
+            const v = raw ? Number(raw) : 0;
+            return Number.isFinite(v) ? v : 0;
+        } catch (e) {
+            return 0;
+        }
+    }
+
+    setCampaignCollectedStars(stars) {
+        try {
+            localStorage.setItem('function_chess_campaign_stars', String(Math.max(0, Number(stars) || 0)));
+        } catch (e) { }
+    }
+
+    renderCampaignStarProgress(starCount) {
+        if (!this.campaignStarProgress) return;
+        const totalSlots = 500;
+        const filled = Math.max(0, Math.min(totalSlots, Number(starCount) || 0));
+        const pct = Math.max(0, Math.min(100, (filled / totalSlots) * 100));
+        this.campaignStarProgress.innerHTML = `
+            <div class="campaign-star-bar">
+                <div class="campaign-star-bar-fill" style="width:${pct}%;"></div>
+                <div class="campaign-star-bar-glow" style="width:${pct}%;"></div>
+            </div>
+            <span class="star-count">${filled}/${totalSlots}🌟</span>
+        `;
+    }
+
+    async refreshCampaignStartUI() {
+        if (!this.campaignLevelSelect || !this.campaignProgressText) return;
+        try {
+            const pack = await this.loadCampaignPack();
+            if (!pack) throw new Error('no-pack');
+            const total = Array.isArray(pack.levels) ? pack.levels.length : 0;
+            const cleared = this.getCampaignClearedMax();
+            const unlockedMax = Math.min(total, cleared + 1);
+            const stars = this.getCampaignCollectedStars();
+            this.campaignProgressText.textContent = `已通关：${cleared} / ${total}`;
+            this.refreshUnsovableDifficultyVisibility();
+            this.updateCampaignGlobalProgressText(stars);
+
+            const current = Number(this.campaignLevelSelect.value || 1);
+            this.campaignLevelSelect.innerHTML = '';
+            for (let i = 1; i <= total; i++) {
+                const opt = document.createElement('option');
+                opt.value = String(i);
+                opt.textContent = i <= unlockedMax ? `关卡 ${i}` : `关卡 ${i}（未解锁）`;
+                opt.disabled = i > unlockedMax;
+                this.campaignLevelSelect.appendChild(opt);
+            }
+            const fixed = Math.min(Math.max(1, current), unlockedMax || 1);
+            this.campaignLevelSelect.value = String(fixed);
+        } catch (e) {
+            this.campaignProgressText.textContent = '关卡加载失败，请确认关卡数据已内置。';
+        }
+    }
+
+    async startCampaign(startLevelId) {
+        const pack = await this.loadCampaignPack();
+        if (!pack) {
+            this.showMessage('关卡未加载：请先加载内置关卡数据', 'error');
+            this.openCampaignUI();
+            return;
+        }
+        const safeStart = Number(startLevelId) || 1;
+        this.campaignCurrentLevelId = safeStart;
+        this.campaignCurrentLevelBestRecord = this.getCampaignLevelBestRecord(safeStart);
+        this.gameController.initCampaign(pack, safeStart);
+        if (this.gridSystem && this.gridSystem.setCampaignFixedRange) {
+            this.gridSystem.setCampaignFixedRange(true);
+        }
+    }
+
+    showCampaignVictory(data) {
+        if (!this.campaignVictoryModal) return;
+        this.campaignCurrentLevelId = data.levelId || this.campaignCurrentLevelId;
+        const levelId = Number(this.campaignCurrentLevelId || data.levelId || 1);
+        const bestRecord = Number.isFinite(Number(this.campaignCurrentLevelBestRecord)) ? Number(this.campaignCurrentLevelBestRecord) : null;
+        const length = Number.isFinite(Number(data.expressionLength)) ? Number(data.expressionLength) : this.getCurrentExpressionLength();
+        const levelText = `第 ${levelId} 关`;
+        if (this.campaignVictoryText) {
+            if (bestRecord === null || !Number.isFinite(bestRecord)) {
+                this.campaignVictoryText.innerHTML = `${levelText} 记录：<span style="color:#fff">${length}</span>`;
+            } else if (data.isNewRecord) {
+                const previousBest = Number(data.previousBest);
+                const diff = previousBest > 0 ? previousBest - length : null;
+                this.campaignVictoryText.innerHTML = Number.isFinite(diff)
+                    ? `new record：${length} <span style="color:#22c55e;">（-${diff}）</span>`
+                    : `new record：${length}`;
+            } else {
+                const diff = length - bestRecord;
+                this.campaignVictoryText.innerHTML = `best record：${bestRecord} &nbsp;&nbsp;&nbsp; score：${length} <span style="color:#ef4444;">(+${diff})</span>`;
+            }
+        }
+        const starCount = Math.max(1, Math.min(5, Number(data.score) || 1));
+        this.renderCampaignVictoryStars(starCount);
+        this.campaignVictoryModal.style.display = 'flex';
+        this.campaignVictoryModal.dataset.levelId = String(levelId);
+        this.campaignVictoryModal.dataset.totalLevels = String(data.totalLevels || (this.campaignPack && this.campaignPack.levels ? this.campaignPack.levels.length : 0));
+        this.campaignVictoryModal.dataset.difficulty = data.difficulty || this.campaignDifficulty || '';
+        this.campaignVictoryModal.dataset.stars = String(starCount);
+        this.campaignVictoryModal.dataset.length = String(length);
+    }
+
+    hideCampaignVictory() {
+        if (this.campaignVictoryModal) this.campaignVictoryModal.style.display = 'none';
+    }
+
+    getCurrentExpressionLength() {
+        const expression = this.currentExpression || this.gameController?.getGameState?.()?.roundState?.functionExpression || '';
+        if (!expression) return 0;
+        const cleanExpr = expression.replace(/\s+/g, '').replace(/[()（）]/g, '');
+        let length = 0;
+        const tokenRegex = /(sin|cos|tan|abs|exp|ln|log|sqrt|factorial)|(\d+(?:\.\d+)?)|(PI|π|e|i)|([+\-*/^!])|(x)/gi;
+        let match;
+        while ((match = tokenRegex.exec(cleanExpr)) !== null) {
+            length++;
+        }
+        if (length === 0 && cleanExpr.length > 0) {
+            length = cleanExpr.length;
+        }
+        return length;
+    }
+
+    getCampaignLevelBestRecord(levelId) {
+        try {
+            const raw = localStorage.getItem(`function_chess_campaign_best_${levelId}`);
+            const n = raw ? Number(raw) : null;
+            return Number.isFinite(n) ? n : null;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    setCampaignLevelBestRecord(levelId, length) {
+        try {
+            localStorage.setItem(`function_chess_campaign_best_${levelId}`, String(length));
+        } catch (e) { }
+    }
+
+    renderCampaignVictoryStars(count) {
+        if (!this.campaignVictoryModal) return;
+        let stars = this.campaignVictoryModal.querySelector('.campaign-victory-stars');
+        if (!stars) {
+            stars = document.createElement('div');
+            stars.className = 'campaign-victory-stars';
+            this.campaignVictoryModal.querySelector('.campaign-victory-content')?.insertBefore(stars, this.campaignVictoryText || null);
+        }
+        const filled = Math.max(1, Math.min(5, count));
+        stars.innerHTML = '';
+        for (let i = 1; i <= 5; i++) {
+            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.setAttribute('viewBox', '0 0 120 120');
+            svg.setAttribute('aria-hidden', 'true');
+            svg.classList.add('star');
+            if (i <= filled) svg.classList.add('filled');
+            svg.innerHTML = '<path d="M60 14c3.1 0 5.6 1.6 6.9 4.3l11.3 22.9 25.3 3.7c3 .5 5.5 2.5 6.5 5.4 1 2.9.3 6-1.9 8.2L90 74.5l4.5 25.1c.5 3.1-.7 6.2-3.1 8-2.5 1.8-5.8 2.1-8.5.7L60 96.1 37.1 108.3c-2.7 1.4-6 .1-8.5-.7-2.4-1.8-3.6-4.9-3.1-8L30 74.5 12.9 54.5c-2.2-2.2-2.9-5.3-1.9-8.2 1-2.9 3.5-4.9 6.5-5.4l25.3-3.7L54.1 18.3C55.4 15.6 57.9 14 61 14Z"/>';
+            stars.appendChild(svg);
+        }
+    }
+
+    retryCampaignLevel() {
+        if (!this.campaignPack) return;
+        const levelId = Number(this.campaignCurrentLevelId || this.campaignVictoryModal?.dataset.levelId || 1);
+        this.hideCampaignVictory();
+        this.startCampaign(levelId);
+    }
+
+    async goToNextCampaignLevel() {
+        if (!this.campaignPack) return;
+        const current = Number(this.campaignCurrentLevelId || this.campaignVictoryModal?.dataset.levelId || 1);
+        const nextId = current + 1;
+        const total = this.campaignPack && Array.isArray(this.campaignPack.levels) ? this.campaignPack.levels.length : 0;
+        this.hideCampaignVictory();
+        if (nextId > total) {
+            this.showMessage('✅ 已经是最后一关', 'success');
+            this.openCampaignUI();
+            return;
+        }
+        this.startCampaign(nextId);
+    }
+
+    returnToCampaignLevelSelect() {
+        this.hideCampaignVictory();
+        if (this.campaignModal) this.campaignModal.style.display = 'flex';
+        this.showCampaignDifficulty();
+        this.refreshCampaignStartUI();
+    }
+
+    openCampaignUI() {
+        if (this.startModal) this.startModal.style.display = 'none';
+        if (this.campaignModal) this.campaignModal.style.display = 'flex';
+        this.showCampaignDifficulty();
+        this.hideBattleUI();
+        // 尝试静默加载一次（服务器环境可直接成功）
+        this.loadCampaignPack().then(() => this.updateCampaignGlobalProgressText());
+    }
+
+    closeCampaignUI() {
+        if (this.campaignModal) this.campaignModal.style.display = 'none';
+        this.hideCampaignVictory();
+        if (this.startModal) this.startModal.style.display = 'flex';
+        this.resetBattleGrid();
+        this.restoreBattleUI();
+        const badge = document.getElementById('campaign-level-badge');
+        if (badge) badge.style.display = 'none';
+        this.campaignDifficulty = null;
+        this.campaignCurrentLevelId = null;
+        this.campaignCurrentLevelBestRecord = null;
+    }
+
+    showCampaignDifficulty() {
+        if (this.campaignStepLevels) this.campaignStepLevels.style.display = 'none';
+        if (this.campaignStepDifficulty) this.campaignStepDifficulty.style.display = 'block';
+        const badge = document.getElementById('campaign-level-badge');
+        if (badge) badge.style.display = 'none';
+        this.campaignDifficulty = null;
+        this.updateCampaignGlobalProgressText();
+    }
+
+    hideBattleUI() {
+        this.battleUiHidden = true;
+        if (this.header) {
+            this.header.classList.add('campaign-mode');
+        }
+        document.querySelectorAll('.score-display').forEach(el => el.style.display = 'none');
+        if (this.currentPlayerElement && this.currentPlayerElement.parentElement) {
+            this.currentPlayerElement.parentElement.style.display = 'none';
+        }
+        if (this.timerElement && this.timerElement.parentElement) {
+            this.timerElement.parentElement.style.display = 'none';
+        }
+        const roundDisplay = document.getElementById('round-display');
+        if (roundDisplay) roundDisplay.style.display = 'none';
+    }
+
+    restoreBattleUI() {
+        this.battleUiHidden = false;
+        if (this.header) {
+            this.header.classList.remove('campaign-mode');
+        }
+        document.querySelectorAll('.score-display').forEach(el => el.style.display = '');
+        if (this.currentPlayerElement && this.currentPlayerElement.parentElement) {
+            this.currentPlayerElement.parentElement.style.display = '';
+        }
+        if (this.timerElement && this.timerElement.parentElement) {
+            this.timerElement.parentElement.style.display = '';
+        }
+        const roundDisplay = document.getElementById('round-display');
+        if (roundDisplay) roundDisplay.style.display = '';
+        const badge = document.getElementById('campaign-level-badge');
+        if (badge) badge.style.display = 'none';
+    }
+
+    resetBattleGrid() {
+        if (!this.gridSystem) return;
+
+        if (typeof this.gridSystem.setCampaignFixedRange === 'function') {
+            this.gridSystem.setCampaignFixedRange(false);
+        }
+
+        if (typeof this.gridSystem.clearAll === 'function') {
+            this.gridSystem.clearAll();
+        }
+
+        if (typeof this.gridSystem.setRange === 'function') {
+            this.gridSystem.setRange(5);
+        }
+
+        if (typeof this.gridSystem.draw === 'function') {
+            this.gridSystem.draw();
+        }
+    }
+
+    updateCampaignGlobalProgressText(stars = null) {
+        if (!this.campaignGlobalProgress) return;
+        const cleared = this.getCampaignClearedMax();
+        const total = this.campaignPack && Array.isArray(this.campaignPack.levels) ? this.campaignPack.levels.length : 0;
+        const visibleTotal = this.developerMode || cleared >= 81 ? total : Math.min(total, 81);
+        const starCount = stars === null ? this.getCampaignCollectedStars() : stars;
+        this.campaignGlobalProgress.textContent = total > 0
+            ? `已通关 ${cleared}/${visibleTotal}`
+            : '未加载关卡：请导入 levels.json（本地打开HTML时浏览器可能拦截自动读取）';
+        if (this.campaignStarProgress) {
+            this.renderCampaignStarProgress(starCount);
+        }
+    }
+
+    resetCampaignProgress() {
+        try {
+            localStorage.removeItem('function_chess_campaign_cleared');
+            localStorage.removeItem('function_chess_campaign_stars');
+            for (let i = 1; i <= 90; i++) {
+                localStorage.removeItem(`function_chess_campaign_best_${i}`);
+            }
+            this.campaignCurrentLevelBestRecord = null;
+            this.showMessage('✅ 闯关进度已重置', 'success');
+            this.updateCampaignGlobalProgressText(0);
+        } catch (e) {
+            this.showMessage('❌ 重置失败', 'error');
+        }
+    }
+
+    getDifficultyRange(diff) {
+        if (diff === 'easy') return { start: 1, end: 29, cls: 'easy', label: '简单（1-29）' };
+        if (diff === 'normal') return { start: 30, end: 53, cls: 'normal', label: '普通（30-53）' };
+        if (diff === 'hard') return { start: 54, end: 69, cls: 'hard', label: '困难（54-69）' };
+        if (diff === 'expert') return { start: 70, end: 81, cls: 'expert', label: '专家（70-81）' };
+        return { start: 82, end: 90, cls: 'unsolvable', label: '无解（82-90）' };
+    }
+
+    openCampaignLevels(diff) {
+        this.campaignDifficulty = diff;
+        if (this.campaignStepDifficulty) this.campaignStepDifficulty.style.display = 'none';
+        if (this.campaignStepLevels) this.campaignStepLevels.style.display = 'block';
+        this.renderCampaignLevelGrid();
+    }
+
+    refreshUnsovableDifficultyVisibility() {
+        const grid = document.getElementById('campaign-difficulty-grid');
+        const btn = document.getElementById('campaign-diff-unsolvable');
+        if (!grid || !btn) return;
+        const cleared = this.getCampaignClearedMax();
+        const shouldShow = this.developerMode || cleared >= 81;
+        btn.style.display = shouldShow ? '' : 'none';
+        grid.style.gridTemplateColumns = shouldShow ? 'repeat(5, minmax(0, 1fr))' : 'repeat(4, minmax(0, 1fr))';
+    }
+
+    updateCampaignLevelBadge(levelId = null, totalLevels = null, difficulty = null) {
+        const badge = document.getElementById('campaign-level-badge');
+        const value = document.getElementById('campaign-level-value');
+        if (!badge || !value) return;
+
+        const diff = difficulty || this.campaignDifficulty;
+        if (!diff) {
+            badge.style.display = 'none';
+            return;
+        }
+
+        const range = this.getDifficultyRange(diff);
+        const currentLevelId = Number(levelId ?? this.campaignCurrentLevelId ?? range.start);
+        const bestRecord = this.getCampaignLevelBestRecord(currentLevelId);
+        badge.className = `campaign-level-badge ${range.cls}`;
+        if (bestRecord !== null && Number.isFinite(bestRecord)) {
+            value.textContent = `Lv. ${currentLevelId} (best record:${bestRecord})`;
+        } else {
+            value.textContent = `Lv. ${currentLevelId}`;
+        }
+        badge.style.display = 'inline-flex';
+    }
+
+    renderCampaignLevelGrid() {
+        if (!this.campaignLevelGrid || !this.campaignLevelTitle || !this.campaignLevelProgress) return;
+        const range = this.getDifficultyRange(this.campaignDifficulty);
+        this.campaignLevelTitle.textContent = `选择关卡：${range.label}`;
+
+        const cleared = this.getCampaignClearedMax();
+        const total = this.campaignPack && Array.isArray(this.campaignPack.levels) ? this.campaignPack.levels.length : 0;
+        const unlockedMax = this.developerMode ? range.end : Math.min(total, cleared + 1);
+        this.campaignLevelProgress.textContent = this.developerMode
+            ? `开发者模式：可直接进入 ${range.start}-${range.end} 关`
+            : `已通关 ${cleared}/${total}，当前可进入 ≤ ${unlockedMax}`;
+
+        this.campaignLevelGrid.innerHTML = '';
+        for (let id = range.start; id <= range.end; id++) {
+            const cell = document.createElement('div');
+            cell.className = `campaign-level-cell ${range.cls}`;
+            cell.textContent = String(id);
+
+            const locked = !this.developerMode && id > unlockedMax;
+            if (locked) cell.classList.add('locked');
+            if (id <= cleared) cell.classList.add('cleared');
+
+            cell.addEventListener('click', async () => {
+                if (locked) return;
+                // 进入游戏界面
+                if (this.campaignModal) this.campaignModal.style.display = 'none';
+                await this.startCampaign(id);
+            });
+            this.campaignLevelGrid.appendChild(cell);
         }
     }
     
@@ -2446,6 +3046,7 @@ class UIController {
             'normal': '普通',
             'hard': '困难',
             'expert': '专家',
+            'unsolvable': '无解',
             'test': '测试'
         };
         return names[difficulty] || difficulty;

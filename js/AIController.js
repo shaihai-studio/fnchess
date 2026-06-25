@@ -16,8 +16,6 @@ class AIController {
         this.pendingRevengePuzzle = null;  // 当前回合反出给玩家的局面
         this.learnedSolutions = [];        // 精确解法库 [{targetCells, forbiddenCells, expression}]
         this.learnedTemplates = [];        // 算法模板库 [{core, original}]（计入生成算法）
-        this.failedStructures = [];        // 失败结构记忆库 [{signature, cores}]
-                                           // signature: 结构指纹(目标格相对位置), cores: 成功的模板core列表
 
         // ── 加载持久化的学习数据 ─────────────────────────────────────────
         this._loadLearnedData();
@@ -65,11 +63,11 @@ class AIController {
         if (!phase) {
             phase = this.gameController.currentPhase;
         }
-        
+
         console.log('[AI] ========== 开始执行阶段 ==========');
         console.log('[AI] 阶段:', phase);
         console.log('[AI] 当前玩家:', this.gameController.currentPlayer);
-        
+
         // 模拟思考时间
         await this.think(1000 + Math.random() * 1000);
 
@@ -78,16 +76,16 @@ class AIController {
                 console.log('[AI] >> 选择目标格');
                 await this.selectTargets();
                 await this.think(500);
-                
+
                 // 检查目标格数量
                 const currentCount = this.gameController.roundState.targetCells.length;
                 const requiredCount = this.gameController.targetCount;
                 console.log(`[AI] 目标格选择完成: ${currentCount}/${requiredCount}`);
-                
+
                 console.log('[AI] 确认目标格选择');
                 const confirmResult = this.gameController.confirmTargetSelection();
                 console.log(`[AI] 确认结果: ${confirmResult}`);
-                
+
                 if (!confirmResult) {
                     // 如果确认失败（格子不够），补齐缺少的格子再次尝试
                     console.warn('[AI] 确认目标格失败，尝试补齐缺少格子');
@@ -165,9 +163,13 @@ class AIController {
             return;
         }
 
-        // ── 挑衅反转模式：直接出题，等玩家成功后再训练 ───────────────────────────
+        // ── 挑衅反转模式：先训练再出题 ────────────────────────────────────────
         if (this.revengeMode && this.failedPuzzle) {
-            console.log('[AI] 进入复仇模式，直接选择目标格');
+            console.log('[AI] 进入复仇模式，先进行100000局现场训练...');
+            // 对失败局面及其变体进行100000局训练
+            await this.trainOnFailedPuzzle(this.failedPuzzle);
+
+            console.log('[AI] 复仇训练完成，开始选择目标格');
             const revengeSuccess = this._tryRevengeTargetSelection(half, count);
             this.revengeMode = false;
             if (!revengeSuccess) {
@@ -213,7 +215,7 @@ class AIController {
                 }
                 if (Math.random() > strategy.targetAccuracy) score = Math.random() * 10;
 
-                if (score > bestScore) { bestScore = score; bestCell = {x: cx, y: cy}; }
+                if (score > bestScore) { bestScore = score; bestCell = { x: cx, y: cy }; }
             }
 
             // 底安：随机采样全部失败时穷举找最佳空位
@@ -235,17 +237,17 @@ class AIController {
                 break;
             }
         }
-        
+
         console.log(`[AI] 普通选题结束: 最终 ${placed}/${count} 个目标格`);
     }
-    
+
     /**
      * 检查位置是否离已选目标太近
      */
     isTooCloseToExisting(x, y) {
         const state = this.gameController.getGameState();
         const minDistance = 3; // 最小距离
-        
+
         for (const cell of state.roundState.targetCells) {
             const distance = Math.abs(cell.x - x) + Math.abs(cell.y - y);
             if (distance < minDistance) {
@@ -274,7 +276,7 @@ class AIController {
             for (const cell of this.pendingRevengePuzzle.forbiddenCells) {
                 if (placedCount >= maxForbidden) break;
                 if (this.isValidForbiddenPosition(cell.x, cell.y)) {
-                    this.gameController.addForbiddenCell({...cell});
+                    this.gameController.addForbiddenCell({ ...cell });
                     placedCount++;
                 }
             }
@@ -295,8 +297,8 @@ class AIController {
                 for (let i = 0; i < 30; i++) {
                     let tx = Math.floor(target.x * Math.random()) + Math.floor(Math.random() * 3 - 1);
                     let ty = Math.floor(target.y * Math.random()) + Math.floor(Math.random() * 3 - 1);
-                    if (tx < -gridSize/2 || tx >= gridSize/2) continue;
-                    if (ty < -gridSize/2 || ty >= gridSize/2) continue;
+                    if (tx < -gridSize / 2 || tx >= gridSize / 2) continue;
+                    if (ty < -gridSize / 2 || ty >= gridSize / 2) continue;
                     if (this.isValidForbiddenPosition(tx, ty)) {
                         bestX = tx; bestY = ty; found = true; break;
                     }
@@ -314,7 +316,7 @@ class AIController {
             }
 
             if (found) {
-                this.gameController.addForbiddenCell({x: bestX, y: bestY});
+                this.gameController.addForbiddenCell({ x: bestX, y: bestY });
                 placedCount++;
             } else {
                 break; // 棋盘已满，无法继续
@@ -323,7 +325,7 @@ class AIController {
 
         console.log(`[AI] 禁区设置完成，共设置 ${placedCount} 个禁区`);
     }
-    
+
     /**
      * 检查是否为有效的禁区位置
      */
@@ -397,62 +399,14 @@ class AIController {
         if (this.learnedSolutions.length > 0 && this.uiController && this.uiController.renderer) {
             for (const solution of this.learnedSolutions) {
                 if (this.solutionMatchesPuzzle(solution, targetCells)) {
-                    const range = this.gridSystem.getRange();
-                    const poly = this.uiController.renderer.sampleFunction(solution.expression, range.min, range.max);
-                    if (poly && poly.length > 0) {
-                        let fail = false;
-                        let hits = 0;
-                        for (const t of targetCells) {
-                            if (this.uiController.detector.checkHitTarget(poly, t, this.gridSystem)) hits++;
+                    if (this.isExpressionActuallySuccessful(solution.expression, targetCells, forbiddenCells)) {
+                        // 检查是否包含被锁定的元素
+                        if (!this.isValidExpression(solution.expression, lockedElements)) {
+                            console.log('[AI] 精确学习解法包含被锁定元素，跳过:', solution.expression);
+                            continue;
                         }
-                        if (hits < targetCells.length) fail = true;
-                        if (!fail && this.uiController.detector.checkHitForbidden(poly, forbiddenCells, this.gridSystem)) fail = true;
-                        if (!fail) {
-                            // 检查是否包含被锁定的元素
-                            if (!this.isValidExpression(solution.expression, lockedElements)) {
-                                console.log('[AI] 精确学习解法包含被锁定元素，跳过:', solution.expression);
-                                continue;
-                            }
-                            console.log('[AI] 精确学习解法通过验证！直接使用:', solution.expression);
-                            return solution.expression;
-                        }
-                    }
-                }
-            }
-        }
-
-        // ── 检测当前局面是否匹配已知失败结构，优先使用关联模板 ────────────────
-        if (this.failedStructures.length > 0 && targetCells.length > 0) {
-            const currentSig = this._computeStructureSignature(targetCells);
-            if (currentSig) {
-                const matchedFS = this.failedStructures.find(fs => fs.signature === currentSig && fs.cores.length > 0);
-                if (matchedFS) {
-                    console.log(`[AI] 检测到已知失败结构 ${currentSig}，优先使用关联模板 [${matchedFS.cores.join(', ')}]`);
-                    // 尝试用关联的成功模板自适应当前目标格
-                    for (const core of matchedFS.cores) {
-                        if (!this.isValidExpression(core, lockedElements)) continue;
-                        const adapted = this._adaptCoreToTargets(core, targetCells);
-                        if (!adapted) continue;
-                        if (!this.isValidExpression(adapted, lockedElements)) continue;
-                        // 物理验证
-                        if (this.uiController && this.uiController.renderer) {
-                            const range = this.gridSystem.getRange();
-                            const poly = this.uiController.renderer.sampleFunction(adapted, range.min, range.max);
-                            if (poly && poly.length > 0) {
-                                let hits = 0;
-                                for (const t of targetCells) {
-                                    if (this.uiController.detector.checkHitTarget(poly, t, this.gridSystem)) hits++;
-                                }
-                                if (hits >= targetCells.length &&
-                                    !this.uiController.detector.checkHitForbidden(poly, forbiddenCells, this.gridSystem)) {
-                                    console.log(`[AI] 失败结构关联模板命中！使用: ${adapted}`);
-                                    return adapted;
-                                }
-                            }
-                        } else if (this._verifyExpressionPure(adapted, targetCells, forbiddenCells)) {
-                            console.log(`[AI] 失败结构关联模板命中（纯数学验证）！使用: ${adapted}`);
-                            return adapted;
-                        }
+                        console.log('[AI] 精确学习解法通过验证！直接使用:', solution.expression);
+                        return solution.expression;
                     }
                 }
             }
@@ -462,7 +416,7 @@ class AIController {
         const SLICE_MS = 8;
         let sliceStart = performance.now();
 
-        for (let attempt = 0; attempt < 500; attempt++) {
+        for (let attempt = 0; attempt < 2000; attempt++) {
             const now = performance.now();
             if (now - sliceStart >= SLICE_MS) {
                 await new Promise(resolve => requestAnimationFrame(resolve));
@@ -471,14 +425,10 @@ class AIController {
 
             let expression = null;
 
-            // ── 每轮都尝试模板自适应（已内置锁定检查） ─────────────────────
+            // ── 每轮都尝试模板自适应（学习计入算法） ─────────────────────
             if (this.learnedTemplates.length > 0 && targetCells.length > 0) {
-                // 只从不含锁定元素的模板中选取
-                const validTemplates = this.learnedTemplates.filter(t => this.isValidExpression(t.core, lockedElements));
-                if (validTemplates.length > 0) {
-                    const tmpl = validTemplates[Math.floor(Math.random() * validTemplates.length)];
-                    expression = this.adaptTemplateToTargets(tmpl, targetCells, lockedElements);
-                }
+                const tmpl = this.learnedTemplates[Math.floor(Math.random() * this.learnedTemplates.length)];
+                expression = this.adaptTemplateToTargets(tmpl, targetCells, lockedElements);
             }
 
             if (!expression && targetCells.length > 0) {
@@ -486,43 +436,29 @@ class AIController {
             }
 
             if (!expression) {
-                // 从难度模板中过滤掉含锁定元素的模板
-                const allTemplates = this.getTemplatesByDifficulty(difficulty);
-                const safeTemplates = allTemplates.filter(t => {
-                    const expanded = t.replace(/\{n\}/g, '1').replace(/\{c\}/g, '1');
-                    return this.isValidExpression(expanded, lockedElements);
-                });
-                if (safeTemplates.length > 0) {
-                    const template = safeTemplates[Math.floor(Math.random() * safeTemplates.length)];
-                    expression = template.replace(/\{n\}/g, () => Math.floor(Math.random() * 5) + 1)
-                                         .replace(/\{c\}/g, () => Math.floor(Math.random() * 10) - 5);
-                }
+                const templates = this.getTemplatesByDifficulty(difficulty);
+                const template = templates[Math.floor(Math.random() * templates.length)];
+                expression = template.replace(/\{n\}/g, () => Math.floor(Math.random() * 5) + 1)
+                    .replace(/\{c\}/g, () => Math.floor(Math.random() * 10) - 5);
             }
 
-            // 如果本轮没有生成有效表达式，直接进入下一轮
-            if (!expression) continue;
+            // ── 锁定合规检查：确保表达式不包含被锁定的元素 ──────────────────
+            if (expression && !this.isValidExpression(expression, lockedElements)) {
+                expression = null;
+            }
 
             bestExpr = expression;
 
             let fail = false;
             let hitCount = 0;
 
-            if (this.uiController && this.uiController.renderer) {
-                const range = this.gridSystem.getRange();
-                const polyline = this.uiController.renderer.sampleFunction(expression, range.min, range.max);
-
-                if (!polyline || polyline.length === 0) {
+            if (!expression) {
+                fail = true;
+            } else if (this.uiController && this.uiController.renderer) {
+                if (!this.isExpressionActuallySuccessful(expression, targetCells, forbiddenCells)) {
                     fail = true;
                 } else {
-                    for (const target of targetCells) {
-                        if (this.uiController.detector.checkHitTarget(polyline, target, this.gridSystem)) {
-                            hitCount++;
-                        }
-                    }
-                    if (hitCount < targetCells.length) fail = true;
-                    if (!fail && this.uiController.detector.checkHitForbidden(polyline, forbiddenCells, this.gridSystem)) {
-                        fail = true;
-                    }
+                    hitCount = targetCells.length;
                 }
             } else {
                 hitCount = this.countTargetHits(expression, targetCells, forbiddenCells);
@@ -547,25 +483,47 @@ class AIController {
         // ── 500 次全败：记录无法破解的局面，下回合反出给玩家 ───────────────
         if (targetCells.length > 0) {
             this.failedPuzzle = {
-                targetCells: targetCells.map(c => ({...c})),
-                forbiddenCells: forbiddenCells.map(c => ({...c}))
+                targetCells: targetCells.map(c => ({ ...c })),
+                forbiddenCells: forbiddenCells.map(c => ({ ...c }))
             };
             this.revengeMode = true;
-
-            // 记录失败结构指纹（如果尚未记录）
-            const sig = this._computeStructureSignature(targetCells);
-            if (sig && !this.failedStructures.some(fs => fs.signature === sig)) {
-                this.failedStructures.push({ signature: sig, cores: [] });
-                console.log('[AI] 记录新的失败结构指纹:', sig);
-            }
-
             console.log('[AI] 局面记录完毕，下回合将反出给玩家');
         }
 
-        console.log('[AI] 连续 500 大轮搜寻全部失败，强制递交次优突变解:', bestExpr);
-        return bestExpr || 'x';
+        console.log('[AI] 连续 2000 大轮搜寻全部失败，强制递交次优突变解:', bestExpr);
+        return bestExpr;
     }
-    
+
+    /**
+     * 使用与正式结算一致的高精度碰撞检测，判断表达式是否真正成功。
+     */
+    isExpressionActuallySuccessful(expression, targetCells, forbiddenCells) {
+        if (!expression || !this.uiController || !this.uiController.renderer || !this.uiController.detector) {
+            return false;
+        }
+
+        const range = this.gridSystem.getRange();
+        // 与 UIController.renderAndEvaluate 保持一致：碰撞检测使用高精度采样
+        const collisionPoints = this.uiController.renderer.sampleFunction(expression, range.min, range.max, true);
+        const polyline = this.uiController.renderer.convertToPolyline(collisionPoints);
+        if (!polyline || polyline.length === 0) return false;
+
+        let hitCount = 0;
+        for (const target of targetCells) {
+            if (this.uiController.detector.checkHitTarget(polyline, target, this.gridSystem)) {
+                hitCount++;
+            }
+        }
+        if (hitCount < targetCells.length) return false;
+
+        if (forbiddenCells.length > 0 &&
+            this.uiController.detector.checkHitForbidden(polyline, forbiddenCells, this.gridSystem)) {
+            return false;
+        }
+
+        return true;
+    }
+
     /**
      * 智能构造函数穿过目标格
      */
@@ -573,13 +531,13 @@ class AIController {
      * 智能构造函数穿过目标格
      */
     constructFunctionForTargets(targetCells, forbiddenCells, lockedElements, strategy) {
-        
+
         // 强大的神经元生成器：基于锁定系统分层递进搜索
         const availableOps = ['+', '-', '*', '/', '^', 'sin', 'cos', 'tan', 'abs', 'ln', 'e', 'sqrt'].filter(op => !lockedElements.includes(op));
         const canFloat = !lockedElements.includes('.');
         const canAdd = availableOps.includes('+');
         const canSub = availableOps.includes('-');
-        
+
         console.log("[AI] 可用运算符:", availableOps);
 
         // 读取训练好的神经记忆池作为突变起点
@@ -588,14 +546,14 @@ class AIController {
         let memory = { best_functions: ['x', 'x^2', 'sin(x)'] };
         try {
             const raw = localStorage.getItem(`summa_model_v2_${diff}`);
-            if(raw) memory = JSON.parse(raw);
-            if(!memory.best_functions || memory.best_functions.length === 0) memory.best_functions = ['x'];
-        } catch(e) {} // eslint-disable-line no-empty
-        
+            if (raw) memory = JSON.parse(raw);
+            if (!memory.best_functions || memory.best_functions.length === 0) memory.best_functions = ['x'];
+        } catch (e) { } // eslint-disable-line no-empty
+
         // 提取候选核心基因
         let candidateCores = [];
         // 从记忆池中抓取最多 20 个基因
-        for(let j=0; j<20; j++) {
+        for (let j = 0; j < 20; j++) {
             candidateCores.push(memory.best_functions[Math.floor(Math.random() * memory.best_functions.length)]);
         }
         // 始终混入基础退火解（确保在极度恶劣的条件下有解）
@@ -607,100 +565,100 @@ class AIController {
         // 内层突变20次（与外层共同构成 10000 次求值）
         for (let j = 0; j < 20; j++) {
             this.lastThinkCount++;
-            
+
             // 只保留允许使用的 Core
             let cores = candidateCores.filter(c => this.isValidExpression(c, lockedElements));
             if (cores.length === 0) break;
-            
+
             let expr = this.buildExpression(cores, availableOps, canFloat, targetCells[0]);
             if (!expr || !this.isValidExpression(expr, lockedElements)) continue;
-            
+
             const hitCount = this.countTargetHits(expr, targetCells, forbiddenCells);
-            
+
             // 优先选择命中数高的，如果命中数一样，优先选择字符更短的（更简单的公式）
             if (hitCount > maxHits || (hitCount === maxHits && expr.length < bestExpr.length)) {
                 maxHits = hitCount;
                 bestExpr = expr;
             }
-            
+
             // 这里我们不再提前 return expr，因为我们需要靠外层的“真实物理引擎”来做绝对检查！
             // 提前返回可能会返回一个过长或者撞禁区的假阳性结果。我们让其跑完 20 次，筛选出短且命中的。
         }
-        
+
         return bestExpr;
     }
-    
+
     buildExpression(cores, availableOps, canFloat, target) {
         let core = cores[Math.floor(Math.random() * cores.length)];
-        if(!target) return core;
-        
+        if (!target) return core;
+
         let tx = target.x + 0.5;
         let ty = target.y + 0.5;
-        
+
         // 如果没有加减法
         if (!availableOps.includes('+') && !availableOps.includes('-')) {
             let evaluateCore = this.evaluateFunction(core, tx);
-            if(Math.abs(evaluateCore) > 0.001 && evaluateCore !== Infinity) {
+            if (Math.abs(evaluateCore) > 0.001 && evaluateCore !== Infinity) {
                 let A = ty / evaluateCore;
                 A = canFloat ? parseFloat(A.toFixed(1)) : Math.round(A);
-                if(A === 0) A = 1;
-                if(A === 1) return core;
+                if (A === 0) A = 1;
+                if (A === 1) return core;
                 return `${A}*(${core})`;
             }
             return core;
         }
-        
+
         // 正常平移运算 y = A * core(x - B) + C
         let A = canFloat ? parseFloat((Math.random() * 4 - 2).toFixed(1)) : Math.round(Math.random() * 4 - 2);
         if (A === 0) A = 1;
-        
+
         let B = Math.round(tx);
         let x_replacement = 'x';
-        
+
         // 我们只在可用相应的运算符时偏移中心点
         if (B > 0 && availableOps.includes('-')) x_replacement = `x-${B}`;
         else if (B < 0 && availableOps.includes('+')) x_replacement = `x+${-B}`;
-        
+
         let modCore = core;
         if (x_replacement !== 'x') {
             // 安全匹配：不仅避免双重括号 ((x-B)) 的崩溃，也替换所有的 x
             if (core === 'x') modCore = `(${x_replacement})`;
             else {
                 modCore = core.replace(/x/g, `(${x_replacement})`)
-                              .replace(/\(\(/g, '(')
-                              .replace(/\)\)/g, ')');
+                    .replace(/\(\(/g, '(')
+                    .replace(/\)\)/g, ')');
             }
         }
-        
+
         let evaluateCore = this.evaluateFunction(modCore, tx);
-        if(evaluateCore === Infinity || isNaN(evaluateCore)) return null;
-        
+        if (evaluateCore === Infinity || isNaN(evaluateCore)) return null;
+
         let C = ty - A * evaluateCore;
         C = canFloat ? parseFloat(C.toFixed(1)) : Math.round(C);
-        
+
         if (Math.abs(C) > 50) return null; // 截距如果太夸张就算了
-        
+
         let finalExpr = modCore;
         if (A !== 1) {
             finalExpr = `${A}*${modCore.startsWith('(') ? modCore : `(${modCore})`}`;
             finalExpr = finalExpr.replace(/\(\(/g, '(').replace(/\)\)/g, ')');
         }
-        
+
         if (C > 0 && availableOps.includes('+')) return `${finalExpr}+${C}`;
         else if (C < 0 && availableOps.includes('-')) return `${finalExpr}${C}`;
-        
+
         return finalExpr;
     }
-    
+
     evaluateFunction(expr_str, x_val) {
         try {
             return this.parser.evaluate(expr_str, x_val);
-        // eslint-disable-next-line no-unused-vars
-        } catch(e) {
+            // eslint-disable-next-line no-unused-vars
+        } catch (e) {
             return Infinity;
         }
     }
-    
+
     /**
      * 构造穿过单个目标格的函数
      */
@@ -708,25 +666,25 @@ class AIController {
         const attempts = 20;
         const difficulty = this.gameController.difficulty;
         const decimalLocked = lockedElements.includes('.');
-        
+
         for (let i = 0; i < attempts; i++) {
             let expression = null;
-            
+
             // 根据难度选择不同的函数类型概率
             const funcType = this.selectFunctionTypeByDifficulty(difficulty, strategy);
-            
-            switch(funcType) {
+
+            switch (funcType) {
                 case 0: // 常值函数 y = c
                     expression = `${Math.round(ty)}`;
                     break;
-                    
+
                 case 1: // 一次函数 y = ax + b
                     if (decimalLocked) {
                         // 小数点被锁定：使用整数斜率和截距
                         // 先尝试精确计算
                         const a1 = Math.round((Math.random() * 4 - 2));
                         const b1 = Math.round(ty - a1 * tx);
-                        
+
                         // 检查截距是否合理
                         if (Math.abs(b1) <= 20) {
                             expression = this.formatLinearExpression(a1.toString(), b1.toString());
@@ -742,7 +700,7 @@ class AIController {
                         expression = this.formatLinearExpression(a1, b1);
                     }
                     break;
-                    
+
                 case 2: // 二次函数 y = a(x-h)^2 + k
                     if (decimalLocked) {
                         // 小数点被锁定：使用整数参数，精确计算
@@ -750,7 +708,7 @@ class AIController {
                         const k = Math.round(ty);
                         const dx = tx - h;
                         let a;
-                        
+
                         if (Math.abs(dx) > 0.1) {
                             // 精确计算a
                             a = Math.round((ty - k) / Math.pow(dx, 2));
@@ -765,7 +723,7 @@ class AIController {
                             a = Math.round(Math.random() * 2 - 1);
                             if (a === 0) a = 1;
                         }
-                        
+
                         expression = `${a}*(x-${h})^2+${k}`;
                     } else {
                         const h = (tx + Math.random() * 4 - 2).toFixed(1);
@@ -774,7 +732,7 @@ class AIController {
                         expression = `${a2}*(x-${h})^2+${k}`;
                     }
                     break;
-                    
+
                 case 3: // 三次函数 y = a(x-h)^3 + k
                     if (decimalLocked) {
                         // 小数点被锁定：使用整数参数，精确计算
@@ -782,7 +740,7 @@ class AIController {
                         const k3 = Math.round(ty);
                         const dx = tx - h3;
                         let a3;
-                        
+
                         if (Math.abs(dx) > 0.1) {
                             // 精确计算a3使得函数穿过目标点
                             a3 = Math.round((ty - k3) / Math.pow(dx, 3));
@@ -800,7 +758,7 @@ class AIController {
                             a3 = Math.round(Math.random() * 2 - 1);
                             if (a3 === 0) a3 = 1;
                         }
-                        
+
                         expression = `${a3}*(x-${h3})^3+${k3}`;
                     } else {
                         const h3 = (tx + Math.random() * 2 - 1).toFixed(1);
@@ -809,7 +767,7 @@ class AIController {
                         expression = `${a3}*(x-${h3})^3+${k3}`;
                     }
                     break;
-                    
+
                 case 4: // 高次函数 y = a*sin(bx) + c 或 a*|x-h|^n + k
                     if (decimalLocked) {
                         if (Math.random() < 0.5) {
@@ -843,7 +801,7 @@ class AIController {
                         }
                     }
                     break;
-                    
+
                 case 5: // 分式函数 y = a/x + b
                     if (decimalLocked) {
                         const a = Math.round(Math.random() * 4 + 1);
@@ -855,7 +813,7 @@ class AIController {
                         expression = `${a}/x+${b}`;
                     }
                     break;
-                    
+
                 case 6: // 绝对值函数 y = a*|x-h| + k
                     if (decimalLocked) {
                         // 小数点被锁定：使用整数参数，精确计算
@@ -863,7 +821,7 @@ class AIController {
                         const k = Math.round(ty);
                         const dx = Math.abs(tx - h);
                         let a;
-                        
+
                         if (dx > 0.1) {
                             // 精确计算a
                             a = Math.round((ty - k) / dx);
@@ -878,7 +836,7 @@ class AIController {
                             a = Math.round(Math.random() * 4 - 2);
                             if (a === 0) a = 1;
                         }
-                        
+
                         expression = `${a}*abs(x-${h})+${k}`;
                     } else {
                         const h = tx.toFixed(1);
@@ -887,7 +845,7 @@ class AIController {
                         expression = `${a}*abs(x-${h})+${k}`;
                     }
                     break;
-                    
+
                 case 7: // 三角函数 y = a*sin(bx) + c 或 a*cos(bx) + c 或 tan
                     if (decimalLocked) {
                         const a = Math.round(Math.random() * 3 + 1);
@@ -905,7 +863,7 @@ class AIController {
                         expression = `${a}*${trigFunc}(${b}*x)+${c}`;
                     }
                     break;
-                    
+
                 case 8: // 四次函数 y = a(x-h)^4 + k
                     if (decimalLocked) {
                         // 将h设置在tx附近，确保穿过目标
@@ -947,7 +905,7 @@ class AIController {
                         expression = `${a}*(x-${h})^4+${k}`;
                     }
                     break;
-                    
+
                 case 9: // log/ln函数 y = a*ln(bx) + c 或 a*log(bx) + c
                     if (decimalLocked) {
                         const a = Math.round(Math.random() * 2 + 1);
@@ -967,7 +925,7 @@ class AIController {
                         }
                     }
                     break;
-                    
+
                 case 10: // 指数函数 y = a*e^(bx) + c
                     if (decimalLocked) {
                         const a = Math.round(Math.random() * 2 + 1);
@@ -985,7 +943,7 @@ class AIController {
                         }
                     }
                     break;
-                    
+
                 case 11: // 高次绝对值 y = a*|x-h|^n + k (n>=4)
                     if (decimalLocked) {
                         const h = Math.round(tx);
@@ -1021,7 +979,7 @@ class AIController {
                         expression = `${a}*abs(x-${h})^${n}+${k}`;
                     }
                     break;
-                    
+
                 case 12: // 五次函数 y = a(x-h)^5 + k
                     if (decimalLocked) {
                         const h = Math.round(tx);
@@ -1060,7 +1018,7 @@ class AIController {
                     }
                     break;
             }
-            
+
             if (expression && this.isValidExpression(expression, lockedElements)) {
                 console.log(`[AI] 尝试函数: ${expression}`);
                 if (this.checkFunctionHitsTarget(expression, targetCells, forbiddenCells)) {
@@ -1069,23 +1027,23 @@ class AIController {
                 }
             }
         }
-        
+
         return null;
     }
-    
+
     /**
      * 根据难度选择函数类型
      */
     selectFunctionTypeByDifficulty(difficulty, strategy) {
         const rand = Math.random();
-        
-        switch(difficulty) {
+
+        switch (difficulty) {
             case 'easy':
                 // 简单模式：70%一次函数，20%常值，10%二次
                 if (rand < 0.7) return 1; // 一次函数
                 if (rand < 0.9) return 0; // 常值函数
                 return 2; // 二次函数
-                
+
             case 'normal':
                 // 普通模式：优先2次函数、分式函数、绝对值函数
                 // 30%二次函数，25%分式函数(1/x)，25%绝对值函数，20%一次函数
@@ -1093,7 +1051,7 @@ class AIController {
                 if (rand < 0.55) return 5; // 分式函数 (1/x类型)
                 if (rand < 0.80) return 6; // 绝对值函数
                 return 1; // 一次函数
-                
+
             case 'hard':
                 // 困难模式：优先3次函数、三角函数
                 // 45%三次函数，25%三角函数，15%二次函数，10%绝对值函数，5%高次绝对值
@@ -1102,7 +1060,7 @@ class AIController {
                 if (rand < 0.85) return 2; // 二次函数
                 if (rand < 0.95) return 6; // 绝对值函数
                 return 11; // 高次绝对值 (3次)
-                
+
             case 'expert':
                 // 专家模式：优先4次+函数、!、log、ln等特殊函数
                 // 25%四次函数，20%log/ln函数，20%三角函数，15%指数函数，10%高次绝对值，10%五次函数
@@ -1112,12 +1070,12 @@ class AIController {
                 if (rand < 0.80) return 10; // 指数函数 (exp)
                 if (rand < 0.90) return 11; // 高次绝对值 (4次+)
                 return 12; // 五次函数
-                
+
             default:
                 return Math.floor(Math.random() * Math.min(strategy.functionComplexity + 1, 5));
         }
     }
-    
+
     /**
      * 构造穿过多个目标格的函数（困难/专家模式）
      */
@@ -1125,31 +1083,31 @@ class AIController {
         const attempts = 100;  // 增加尝试次数从30到100
         const difficulty = this.gameController.difficulty;
         const decimalLocked = lockedElements.includes('.');
-        
+
         for (let i = 0; i < attempts; i++) {
             let expression = null;
-            
+
             // 根据难度选择函数类型
             const funcType = this.selectFunctionTypeByDifficulty(difficulty, strategy);
-            
+
             // 随机选择2-3个目标格
             const numTargets = Math.min(Math.floor(Math.random() * 2) + 2, targetCells.length);
             const selectedTargets = this.selectRandomTargets(targetCells, numTargets);
-            
+
             if (selectedTargets.length < 2) continue;
-            
+
             const t1 = selectedTargets[0];
             const t2 = selectedTargets[1];
             const x1 = t1.x + 0.5;
             const y1 = t1.y + 0.5;
             const x2 = t2.x + 0.5;
             const y2 = t2.y + 0.5;
-            
+
             console.log(`[AI] 尝试穿过 ${numTargets} 个目标格`);
-            
+
             // 检测是否在同一列（x坐标相同或非常接近）
             const isSameColumn = Math.abs(x2 - x1) < 0.1;
-            
+
             if (isSameColumn) {
                 console.log('[AI] 检测到目标格在同一列，使用陡坡函数');
                 // 同一列：使用高次陡坡函数，如 x^n * 大系数
@@ -1157,28 +1115,28 @@ class AIController {
                 const x = x1;
                 const minY = Math.min(y1, y2);
                 const maxY = Math.max(y1, y2);
-                
+
                 // 尝试不同的陡坡函数
                 for (let attempt = 0; attempt < 5; attempt++) {
                     let steepExpr = null;
-                    
+
                     if (decimalLocked) {
                         // 小数点锁定：使用整数
                         const n = 4 + Math.floor(Math.random() * 2); // 4次或5次
                         const a = Math.round(Math.random() * 20 + 10); // 大系数 10-30
                         const sign = Math.random() < 0.5 ? 1 : -1;
                         const finalA = a * sign;
-                        
+
                         steepExpr = `${finalA}*(x-${Math.round(x)})^${n}`;
                     } else {
                         // 可以使用小数
                         const n = 4 + Math.floor(Math.random() * 2); // 4次或5次
                         const a = (Math.random() * 20 + 10).toFixed(1); // 10.0-30.0
                         const sign = Math.random() < 0.5 ? '' : '-';
-                        
+
                         steepExpr = `${sign}${a}*(x-${x.toFixed(1)})^${n}`;
                     }
-                    
+
                     if (this.isValidExpression(steepExpr, lockedElements)) {
                         // 验证是否穿过目标
                         const hitCount = this.countTargetHits(steepExpr, targetCells, forbiddenCells);
@@ -1188,7 +1146,7 @@ class AIController {
                         }
                     }
                 }
-                
+
                 // 如果陡坡函数失败，尝试简单的x = 常数的近似
                 // 由于函数不能表示x=c，我们用一个非常陡的一次函数
                 if (decimalLocked) {
@@ -1200,23 +1158,23 @@ class AIController {
                     const intercept = (y1 - steepSlope * x1).toFixed(1);
                     expression = `${steepSlope}*x+${intercept}`;
                 }
-                
+
                 if (this.isValidExpression(expression, lockedElements)) {
                     console.log(`[AI] 使用陡坡一次函数: ${expression}`);
                     return expression;
                 }
-                
+
                 // 如果都失败，继续尝试普通函数
                 console.log('[AI] 陡坡函数失败，尝试普通函数');
             }
-            
-            switch(funcType) {
+
+            switch (funcType) {
                 case 0: // 常值函数：只适合同一水平线的目标
                     if (Math.abs(y1 - y2) < 0.5) {
                         expression = `${Math.round((y1 + y2) / 2)}`;
                     }
                     break;
-                    
+
                 case 1: // 一次函数：穿过两点
                     if (decimalLocked) {
                         // 使用整数斜率
@@ -1235,7 +1193,7 @@ class AIController {
                         }
                     }
                     break;
-                    
+
                 case 2: // 二次函数
                     if (decimalLocked) {
                         const h = Math.round((x1 + x2) / 2);
@@ -1253,7 +1211,7 @@ class AIController {
                         }
                     }
                     break;
-                    
+
                 case 3: // 三次函数
                     if (decimalLocked) {
                         const h3 = Math.round((x1 + x2) / 2);
@@ -1271,7 +1229,7 @@ class AIController {
                         }
                     }
                     break;
-                    
+
                 case 4: // 高次函数
                     if (decimalLocked) {
                         if (Math.random() < 0.5) {
@@ -1309,11 +1267,11 @@ class AIController {
                         }
                     }
                     break;
-                    
+
                 case 5: // 分式函数 y = a/x + b (不适合多目标)
                     // 分式函数很难同时穿过两个点，跳过
                     break;
-                    
+
                 case 6: // 绝对值函数 y = a*|x-h| + k
                     if (decimalLocked) {
                         const h = Math.round((x1 + x2) / 2);
@@ -1331,7 +1289,7 @@ class AIController {
                         }
                     }
                     break;
-                    
+
                 case 7: // 三角函数
                     if (decimalLocked) {
                         const avgY = Math.round((y1 + y2) / 2);
@@ -1347,7 +1305,7 @@ class AIController {
                         expression = `${amplitude.toFixed(1)}*${trigFunc}(${freq}*x)+${avgY.toFixed(1)}`;
                     }
                     break;
-                    
+
                 case 8: // 四次函数
                     if (decimalLocked) {
                         const h = Math.round((x1 + x2) / 2);
@@ -1365,15 +1323,15 @@ class AIController {
                         }
                     }
                     break;
-                    
+
                 case 9: // log/ln函数 (不适合多目标)
                     // log函数很难同时穿过两个点，跳过
                     break;
-                    
+
                 case 10: // 指数函数 (不适合多目标)
                     // 指数函数很难同时穿过两个点，跳过
                     break;
-                    
+
                 case 11: // 高次绝对值 y = a*|x-h|^n + k (n>=4)
                     if (decimalLocked) {
                         const h = Math.round((x1 + x2) / 2);
@@ -1393,7 +1351,7 @@ class AIController {
                         }
                     }
                     break;
-                    
+
                 case 12: // 五次函数
                     if (decimalLocked) {
                         const h = Math.round((x1 + x2) / 2);
@@ -1412,7 +1370,7 @@ class AIController {
                     }
                     break;
             }
-            
+
             if (expression && this.isValidExpression(expression, lockedElements)) {
                 console.log(`[AI] 尝试多目标函数: ${expression}`);
                 const hitCount = this.countTargetHits(expression, targetCells, forbiddenCells);
@@ -1422,10 +1380,10 @@ class AIController {
                 }
             }
         }
-        
+
         return null;
     }
-    
+
     /**
      * 随机选择N个目标格
      */
@@ -1433,36 +1391,36 @@ class AIController {
         const shuffled = [...targetCells].sort(() => Math.random() - 0.5);
         return shuffled.slice(0, count);
     }
-    
+
     /**
      * 计算函数穿过多少个目标格
      */
     countTargetHits(expression, targetCells, forbiddenCells) {
         let hitCount = 0;
-        
+
         for (const target of targetCells) {
             const tx = target.x + 0.5;
             const ty = target.y + 0.5;
             const y = this.parser.evaluate(expression, tx);
-            
+
             if (y === null) continue;
-            
+
             const distanceToCenter = Math.abs(y - ty);
             if (distanceToCenter < 0.5) {
                 hitCount++;
             }
         }
-        
+
         return hitCount;
     }
-    
+
     /**
      * 格式化一次函数表达式
      */
     formatLinearExpression(a, b) {
         const aNum = parseFloat(a);
         const bNum = parseFloat(b);
-        
+
         // 简化表达式
         if (aNum === 1 && bNum === 0) return 'x';
         if (aNum === 1) return `x+${b}`;
@@ -1471,7 +1429,7 @@ class AIController {
         if (bNum > 0) return `${a}*x+${b}`;
         return `${a}*x-${Math.abs(bNum)}`;
     }
-    
+
     /**
      * 验证表达式是否包含被锁定的元素
      */
@@ -1483,7 +1441,7 @@ class AIController {
         }
         return true;
     }
-    
+
     /**
      * 检查函数是否穿过目标格且不进入禁区
      * 注意：擦边（仅接触边界）是无效的，必须真正进入目标格内部
@@ -1495,15 +1453,15 @@ class AIController {
                 const tx = target.x + 0.5; // 目标格中心x
                 const ty = target.y + 0.5; // 目标格中心y
                 const y = this.parser.evaluate(expression, tx);
-                
+
                 if (y === null) return false;
-                
+
                 // 严格检查：函数值必须接近目标格中心（误差 < 0.5）
                 // 这确保函数真正穿过目标格内部，而不是擦边
                 const distanceToCenter = Math.abs(y - ty);
                 if (distanceToCenter < 0.5) {
                     console.log(`[AI] 函数穿过目标格 (${target.x}, ${target.y}) 中心，距离=${distanceToCenter.toFixed(2)}`);
-                    
+
                     // 检查是否进入禁区
                     for (const forbidden of forbiddenCells) {
                         const fx = forbidden.x + 0.5;
@@ -1522,7 +1480,7 @@ class AIController {
             console.error('[AI] 检查函数时出错:', error);
             return false;
         }
-        
+
         return false;
     }
 
@@ -1531,60 +1489,60 @@ class AIController {
      */
     async submitExpression(expression) {
         console.log('[AI] 准备提交表达式:', expression);
-        
+
         // 验证表达式不为空
         if (!expression || expression.trim() === '') {
             console.error('[AI] 表达式为空！');
             expression = 'x';
         }
-        
+
         if (!this.uiController) {
             console.error('[AI] 没有 UIController 引用！');
             this.gameController.submitFunction(expression);
             return;
         }
-        
+
         console.log('[AI] 通过 UIController 提交，逐个元素显示');
-        
+
         // 将表达式拆分为元素
         const tokens = this.tokenizeExpression(expression);
-        
+
         // 先清空输入框，防止上一回合残留内容
         this.uiController.expressionElements = [];
         this.uiController.cursorIndex = 0;
         this.uiController.updateExpressionDisplay();
-        
+
         // 在 UI 测试泡泡上显示调试信息（推演了多少次）
         if (window.summaCharacter && this.lastThinkCount) {
             window.summaCharacter.messageBox.textContent = `[深度演算了 ${this.lastThinkCount} 次]`;
             window.summaCharacter.messageBox.classList.add('visible');
         }
-        
+
         // 逐个添加元素，模拟思考过程
         for (let i = 0; i < tokens.length; i++) {
             const token = tokens[i];
-            
+
             // 添加当前元素
             this.uiController.expressionElements.push(token);
             this.uiController.cursorIndex = this.uiController.expressionElements.length;
             this.uiController.updateExpressionDisplay();
-            
+
             console.log(`[AI] 输入元素 ${i + 1}/${tokens.length}: ${token}`);
-            
+
             // 每个元素之间延迟，体现思考过程
             const delay = 200 + Math.random() * 300; // 200-500ms
             await this.think(delay);
         }
-        
+
         console.log('[AI] 表达式输入完成，等待确认...');
-        
+
         // 输入完成后稍微等待，然后提交
         await this.think(500);
-        
+
         // 通过UIController提交
         await this.uiController.submitFunction();
     }
-    
+
     /**
      * 将表达式字符串智能拆分为元素数组
      */
@@ -1592,13 +1550,13 @@ class AIController {
         const tokens = [];
         let i = 0;
         const len = expr.length;
-        
+
         // 多字母函数名列表
         const multiCharFuncs = ['sin', 'cos', 'tan', 'abs', 'exp', 'ln', 'log', 'sqrt'];
-        
+
         while (i < len) {
             let matched = false;
-            
+
             // 尝试匹配多字母函数
             for (const func of multiCharFuncs) {
                 if (expr.substring(i, i + func.length) === func) {
@@ -1608,14 +1566,14 @@ class AIController {
                     break;
                 }
             }
-            
+
             if (matched) continue;
-            
+
             // 匹配单个字符（变量、数字、运算符、括号等）
             tokens.push(expr[i]);
             i++;
         }
-        
+
         return tokens;
     }
 
@@ -1634,20 +1592,20 @@ class AIController {
      */
     _tryRevengeTargetSelection(half, targetCount) {
         // 构建螺旋平移列表（从 0 向外逻层扩展）
-        const offsets = [{dx: 0, dy: 0}];
+        const offsets = [{ dx: 0, dy: 0 }];
         for (let r = 1; r <= 4; r++) {
             for (let dx = -r; dx <= r; dx++) {
                 for (let dy = -r; dy <= r; dy++) {
                     if (Math.abs(dx) === r || Math.abs(dy) === r) {
-                        offsets.push({dx, dy});
+                        offsets.push({ dx, dy });
                     }
                 }
             }
         }
 
-        for (const {dx, dy} of offsets) {
-            const transTargets  = this.failedPuzzle.targetCells.map(c => ({x: c.x + dx, y: c.y + dy}));
-            const transForbidden = this.failedPuzzle.forbiddenCells.map(c => ({x: c.x + dx, y: c.y + dy}));
+        for (const { dx, dy } of offsets) {
+            const transTargets = this.failedPuzzle.targetCells.map(c => ({ x: c.x + dx, y: c.y + dy }));
+            const transForbidden = this.failedPuzzle.forbiddenCells.map(c => ({ x: c.x + dx, y: c.y + dy }));
 
             // 所有目标格必须在棋盘内且未被占用
             const allValid = transTargets.every(c =>
@@ -1661,12 +1619,12 @@ class AIController {
             // 根据当前 targetCount 截取或补齐目标格数量
             let finalTargets = transTargets.slice(0, targetCount);
             // 如果复仇局面目标格少于当前需要，后面会由普通选题补齐
-            this.pendingRevengePuzzle = {targetCells: finalTargets, forbiddenCells: transForbidden};
-            
+            this.pendingRevengePuzzle = { targetCells: finalTargets, forbiddenCells: transForbidden };
+
             console.log(`[AI] 复仇模式: 准备放置 ${finalTargets.length} 个目标格`);
             let placedCount = 0;
             for (const cell of finalTargets) {
-                const ok = this.gameController.selectTargetCell({...cell});
+                const ok = this.gameController.selectTargetCell({ ...cell });
                 if (ok) {
                     placedCount++;
                 } else {
@@ -1688,21 +1646,6 @@ class AIController {
     }
 
     /**
-     * 计算目标格的结构指纹（基于相对位置，平移无关）
-     * 将所有目标格相对于第一个目标格的偏移量排序后拼接为字符串
-     * 例：两个目标格 (1,2) (3,5) → "0,0|2,3"
-     * @param {Array} targetCells - 目标格数组
-     * @returns {string|null} 结构指纹
-     */
-    _computeStructureSignature(targetCells) {
-        if (!targetCells || targetCells.length === 0) return null;
-        const anchor = targetCells[0];
-        const deltas = targetCells.map(t => ({ dx: t.x - anchor.x, dy: t.y - anchor.y }));
-        deltas.sort((a, b) => a.dx - b.dx || a.dy - b.dy);
-        return deltas.map(d => `${d.dx},${d.dy}`).join('|');
-    }
-
-    /**
      * 底安选择：随机采样全部被占用时穷举找最佳空位
      * @param {number} half - 棋盘半径
      * @param {Array} alreadyChosen - 本回合已选目标格
@@ -1719,7 +1662,7 @@ class AIController {
                     if (ddx === 0 || ddy === 0 || ddx === ddy) score -= 5;
                     else score += ddx + ddy;
                 }
-                candidates.push({x: gx, y: gy, score});
+                candidates.push({ x: gx, y: gy, score });
             }
         }
         if (candidates.length === 0) return null;
@@ -1746,13 +1689,10 @@ class AIController {
     learnFromPlayer(expression) {
         if (!this.pendingRevengePuzzle) return;
 
-        const puzzleTargets = this.pendingRevengePuzzle.targetCells.map(c => ({...c}));
-        const puzzleForbidden = this.pendingRevengePuzzle.forbiddenCells.map(c => ({...c}));
-
         // 存入精确解法
         this.learnedSolutions.push({
-            targetCells: puzzleTargets,
-            forbiddenCells: puzzleForbidden,
+            targetCells: this.pendingRevengePuzzle.targetCells.map(c => ({ ...c })),
+            forbiddenCells: this.pendingRevengePuzzle.forbiddenCells.map(c => ({ ...c })),
             expression
         });
 
@@ -1764,20 +1704,7 @@ class AIController {
                 this.learnedTemplates.push(template);
                 console.log('[AI] 学习到新算法模板:', template.core);
             }
-
-            // 将成功的 core 关联到对应的失败结构指纹
-            const sig = this._computeStructureSignature(puzzleTargets);
-            if (sig) {
-                const fs = this.failedStructures.find(f => f.signature === sig);
-                if (fs && !fs.cores.includes(template.core)) {
-                    fs.cores.push(template.core);
-                    console.log(`[AI] 将模板 "${template.core}" 关联到失败结构 ${sig}`);
-                }
-            }
         }
-
-        // 保存到 localStorage
-        this._saveLearnedData();
 
         this.failedPuzzle = null;
         this.pendingRevengePuzzle = null;
@@ -1785,12 +1712,8 @@ class AIController {
         if (window.summaCharacter) {
             window.summaCharacter.say(`"${expression}"……已记录。下次不会再让你得逢了。`, 'determined');
         }
-
-        // 玩家成功后，基于该表达式的结构进行10000局参数变形训练（后台静默）
-        console.log('[AI] 玩家成功解出复仇题，开始参数变形训练...');
-        this.trainOnPlayerExpression(expression, puzzleTargets, puzzleForbidden);
     }
-    
+
     /**
      * 玩家也未能解出复仇局面
      */
@@ -1809,11 +1732,11 @@ class AIController {
         // 匹配末尾 +/- 整数或小数
         const match = expression.match(/^(.+?)([+-]\d+\.?\d*)$/);
         if (match && match[1] && match[1].includes('x')) {
-            return {core: match[1], original: expression};
+            return { core: match[1], original: expression };
         }
         // 表达式本身就是核心
         if (expression.includes('x')) {
-            return {core: expression, original: expression};
+            return { core: expression, original: expression };
         }
         return null;
     }
@@ -1823,10 +1746,10 @@ class AIController {
     // ────────────────────────────────────────────────────────────
 
     /**
-     * 玩家成功解题后，基于玩家表达式的结构进行参数变形训练
-     * ─ 保持函数结构（core）不变，仅尝试调整常数偏移 C
-     * ─ 在大量随机偏移局面上尝试自适应求解
-     * ─ 成功的解法存入精确解法库
+     * 玩家提交解析式后，对 Summa 进行 10000 局类似局面的静默训练
+     * ─ 提取玩家表达式模板，生成大量随机偏移局面，尝试自适应求解
+     * ─ 成功的解法存入精确解法库 + 模板库
+     * ─ 同时尝试变形拓展（缩放、翻转、复合）以发现新策略
      * ─ 使用时间切片（8ms）不阻塞 UI
      *
      * @param {string} expression - 玩家提交的解析式
@@ -1840,7 +1763,7 @@ class AIController {
         const SLICE_MS = 8;
         let sliceStart = performance.now();
 
-        // 提取玩家表达式的核心结构（去除末尾常数）
+        // 提取玩家表达式的核心模板
         const playerTemplate = this._extractTemplate(expression);
         if (!playerTemplate) return;
 
@@ -1849,14 +1772,15 @@ class AIController {
             this.learnedTemplates.push(playerTemplate);
         }
 
-        // 训练仅使用该表达式的 core 结构，不做缩放/翻转等变形
-        const core = playerTemplate.core;
+        // 生成变形模板集：基于玩家表达式进行缩放、翻转、变形
+        const variants = this._generateTemplateVariants(playerTemplate.core);
 
         const gridSize = this.gridSystem.gridSize;
         const half = gridSize / 2;
         let newSolutions = 0;
+        let newTemplates = 0;
 
-        console.log(`[AI-Train] 开始参数变形训练: 结构 "${core}"，基于 ${TOTAL_SIMS} 局模拟`);
+        console.log(`[AI-Train] 开始训练: 基于 "${expression}" 生成 ${TOTAL_SIMS} 局模拟`);
 
         for (let sim = 0; sim < TOTAL_SIMS; sim++) {
             // 时间切片：每 8ms 让出主线程
@@ -1865,18 +1789,18 @@ class AIController {
                 sliceStart = performance.now();
             }
 
-            // 生成随机偏移的类似局面（±4 范围）
+            // 生成随机偏移的类似局面
             const simTargets = currentTargets.map(t => ({
-                x: t.x + Math.floor(Math.random() * 9) - 4,
-                y: t.y + Math.floor(Math.random() * 9) - 4
+                x: t.x + Math.floor(Math.random() * 7) - 3,  // 偏移 -3 ~ +3
+                y: t.y + Math.floor(Math.random() * 7) - 3
             })).filter(t =>
                 t.x >= -half && t.x < half && t.y >= -half && t.y < half
             );
             if (simTargets.length !== currentTargets.length) continue;
 
-            // 随机生成 0~3 个禁止区
+            // 随机生成 0~2 个禁止区
             const simForbidden = [];
-            const forbiddenCount = Math.floor(Math.random() * 4);
+            const forbiddenCount = Math.floor(Math.random() * 3);
             for (let f = 0; f < forbiddenCount; f++) {
                 const fx = Math.floor(Math.random() * gridSize) - half;
                 const fy = Math.floor(Math.random() * gridSize) - half;
@@ -1884,23 +1808,33 @@ class AIController {
                 if (!isTarget) simForbidden.push({ x: fx, y: fy });
             }
 
-            // 仅调整常数 C，保持结构不变
-            const adapted = this._adaptCoreToTargets(core, simTargets);
-            if (!adapted) continue;
+            // 尝试用所有变形模板求解
+            for (const tmplCore of variants) {
+                const adapted = this._adaptCoreToTargets(tmplCore, simTargets);
+                if (!adapted) continue;
 
-            // 纯数学验证：检查是否穿过所有目标格且避开禁止区
-            if (this._verifyExpressionPure(adapted, simTargets, simForbidden)) {
-                // 存入精确解法库（去重）
-                const exists = this.learnedSolutions.some(s =>
-                    this.solutionMatchesPuzzle(s, simTargets) && s.expression === adapted
-                );
-                if (!exists) {
-                    this.learnedSolutions.push({
-                        targetCells: simTargets.map(c => ({...c})),
-                        forbiddenCells: simForbidden.map(c => ({...c})),
-                        expression: adapted
-                    });
-                    newSolutions++;
+                // 纯数学验证：检查是否穿过所有目标格且避开禁止区
+                if (this._verifyExpressionPure(adapted, simTargets, simForbidden)) {
+                    // 存入精确解法库（去重）
+                    const exists = this.learnedSolutions.some(s =>
+                        this.solutionMatchesPuzzle(s, simTargets) && s.expression === adapted
+                    );
+                    if (!exists) {
+                        this.learnedSolutions.push({
+                            targetCells: simTargets.map(c => ({ ...c })),
+                            forbiddenCells: simForbidden.map(c => ({ ...c })),
+                            expression: adapted
+                        });
+                        newSolutions++;
+                    }
+
+                    // 提取新模板
+                    const tmpl = this._extractTemplate(adapted);
+                    if (tmpl && !this.learnedTemplates.some(t => t.core === tmpl.core)) {
+                        this.learnedTemplates.push(tmpl);
+                        newTemplates++;
+                    }
+                    break; // 这个局面已解决，进入下一局
                 }
             }
         }
@@ -1913,10 +1847,7 @@ class AIController {
             this.learnedTemplates = this.learnedTemplates.slice(-100);
         }
 
-        // 保存到 localStorage
-        this._saveLearnedData();
-
-        console.log(`[AI-Train] 参数变形训练完成: 新增 ${newSolutions} 个解法。解法库总计: ${this.learnedSolutions.length}，模板库总计: ${this.learnedTemplates.length}`);
+        console.log(`[AI-Train] 训练完成: 新增 ${newSolutions} 个解法，${newTemplates} 个模板。解法库总计: ${this.learnedSolutions.length}，模板库总计: ${this.learnedTemplates.length}`);
     }
 
     /**
@@ -2008,8 +1939,6 @@ class AIController {
      */
     adaptTemplateToTargets(template, targetCells, lockedElements = []) {
         if (!targetCells || targetCells.length === 0) return null;
-        // 前置检查：模板 core 本身含锁定元素则直接跳过
-        if (!this.isValidExpression(template.core, lockedElements)) return null;
         try {
             const target = targetCells[0];
             const tx = target.x + 0.5, ty = target.y + 0.5;
@@ -2024,7 +1953,7 @@ class AIController {
             const sign = cRounded >= 0 ? '+' : '';
             const cStr = cRounded === 0 ? '' : `${sign}${cRounded}`;
             return `${template.core}${cStr}`;
-        } catch(e) {
+        } catch (e) {
             return null;
         }
     }
@@ -2044,7 +1973,7 @@ class AIController {
     getDifficultyBasedCount(max) {
         const difficulty = this.gameController.difficulty;
         let count;
-        
+
         if (difficulty === 'easy') {
             count = Math.floor(max * 0.3);
         } else if (difficulty === 'hard') {
@@ -2054,12 +1983,12 @@ class AIController {
         } else { // normal
             count = Math.floor(max * 0.6);
         }
-        
+
         // 如果max>0但至少应该设置1个
         if (max > 0 && count === 0) {
             count = 1;
         }
-        
+
         return count;
     }
 
@@ -2099,10 +2028,7 @@ class AIController {
                 if (data.learnedTemplates && Array.isArray(data.learnedTemplates)) {
                     this.learnedTemplates = data.learnedTemplates;
                 }
-                if (data.failedStructures && Array.isArray(data.failedStructures)) {
-                    this.failedStructures = data.failedStructures;
-                }
-                console.log(`[AI-Persist] 加载学习数据: ${this.learnedSolutions.length} 个解法, ${this.learnedTemplates.length} 个模板, ${this.failedStructures.length} 个失败结构`);
+                console.log(`[AI-Persist] 加载学习数据: ${this.learnedSolutions.length} 个解法, ${this.learnedTemplates.length} 个模板`);
             }
         } catch (e) {
             console.warn('[AI-Persist] 加载学习数据失败:', e);
@@ -2117,14 +2043,109 @@ class AIController {
             const data = {
                 learnedSolutions: this.learnedSolutions,
                 learnedTemplates: this.learnedTemplates,
-                failedStructures: this.failedStructures,
                 savedAt: new Date().toISOString()
             };
             localStorage.setItem('summa_learned_data_v1', JSON.stringify(data));
-            console.log(`[AI-Persist] 保存学习数据: ${this.learnedSolutions.length} 个解法, ${this.learnedTemplates.length} 个模板, ${this.failedStructures.length} 个失败结构`);
+            console.log(`[AI-Persist] 保存学习数据: ${this.learnedSolutions.length} 个解法, ${this.learnedTemplates.length} 个模板`);
         } catch (e) {
             console.warn('[AI-Persist] 保存学习数据失败:', e);
         }
+    }
+
+    /**
+     * 复仇前现场训练：对失败局面及其变体进行100000局训练
+     * @param {Object} puzzle - 失败的局面 {targetCells, forbiddenCells}
+     */
+    async trainOnFailedPuzzle(puzzle) {
+        if (!puzzle || !puzzle.targetCells || puzzle.targetCells.length === 0) return;
+
+        const TOTAL_SIMS = 100000;
+        const TIME_BUDGET_MS = 100;
+        const startTime = performance.now();
+
+        const gridSize = this.gridSystem.gridSize;
+        const half = gridSize / 2;
+        let newSolutions = 0;
+        let newTemplates = 0;
+        let validVariants = 0;
+
+        console.log(`[AI-RevengeTrain] 开始复仇训练: 失败局面及平移变体 ${TOTAL_SIMS} 轮（预算 ${TIME_BUDGET_MS}ms）`);
+
+        // 轻量核心模板池：优先已学模板，限制池大小确保 10000 轮可在短时完成
+        const learnedCores = this.learnedTemplates.length > 0
+            ? this.learnedTemplates.map(t => t.core).slice(-24)
+            : [];
+        const baseTemplates = [...new Set([
+            ...learnedCores,
+            'x', 'x^2', 'x^3', 'sin(x)', 'cos(x)', 'abs(x)', 'x/2', '2*x'
+        ])];
+
+        // 平移偏移池（优先小位移，确保更可能落在棋盘范围内）
+        const offsets = [];
+        for (let r = 0; r <= 4; r++) {
+            for (let dx = -r; dx <= r; dx++) {
+                for (let dy = -r; dy <= r; dy++) {
+                    if (Math.max(Math.abs(dx), Math.abs(dy)) === r) {
+                        offsets.push({ dx, dy });
+                    }
+                }
+            }
+        }
+
+        const isInsideBoard = (c) => c.x >= -half && c.x < half && c.y >= -half && c.y < half;
+        const sameCell = (a, b) => a.x === b.x && a.y === b.y;
+        const addSolutionIfNew = (targets, forbidden, expression) => {
+            const exists = this.learnedSolutions.some(s =>
+                this.solutionMatchesPuzzle(s, targets) && s.expression === expression
+            );
+            if (!exists) {
+                this.learnedSolutions.push({
+                    targetCells: targets.map(c => ({ ...c })),
+                    forbiddenCells: forbidden.map(c => ({ ...c })),
+                    expression
+                });
+                newSolutions++;
+            }
+            const tmpl = this._extractTemplate(expression);
+            if (tmpl && !this.learnedTemplates.some(t => t.core === tmpl.core)) {
+                this.learnedTemplates.push(tmpl);
+                newTemplates++;
+            }
+        };
+
+        for (let sim = 0; sim < TOTAL_SIMS; sim++) {
+            const offset = offsets[sim % offsets.length];
+            const simTargets = puzzle.targetCells.map(t => ({ x: t.x + offset.dx, y: t.y + offset.dy }));
+            const simForbiddenRaw = (puzzle.forbiddenCells || []).map(f => ({ x: f.x + offset.dx, y: f.y + offset.dy }));
+
+            if (!simTargets.every(isInsideBoard)) continue;
+            const simForbidden = simForbiddenRaw.filter(c =>
+                isInsideBoard(c) && !simTargets.some(t => sameCell(t, c))
+            );
+            validVariants++;
+
+            // 每轮仅测 1 个核心模板，避免 O(10000 * 模板数) 的爆炸耗时
+            const core = baseTemplates[sim % baseTemplates.length];
+            const adapted = this._adaptCoreToTargets(core, simTargets);
+            if (!adapted) continue;
+            if (!this._verifyExpressionPure(adapted, simTargets, simForbidden)) continue;
+            addSolutionIfNew(simTargets, simForbidden, adapted);
+        }
+
+        // 限制库大小
+        if (this.learnedSolutions.length > 500) {
+            this.learnedSolutions = this.learnedSolutions.slice(-500);
+        }
+        if (this.learnedTemplates.length > 100) {
+            this.learnedTemplates = this.learnedTemplates.slice(-100);
+        }
+
+        // 保存到 localStorage
+        this._saveLearnedData();
+
+        const elapsed = performance.now() - startTime;
+        const budgetState = elapsed <= TIME_BUDGET_MS ? '达标' : '超预算';
+        console.log(`[AI-RevengeTrain] 完成 ${TOTAL_SIMS} 轮，合法变体 ${validVariants}，新增 ${newSolutions} 解法/${newTemplates} 模板，耗时 ${elapsed.toFixed(1)}ms（${budgetState}）`);
     }
 }
 

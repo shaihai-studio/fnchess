@@ -3,8 +3,10 @@ class AudioManager {
         this.enabled = true;
         this.masterVolume = 0.6;
         
-        // 使用非常稳定的公开音效资源库（源自 ion-sound 的 CDN)
-        this.baseUrl = "https://cdnjs.cloudflare.com/ajax/libs/ion-sound/3.0.7/sounds/";
+        // 本地音效文件目录（优先使用，对 file:// 协议友好，无需网络）
+        this.localBaseUrl = "sounds/";
+        // CDN 备用音效资源库（源自 ion-sound，本地文件不可用时回退）
+        this.baseUrl = 'https://cdnjs.cloudflare.com/ajax/libs/ion-sound/3.0.7/sounds/';
         
         // 映射所有的动作音效
         this.sounds = {
@@ -48,12 +50,29 @@ class AudioManager {
     
     /**
      * 并行预加载所有音效为 AudioBuffer（存入内存，播放时零延迟）
+     * 优先使用本地文件（对 file:// 协议友好），CDN 作为备用
      */
     async _loadAllSounds() {
+        const tryFetch = async (url) => {
+            const response = await fetch(url);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            return response;
+        };
+        
         const promises = Object.entries(this.sounds).map(async ([key, filename]) => {
+            // 优先尝试本地文件
             try {
-                const response = await fetch(this.baseUrl + filename);
-                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const response = await tryFetch(this.localBaseUrl + filename);
+                const arrayBuffer = await response.arrayBuffer();
+                const audioBuffer = await this.audioCtx.decodeAudioData(arrayBuffer);
+                this.buffers[key] = audioBuffer;
+                return;
+            } catch (e) {
+                console.log(`[Audio] 本地加载失败，尝试 CDN: ${filename}`);
+            }
+            // 回退到 CDN
+            try {
+                const response = await tryFetch(this.baseUrl + filename);
                 const arrayBuffer = await response.arrayBuffer();
                 const audioBuffer = await this.audioCtx.decodeAudioData(arrayBuffer);
                 this.buffers[key] = audioBuffer;
@@ -64,20 +83,28 @@ class AudioManager {
         
         await Promise.all(promises);
         this.isLoaded = true;
-        console.log('[Audio] 所有音效预加载完毕，播放将不再有延迟');
+        const loadedCount = Object.keys(this.buffers).length;
+        console.log(`[Audio] 音效预加载完毕（${loadedCount}/${Object.keys(this.sounds).length}），播放将不再有延迟`);
     }
     
     /**
      * 降级方案：当 Web Audio API 不可用时，回退为 HTML Audio
+     * 优先使用本地文件，加载失败则切换为 CDN
      */
     _initFallback() {
         this.audioPool = {};
         for (const [key, filename] of Object.entries(this.sounds)) {
-            const audio = new Audio(this.baseUrl + filename);
+            const audio = new Audio(this.localBaseUrl + filename);
             audio.preload = 'auto';
+            // 本地文件加载失败时回退到 CDN
+            audio.addEventListener('error', () => {
+                console.log(`[Audio] 本地音频加载失败，切换为 CDN: ${filename}`);
+                audio.src = this.baseUrl + filename;
+            }, { once: true });
             this.audioPool[key] = audio;
         }
         this.isLoaded = true;
+        console.log('[Audio] 已初始化 HTML Audio 备用方案（本地优先）');
     }
     
     /**

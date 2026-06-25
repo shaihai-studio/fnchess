@@ -29,6 +29,10 @@
             <span class="score" id="score-b">0</span>
             <span>分</span>
         </div>
+
+        <div class="campaign-level-badge" id="campaign-level-badge" style="display:none;">
+            <span class="campaign-level-value" id="campaign-level-value">Lv. 1</span>
+        </div>
     </header>
     
     <!-- 主容器 -->
@@ -133,13 +137,73 @@
                 <div class="mode-toggle">
                     <button class="mode-btn active" id="mode-local" data-mode="local">👥 本地对战</button>
                     <button class="mode-btn" id="mode-ai" data-mode="ai">🤖 人机对战</button>
+                    <button class="mode-btn" id="mode-campaign" data-mode="campaign">🧩 闯关模式</button>
                 </div>
                 <small id="mode-hint" style="display: block; margin-top: 5px; opacity: 0.7;">本地对战：两位玩家轮流操作</small>
             </div>
+
+            <!-- 闯关模式选关 -->
+            <div class="panel-card" id="campaign-panel" style="display:none; margin-top: 10px; padding: 12px;">
+                <div style="opacity:0.85; font-size: 13px; margin-bottom: 6px;">
+                    需通关前置关卡才能解锁后续关卡
+                </div>
+                <label for="campaign-level-select">选择关卡：</label>
+                <select id="campaign-level-select" style="width: 100%; margin-top: 6px;">
+                    <option value="1">关卡 1</option>
+                </select>
+                <small id="campaign-progress" style="display:block; margin-top:6px; opacity:0.7;"></small>
+            </div>
+            <small id="developer-hint" style="display:block; margin: 8px 0 0; opacity:0.55;">按 Tab 可进入开发者模式，关卡不再受解锁限制</small>
                         
             <button class="btn btn-primary" id="start-btn" style="width: 100;">开始游戏</button>
         </div>
     </div>
+
+    <!-- 闯关模式模态框 -->
+    <div class="modal" id="campaign-modal" style="display:none;">
+        <div class="modal-content" style="max-width: 900px;">
+            <h2>闯关模式</h2>
+            <p style="opacity:0.8; margin-bottom: 10px;">
+                先选难度，再选关卡。必须通关前置关卡才能解锁后续关卡。
+            </p>
+
+            <div id="campaign-step-difficulty">
+                <div class="campaign-difficulty-grid" id="campaign-difficulty-grid" style="margin-bottom: 10px;">
+                    <button class="btn" id="campaign-diff-easy">简单（1-29）</button>
+                    <button class="btn" id="campaign-diff-normal">中等（30-53）</button>
+                    <button class="btn" id="campaign-diff-hard">困难（54-69）</button>
+                    <button class="btn" id="campaign-diff-expert">专家（70-81）</button>
+                    <button class="btn" id="campaign-diff-unsolvable" style="display:none;">无解（82-90）</button>
+                </div>
+                <div style="display:flex; gap:10px; justify-content: space-between; align-items:center; flex-wrap: wrap;">
+                    <div style="display:flex; align-items:center; gap:10px; flex:1; min-width: 260px;">
+                        <div id="campaign-star-progress" class="campaign-star-progress"></div>
+                        <small id="campaign-global-progress" style="opacity:0.75;"></small>
+                    </div>
+                    <div style="display:flex; gap:8px;">
+                        <button class="btn btn-secondary" id="campaign-reset-btn">重置进度</button>
+                        <button class="btn btn-exit" id="campaign-close-btn">返回</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="campaign-step-levels" style="display:none;">
+                <div style="display:flex; justify-content: space-between; align-items:center; margin-bottom: 10px;">
+                    <div>
+                        <div id="campaign-level-title" style="font-weight:bold;"></div>
+                        <small id="campaign-level-progress" style="opacity:0.75;"></small>
+                    </div>
+                    <div style="display:flex; gap:8px;">
+                        <button class="btn btn-secondary" id="campaign-back-btn">返回难度</button>
+                        <button class="btn btn-exit" id="campaign-close-btn2">关闭</button>
+                    </div>
+                </div>
+                <div id="campaign-level-grid" class="campaign-level-grid"></div>
+            </div>
+        </div>
+    </div>
+
+    <input id="campaign-file-input" type="file" accept=".txt,application/json,text/plain" style="display:none;">
     
     <!-- 游戏结束模态框 -->
     <div class="modal" id="game-over-modal" style="display: none;">
@@ -149,6 +213,28 @@
             <div class="final-scores" id="final-scores"></div>
             <button class="btn btn-primary" id="view-report-btn" style="width: 100%; margin-bottom: 10px;">查看游戏报告</button>
             <button class="btn btn-primary" id="restart-btn" style="width: 100%;">重新开始</button>
+        </div>
+    </div>
+
+    <!-- 闯关胜利模态框 -->
+    <div class="modal" id="campaign-victory-modal" style="display: none;">
+        <div class="modal-content campaign-victory-content">
+            <h2>关卡胜利</h2>
+            <div class="campaign-victory-text" id="campaign-victory-text">恭喜通关！</div>
+            <div class="campaign-victory-actions">
+                <button class="btn btn-primary icon-btn" id="campaign-home-btn" title="返回关卡选择">
+                    <span class="icon">⌂</span>
+                    <span>关卡选择</span>
+                </button>
+                <button class="btn btn-primary icon-btn" id="campaign-retry-btn" title="再来一次">
+                    <span class="icon">↻</span>
+                    <span>再来一次</span>
+                </button>
+                <button class="btn btn-primary icon-btn" id="campaign-next-btn" title="下一关">
+                    <span>下一关</span>
+                    <span class="icon">→</span>
+                </button>
+            </div>
         </div>
     </div>
     
@@ -176,6 +262,7 @@
     <!-- Ai和控制器 -->
     <script src="js/AIController.js"></script>
     <script src="js/GameController.js"></script>
+    <script src="js/campaignLevels.js"></script>
     <script src="js/UIController.js"></script>
     <script src="js/SummaTrainer.js"></script>
     

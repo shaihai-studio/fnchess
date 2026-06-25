@@ -5,15 +5,15 @@ class SummaCharacter {
 
         // 情绪 → 立绘图片映射
         this.imageMap = {
-            neutral:    'Summa形象处理/summa_image/neutral.PNG',
-            thinking:   'Summa形象处理/summa_image/thinking.PNG',
-            smug:       'Summa形象处理/summa_image/smug.PNG',
-            happy:      'Summa形象处理/summa_image/happy.PNG',
-            surprised:  'Summa形象处理/summa_image/surprised.PNG',
-            sad:        'Summa形象处理/summa_image/sad.PNG',
-            angry:      'Summa形象处理/summa_image/angry.PNG',
+            neutral: 'Summa形象处理/summa_image/neutral.PNG',
+            thinking: 'Summa形象处理/summa_image/thinking.PNG',
+            smug: 'Summa形象处理/summa_image/smug.PNG',
+            happy: 'Summa形象处理/summa_image/happy.PNG',
+            surprised: 'Summa形象处理/summa_image/surprised.PNG',
+            sad: 'Summa形象处理/summa_image/sad.PNG',
+            angry: 'Summa形象处理/summa_image/angry.PNG',
             determined: 'Summa形象处理/summa_image/determined.PNG',
-            exhausted:  'Summa形象处理/summa_image/exhausted.PNG'
+            exhausted: 'Summa形象处理/summa_image/exhausted.PNG'
         };
 
         // 微微高冷、学术风范、带着点风趣与极简少女味的对话库（总计 50+）
@@ -141,6 +141,7 @@ class SummaCharacter {
             <div id="summa-root" class="summa-root" style="display:none;">
                 <div id="summa-message" class="summa-message"></div>
                 <div id="summa-body" class="summa-body">
+                    <div id="summa-hitbox" class="summa-hitbox"></div>
                     <div id="summa-face-wrap" class="summa-face-wrap">
                         <img id="summa-avatar" class="summa-avatar"
                              src="${this.imageMap.neutral}" alt="Summa">
@@ -167,8 +168,12 @@ class SummaCharacter {
                 <label style="display:flex; justify-content:space-between; align-items:center;">回拉弹性(ANCHOR_K)<input type="number" id="dbg-anchorK" step="0.01" style="width:70px; background:#111; color:#00ffcc; border:1px solid #00ffcc; padding:2px;"></label>
                 <label style="display:flex; justify-content:space-between; align-items:center;">拖拽重力(GRAV_DRAG)<input type="number" id="dbg-gravD" step="0.1" style="width:70px; background:#111; color:#00ffcc; border:1px solid #00ffcc; padding:2px;"></label>
                 <label style="display:flex; justify-content:space-between; align-items:center;">微弱重力(GRAV_FREE)<input type="number" id="dbg-gravF" step="0.01" style="width:70px; background:#111; color:#00ffcc; border:1px solid #00ffcc; padding:2px;"></label>
-                <label style="display:flex; justify-content:space-between; align-items:center;">拖拽阻尼(DAMP_DRAG)<input type="number" id="dbg-dampD" step="0.01" max="1" style="width:70px; background:#111; color:#00ffcc; border:1px solid #00ffcc; padding:2px;"></label>
-                <label style="display:flex; justify-content:space-between; align-items:center;">自由阻尼(DAMP_FREE)<input type="number" id="dbg-dampF" step="0.01" max="1" style="width:70px; background:#111; color:#00ffcc; border:1px solid #00ffcc; padding:2px;"></label>
+                <label style="display:flex; justify-content:space-between; align-items:center;">拖拽位移阻尼(D_D_TRA)<input type="number" id="dbg-dampDTrans" step="0.01" max="1" style="width:70px; background:#111; color:#00ffcc; border:1px solid #00ffcc; padding:2px;"></label>
+                <label style="display:flex; justify-content:space-between; align-items:center;">拖拽旋转阻尼(D_D_ROT)<input type="number" id="dbg-dampDRot" step="0.01" max="1" style="width:70px; background:#111; color:#00ffcc; border:1px solid #00ffcc; padding:2px;"></label>
+                <label style="display:flex; justify-content:space-between; align-items:center;">拖拽变形阻尼(D_D_DEF)<input type="number" id="dbg-dampDDef" step="0.01" max="1" style="width:70px; background:#111; color:#00ffcc; border:1px solid #00ffcc; padding:2px;"></label>
+                <label style="display:flex; justify-content:space-between; align-items:center;">自由位移阻尼(D_F_TRA)<input type="number" id="dbg-dampFTrans" step="0.01" max="1" style="width:70px; background:#111; color:#00ffcc; border:1px solid #00ffcc; padding:2px;"></label>
+                <label style="display:flex; justify-content:space-between; align-items:center;">自由旋转阻尼(D_F_ROT)<input type="number" id="dbg-dampFRot" step="0.01" max="1" style="width:70px; background:#111; color:#00ffcc; border:1px solid #00ffcc; padding:2px;"></label>
+                <label style="display:flex; justify-content:space-between; align-items:center;">自由变形阻尼(D_F_DEF)<input type="number" id="dbg-dampFDef" step="0.01" max="1" style="width:70px; background:#111; color:#00ffcc; border:1px solid #00ffcc; padding:2px;"></label>
                 <label style="display:flex; justify-content:space-between; align-items:center;">拉伸上限(MAX_STRTCH)<input type="number" id="dbg-maxStretch" step="0.1" style="width:70px; background:#111; color:#00ffcc; border:1px solid #00ffcc; padding:2px;"></label>
                 <label style="display:flex; justify-content:space-between; align-items:center;">压缩下限(MIN_STRTCH)<input type="number" id="dbg-minStretch" step="0.1" style="width:70px; background:#111; color:#00ffcc; border:1px solid #00ffcc; padding:2px;"></label>
                 <label style="display:flex; justify-content:space-between; align-items:center;">形变弯倍率(SKEW_MUL)<input type="number" id="dbg-skew" step="0.1" style="width:70px; background:#111; color:#00ffcc; border:1px solid #00ffcc; padding:2px;"></label>
@@ -178,20 +183,20 @@ class SummaCharacter {
             </div>
         `;
 
-        this.wrapper    = document.getElementById('summa-root');
+        this.wrapper = document.getElementById('summa-root');
         this.messageBox = document.getElementById('summa-message');
-        this.avatarImg  = document.getElementById('summa-avatar');
+        this.avatarImg = document.getElementById('summa-avatar');
 
         // 初始化动画引擎
         if (typeof SummaAnimator !== 'undefined') {
             this.animator = new SummaAnimator({
-                root:        document.getElementById('summa-root'),
-                body:        document.getElementById('summa-body'),
-                eyeLeft:     document.getElementById('summa-eye-left'),
-                eyeRight:    document.getElementById('summa-eye-right'),
-                pupilLeft:   document.getElementById('summa-pupil-left'),
-                pupilRight:  document.getElementById('summa-pupil-right'),
-                eyelidLeft:  document.getElementById('summa-eyelid-left'),
+                root: document.getElementById('summa-root'),
+                body: document.getElementById('summa-body'),
+                eyeLeft: document.getElementById('summa-eye-left'),
+                eyeRight: document.getElementById('summa-eye-right'),
+                pupilLeft: document.getElementById('summa-pupil-left'),
+                pupilRight: document.getElementById('summa-pupil-right'),
+                eyelidLeft: document.getElementById('summa-eyelid-left'),
                 eyelidRight: document.getElementById('summa-eyelid-right'),
             });
 
@@ -205,7 +210,7 @@ class SummaCharacter {
                 this.setExpressionAnimated('smug', true);  // force=true 确保重新播放动画
             };
 
-            this.animator.onDragEnd   = () => {
+            this.animator.onDragEnd = () => {
                 // 松手：determined / exhausted 各 50%
                 const first = Math.random() < 0.5 ? 'determined' : 'exhausted';
                 this.setExpressionAnimated(first);
@@ -221,7 +226,7 @@ class SummaCharacter {
                 }, 2000);
                 this._exprTimers.push(t1);
             };
-            
+
             // 绑定面板调试
             this._bindDebugPanel();
         }
@@ -230,14 +235,18 @@ class SummaCharacter {
     _bindDebugPanel() {
         const anim = this.animator;
         if (!anim) return;
-        
+
         const inputs = {
             'dbg-chainK': 'CHAIN_K',
             'dbg-anchorK': 'ANCHOR_K',
             'dbg-gravD': 'GRAVITY_DRAG',
             'dbg-gravF': 'GRAVITY_FREE',
-            'dbg-dampD': 'VEL_DAMP_DRAG',
-            'dbg-dampF': 'VEL_DAMP_FREE',
+            'dbg-dampDTrans': 'VEL_DAMP_DRAG_TRANS',
+            'dbg-dampDRot': 'VEL_DAMP_DRAG_ROT',
+            'dbg-dampDDef': 'VEL_DAMP_DRAG_DEF',
+            'dbg-dampFTrans': 'VEL_DAMP_FREE_TRANS',
+            'dbg-dampFRot': 'VEL_DAMP_FREE_ROT',
+            'dbg-dampFDef': 'VEL_DAMP_FREE_DEF',
             'dbg-maxStretch': 'MAX_STRETCH',
             'dbg-minStretch': 'MIN_STRETCH',
             'dbg-skew': 'SKEW_MULT',
@@ -267,14 +276,18 @@ class SummaCharacter {
             btnReset.addEventListener('click', () => {
                 anim.CHAIN_K = 0.05;
                 anim.ANCHOR_K = 0.025;
-                anim.GRAVITY_DRAG = 1.5;
+                anim.GRAVITY_DRAG = 4.0;
                 anim.GRAVITY_FREE = 0.10;
-                anim.VEL_DAMP_DRAG = 0.89;
-                anim.VEL_DAMP_FREE = 0.95;
-                anim.MAX_STRETCH = 2.0;
-                anim.MIN_STRETCH = 0.5;
-                anim.SKEW_MULT = 2.0;
-                anim.MAX_VELOCITY = 80;
+                anim.VEL_DAMP_DRAG_TRANS = 0.90;
+                anim.VEL_DAMP_DRAG_ROT = 0.95;
+                anim.VEL_DAMP_DRAG_DEF = 0.85;
+                anim.VEL_DAMP_FREE_TRANS = 0.70;
+                anim.VEL_DAMP_FREE_ROT = 0.98;
+                anim.VEL_DAMP_FREE_DEF = 0.85;
+                anim.MAX_STRETCH = 1.2;
+                anim.MIN_STRETCH = 0.8;
+                anim.SKEW_MULT = 0.2;
+                anim.MAX_VELOCITY = 120;
                 updateInputs();
             });
         }
@@ -301,20 +314,20 @@ class SummaCharacter {
 
     setExpressionAnimated(mood, force = false) {
         if (!this.avatarImg) return;
-        const img    = this.avatarImg;
+        const img = this.avatarImg;
         const newSrc = this.imageMap[mood] || this.imageMap.neutral;
 
         // 如果已经是该表情则跳过（force=true 时强制刷新）
         if (!force && img.dataset.currentMood === mood) return;
         // 拖拽中不允许普通表情切换覆盖 smug
         if (!force && this.animator && this.animator.isDragging) return;
-        
+
         img.dataset.currentMood = mood;
-        
+
         // 直接替换，移除所有淡入淡出动画
         img.style.transition = 'none';
-        img.style.opacity    = '1';
-        img.style.transform  = 'scale(1.0)';
+        img.style.opacity = '1';
+        img.style.transform = 'scale(1.0)';
         img.src = newSrc;
 
         // 同时更新眨眼频率
@@ -365,8 +378,8 @@ class SummaCharacter {
     }
 
     // ── 游戏事件快捷接口 ─────────────────────────────────
-    reactStart()       { this.speak('startGame', 'determined'); }
-    reactAiThink()     { this.speak('aiThink', 'thinking'); }
+    reactStart() { this.speak('startGame', 'determined'); }
+    reactAiThink() { this.speak('aiThink', 'thinking'); }
 
     reactAiPlay({ expression } = {}) {
         this.speak('aiPlay', 'determined');
@@ -392,11 +405,11 @@ class SummaCharacter {
         }
     }
 
-    reactAiError()       { this.speak('aiError', 'surprised'); }
+    reactAiError() { this.speak('aiError', 'surprised'); }
     reactPlayerSuccess() { this.speak('playerSuccess', 'surprised'); }
-    reactPlayerError()   { this.speak('playerError', 'smug'); }
-    reactWin()           { this.speak('win', 'happy'); }
-    reactLose()          { this.speak('lose', 'sad'); }
+    reactPlayerError() { this.speak('playerError', 'smug'); }
+    reactWin() { this.speak('win', 'happy'); }
+    reactLose() { this.speak('lose', 'sad'); }
 
     /**
      * 显示自定义消息（非预设对话）
@@ -405,7 +418,7 @@ class SummaCharacter {
      */
     say(message, mood = 'neutral') {
         if (!this.messageBox) return;
-        
+
         this.setExpression(mood);
         this.messageBox.textContent = message;
         this.messageBox.classList.add('visible');

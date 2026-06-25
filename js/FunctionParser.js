@@ -464,6 +464,151 @@ class FunctionParser {
         
         return converted;
     }
+
+    /**
+     * 将表达式分词（用于隐式乘法处理）
+     * @param {string} expression
+     * @returns {Array<{type:string,value:string}>}
+     */
+    tokenizeExpression(expression) {
+        const tokens = [];
+        const implicitFunctions = [...this.functions, 'factorial'];
+        const sortedFunctions = implicitFunctions.sort((a, b) => b.length - a.length);
+        let i = 0;
+
+        while (i < expression.length) {
+            const ch = expression[i];
+
+            if (/\s/.test(ch)) {
+                i++;
+                continue;
+            }
+
+            // 数字（含小数）
+            if (/\d/.test(ch) || (ch === '.' && /\d/.test(expression[i + 1] || ''))) {
+                let num = ch;
+                i++;
+                while (i < expression.length && /[\d.]/.test(expression[i])) {
+                    num += expression[i];
+                    i++;
+                }
+                tokens.push({ type: 'number', value: num });
+                continue;
+            }
+
+            // 函数名（sin/cos/tan/abs/ln/sqrt）
+            let matchedFunc = null;
+            const rest = expression.slice(i).toLowerCase();
+            for (const func of sortedFunctions) {
+                if (rest.startsWith(func)) {
+                    matchedFunc = expression.slice(i, i + func.length);
+                    break;
+                }
+            }
+            if (matchedFunc) {
+                tokens.push({ type: 'function', value: matchedFunc });
+                i += matchedFunc.length;
+                continue;
+            }
+
+            // 变量与常量
+            if (ch === 'x' || ch === 'X') {
+                tokens.push({ type: 'variable', value: 'x' });
+                i++;
+                continue;
+            }
+            if (ch === 'e') {
+                tokens.push({ type: 'constant', value: 'e' });
+                i++;
+                continue;
+            }
+            if (ch === 'i' || ch === 'I') {
+                tokens.push({ type: 'constant', value: 'i' });
+                i++;
+                continue;
+            }
+            if (expression.slice(i, i + 2).toUpperCase() === 'PI') {
+                tokens.push({ type: 'constant', value: 'PI' });
+                i += 2;
+                continue;
+            }
+
+            // 括号 / 运算符
+            if (ch === '(') {
+                tokens.push({ type: 'open', value: ch });
+                i++;
+                continue;
+            }
+            if (ch === ')') {
+                tokens.push({ type: 'close', value: ch });
+                i++;
+                continue;
+            }
+            if ('+-*/^!'.includes(ch)) {
+                tokens.push({ type: 'operator', value: ch });
+                i++;
+                continue;
+            }
+
+            // 兜底：未知字符按原样保留，后续由语法验证兜底
+            tokens.push({ type: 'other', value: ch });
+            i++;
+        }
+
+        return tokens;
+    }
+
+    /**
+     * 判断两个 token 之间是否应补乘号
+     * @param {{type:string,value:string}|null} prev
+     * @param {{type:string,value:string}|null} curr
+     * @returns {boolean}
+     */
+    shouldInsertImplicitMultiply(prev, curr) {
+        if (!prev || !curr) return false;
+
+        // 函数调用：sin( / ln( 不插入乘号
+        if (prev.type === 'function' && curr.type === 'open') return false;
+
+        const leftCanMultiply = (
+            prev.type === 'number' ||
+            prev.type === 'variable' ||
+            prev.type === 'constant' ||
+            prev.type === 'close' ||
+            (prev.type === 'operator' && prev.value === '!')
+        );
+
+        const rightCanMultiply = (
+            curr.type === 'number' ||
+            curr.type === 'variable' ||
+            curr.type === 'constant' ||
+            curr.type === 'open' ||
+            curr.type === 'function'
+        );
+
+        return leftCanMultiply && rightCanMultiply;
+    }
+
+    /**
+     * 统一补全隐式乘法
+     * @param {string} expression
+     * @returns {string}
+     */
+    convertImplicitMultiplication(expression) {
+        const tokens = this.tokenizeExpression(expression);
+        if (!tokens.length) return expression;
+
+        let result = tokens[0].value;
+        for (let i = 1; i < tokens.length; i++) {
+            const prev = tokens[i - 1];
+            const curr = tokens[i];
+            if (this.shouldInsertImplicitMultiply(prev, curr)) {
+                result += '*';
+            }
+            result += curr.value;
+        }
+        return result;
+    }
     
     /**
      * 将表达式转换为 math.js 兼容格式
@@ -490,113 +635,14 @@ class FunctionParser {
         // 替换 ^ 为 **
         converted = converted.replace(/\^/g, '**');
         
-        // 确保乘法显式表示
-        
-        // 【核心逻辑】处理隐式乘法的高优先级问题：
-        // 在数学中，2x 或 2(x) 的优先级高于除法。
-        // 例如：1/2x 应被解析为 1/(2*x) 而不是 (1/2)*x。
-        // 实现方法：当遇到 "数字/数字变量" 或 "数字/数字(" 时，将除号后面的部分用括号括起来。
-        
-        // 模式1: /数字x -> /(数字*x)
-        // 注意：只匹配除法后面紧跟数字和字母的情况，避免误转换 x/2 这种合法表达式
-        converted = converted.replace(/(?<=[^a-zA-Z])\/(\d+)([a-zA-Z])/g, '/($1*$2)');
-        
-        // 模式2: /数字( -> /(数字*(...))
-        // 这是一个简化的处理，匹配 /数字( 并在对应的右括号后闭合
-        let prev;
-        do {
-            prev = converted;
-            converted = converted.replace(/\/(\d+)\(([^()]+)\)/g, '/($1*($2))');
-        } while (converted !== prev);
-        
-        // 处理常规的数字与x之间缺少乘号的情况，如 2x -> 2*x
-        converted = converted.replace(/(\d)(x)/gi, '$1*$2');
-        
-        // 处理数字与π/e之间缺少乘号的情况，如 2π -> 2*PI
-        converted = converted.replace(/(\d)(PI)/g, '$1*$2');
-        // 注意：只在e后面不是字母时才匹配，避免把exp中的e当作常数
-        converted = converted.replace(/(\d)(e)(?![a-zA-Z])/g, '$1*$2');
-        
-        // 处理π/e与数字之间缺少乘号的情况，如 π2 -> PI*2
-        converted = converted.replace(/(PI)(\d)/g, '$1*$2');
-        // 注意：只在e后面不是字母时才匹配
-        converted = converted.replace(/(e)(\d)(?![a-zA-Z])/g, '$1*$2');
-        
-        // 处理x与π/e之间缺少乘号的情况，如 xπ -> x*PI
-        converted = converted.replace(/(x)(PI)/gi, '$1*$2');
-        // 注意：只在e后面不是字母时才匹配
-        converted = converted.replace(/(x)(e)(?![a-zA-Z])/gi, '$1*$2');
-        
-        // 处理π/e与x之间缺少乘号的情况，如 πx -> PI*x
-        converted = converted.replace(/(PI)(x)/gi, '$1*$2');
-        // 注意：只在e后面不是字母时才匹配
-        converted = converted.replace(/(e)(x)(?![a-zA-Z])/gi, '$1*$2');
-        
-        // 处理i与π/e之间缺少乘号的情况，如 iπ -> i*PI
-        converted = converted.replace(/(i)(PI)/gi, '$1*$2');
-        // 注意：只在e后面不是字母时才匹配
-        converted = converted.replace(/(i)(e)(?![a-zA-Z])/gi, '$1*$2');
-        
-        // 处理π/e与i之间缺少乘号的情况，如 πi -> PI*i
-        converted = converted.replace(/(PI)(i)/gi, '$1*$2');
-        // 注意：只在e后面不是字母时才匹配
-        converted = converted.replace(/(e)(i)(?![a-zA-Z])/gi, '$1*$2');
-        
-        // 处理i与x之间缺少乘号的情况，如 ix -> i*x
-        converted = converted.replace(/(i)(x)/gi, '$1*$2');
-        converted = converted.replace(/(x)(i)/gi, '$1*$2');
-        
-        // 处理i与数字之间缺少乘号的情况，如 i2 -> i*2, 2i -> 2*i
-        converted = converted.replace(/(i)(\d)/gi, '$1*$2');
-        converted = converted.replace(/(\d)(i)/g, '$1*$2');
-        
-        // 处理i与括号之间缺少乘号的情况，如 i(x) -> i*(x)
-        converted = converted.replace(/(i)(\()/g, '$1*$2');
-        converted = converted.replace(/(\))(i)/g, '$1*$2');
-        
-        // 处理 i*i 和 i^2 的情况（i^2 = -1）
-        // 需要在替换 ^ 为 ** 之前处理
-        converted = this.convertImaginaryOperations(converted);
-        
-        // 处理数字与括号之间缺少乘号的情况，如 2(x) -> 2*(x)
-        converted = converted.replace(/(\d)(\()/g, '$1*$2');
-        
-        // 处理 x 与数字之间缺少乘号的情况，如 x2 -> x*2
-        converted = converted.replace(/(x)(\d)/gi, '$1*$2');
-        
-        // 处理括号与括号之间缺少乘号的情况，如 )( -> )*(
-        converted = converted.replace(/(\))(\()/g, '$1*$2');
-        
-        // 处理函数的括号省略形式，如 ln x -> ln(x), sin x -> sin(x)
-        // 需要在处理其他隐式乘法之前执行，以确保正确识别
+        // 先做函数省略括号转换（如 lnx, sinx, ln x）
         converted = this.convertFunctionWithoutParen(converted);
-        
-        // 处理 x 与函数之间缺少乘号的情况，如 xsin -> x*sin
-        for (const func of this.functions) {
-            converted = converted.replace(new RegExp(`(x)(${func})`, 'gi'), '$1*$2');
-            // 注意：这里不处理 func(x) 的情况，因为已经在 convertFunctionWithoutParen 中处理了
-            // 避免重复添加括号导致 ln(x) 变成 ln((x))
-        }
-        
-        // 处理 π/e 与函数之间缺少乘号的情况，如 πsin -> PI*sin
-        for (const func of this.functions) {
-            converted = converted.replace(new RegExp(`(PI)(${func})`, 'gi'), '$1*$2');
-            converted = converted.replace(new RegExp(`(e)(${func})`, 'gi'), '$1*$2');
-        }
-        
-        // 处理 i 与函数之间缺少乘号的情况，如 isin -> i*sin
-        for (const func of this.functions) {
-            converted = converted.replace(new RegExp(`(i)(${func})`, 'gi'), '$1*$2');
-        }
-        
-        // 处理 π 与 e 之间缺少乘号的情况，如 πe -> PI*e
-        converted = converted.replace(/(PI)(e)/gi, '$1*$2');
-        converted = converted.replace(/(e)(PI)/gi, '$1*$2');
-        
-        // 处理 π/e 与括号之间缺少乘号的情况，如 π(x) -> PI*(x)
-        converted = converted.replace(/(PI)(\()/g, '$1*$2');
-        // 注意：只在e后面不是字母时才匹配
-        converted = converted.replace(/(e)(\()(?![a-zA-Z])/g, '$1*$2');
+
+        // 处理 i*i / i^2 等虚数运算等价形式
+        converted = this.convertImaginaryOperations(converted);
+
+        // 统一处理隐式乘法（Desmos 风格）
+        converted = this.convertImplicitMultiplication(converted);
         
         return converted;
     }
@@ -709,24 +755,6 @@ class FunctionParser {
     validateSyntax(expression) {
         if (!expression || expression.trim() === '') {
             return { valid: false, error: '表达式不能为空' };
-        }
-        
-        // 检查函数是否带括号
-        const cleanExpr = expression.toLowerCase().replace(/\s/g, '');
-        const functionNames = ['sin', 'cos', 'tan', 'abs', 'exp', 'ln', 'log'];
-        
-        for (const func of functionNames) {
-            // 查找函数名
-            let pos = cleanExpr.indexOf(func);
-            while (pos !== -1) {
-                // 检查函数名后面是否跟着 (
-                const afterFunc = cleanExpr.substring(pos + func.length);
-                if (!afterFunc.startsWith('(')) {
-                    return { valid: false, error: `函数 ${func} 必须带括号，例如 ${func}(x)` };
-                }
-                // 继续查找下一个
-                pos = cleanExpr.indexOf(func, pos + func.length);
-            }
         }
         
         // 检查括号匹配

@@ -10,7 +10,7 @@ class GameController {
         this.currentRound = 1;
         
         // 游戏模式
-        this.gameMode = 'local'; // 'local' 本地对战, 'ai' 人机对战
+        this.gameMode = 'local'; // 'local' 本地对战, 'ai' 人机对战, 'campaign' 闯关模式
         
         // 难度设置
         this.difficulty = 'normal'; // easy, normal, hard, expert, test
@@ -66,6 +66,14 @@ class GameController {
         
         // 游戏历史记录（用于生成报告）
         this.gameHistory = [];
+
+        // 闯关模式状态
+        this.campaignState = {
+            active: false,
+            levelPack: null,
+            totalLevels: 0,
+            currentLevelId: 1
+        };
     }
     
     /**
@@ -95,6 +103,12 @@ class GameController {
      * @param {string} gameMode - 游戏模式 (local, ai)
      */
     initGame(rounds = 8, difficulty = 'normal', gameMode = 'local') {
+        // 退出闯关模式
+        this.campaignState.active = false;
+        this.campaignState.levelPack = null;
+        this.campaignState.totalLevels = 0;
+        this.campaignState.currentLevelId = 1;
+
         this.totalRounds = Math.min(Math.max(rounds, 4), 24);
         this.difficulty = difficulty;
         this.targetCount = this.getTargetCountByDifficulty(difficulty);
@@ -138,6 +152,119 @@ class GameController {
             isTestMode: this.isTestMode(),
             gameMode: this.gameMode
         });
+    }
+
+    /**
+     * 初始化闯关模式
+     * @param {Object} levelPack - levels.txt 解析后的对象
+     * @param {number} startLevelId - 起始关卡编号
+     */
+    initCampaign(levelPack, startLevelId = 1) {
+        if (!levelPack || !Array.isArray(levelPack.levels)) return false;
+
+        // 清空普通对局状态
+        this.clearGameHistory();
+        this.usedCells = [];
+        this.functionHistory = [];
+        this.testModeFunctions = [];
+        this.elementLockCounts = new Map();
+
+        this.gameMode = 'campaign';
+        this.campaignState.active = true;
+        this.campaignState.levelPack = levelPack;
+        this.campaignState.totalLevels = levelPack.levels.length;
+        this.players.A.score = 0;
+        this.players.B.score = 0;
+
+        const ok = this.loadCampaignLevel(startLevelId);
+        if (!ok) return false;
+
+        this.emit('gameInit', {
+            totalRounds: this.totalRounds,
+            currentRound: this.currentRound,
+            timeLimit: this.timeLimit,
+            difficulty: this.difficulty,
+            targetCount: this.targetCount,
+            isTestMode: false,
+            gameMode: this.gameMode
+        });
+
+        this.emit('campaignLevelLoaded', {
+            levelId: this.campaignState.currentLevelId,
+            totalLevels: this.campaignState.totalLevels,
+            difficulty: this.difficulty,
+            targetCount: this.targetCount,
+            roundState: { ...this.roundState }
+        });
+
+        this.setPhase(this.phases.INPUT_FUNCTION);
+        return true;
+    }
+
+    /**
+     * 加载某个闯关关卡（不会自动切阶段）
+     */
+    loadCampaignLevel(levelId) {
+        if (!this.campaignState.active || !this.campaignState.levelPack) return false;
+        const id = Number(levelId);
+        const level = this.campaignState.levelPack.levels.find(l => Number(l.id) === id);
+        if (!level) return false;
+
+        this.campaignState.currentLevelId = id;
+        this.currentRound = id;
+        this.totalRounds = this.campaignState.totalLevels;
+
+        // 难度按编号区间映射
+        if (id >= 1 && id <= 29) this.difficulty = 'easy';
+        else if (id >= 30 && id <= 53) this.difficulty = 'normal';
+        else if (id >= 54 && id <= 69) this.difficulty = 'hard';
+        else if (id >= 70 && id <= 81) this.difficulty = 'expert';
+        else this.difficulty = 'expert';
+
+        // 闯关：目标格数量按关卡数据
+        this.targetCount = Array.isArray(level.targetCells) ? level.targetCells.length : 1;
+
+        this.updateTimeLimit();
+        this.resetRoundState();
+        this.roundState.targetCells = (level.targetCells || []).map(c => ({ x: c.x, y: c.y }));
+        this.roundState.targetCell = this.roundState.targetCells[0] || null;
+        this.roundState.forbiddenCells = (level.forbiddenCells || []).map(c => ({ x: c.x, y: c.y }));
+        this.roundState.lockedElements = (level.lockedElements || []).slice();
+
+        // 单人闯关：让玩家A作为构造者
+        this.currentPlayer = 'A';
+
+        this.emit('campaignLevelLoaded', {
+            levelId: id,
+            totalLevels: this.campaignState.totalLevels,
+            difficulty: this.difficulty,
+            targetCount: this.targetCount,
+            roundState: { ...this.roundState }
+        });
+
+        return true;
+    }
+
+    getCampaignProgress() {
+        try {
+            const raw = localStorage.getItem('function_chess_campaign_cleared');
+            const v = raw ? Number(raw) : 0;
+            return Number.isFinite(v) ? v : 0;
+        } catch (e) {
+            return 0;
+        }
+    }
+
+    setCampaignProgress(clearedMax) {
+        try {
+            localStorage.setItem('function_chess_campaign_cleared', String(clearedMax));
+        } catch (e) { }
+    }
+
+    advanceCampaignLevel() {
+        if (!this.campaignState.active) return false;
+        const nextId = this.campaignState.currentLevelId + 1;
+        return this.loadCampaignLevel(nextId);
     }
     
     /**
@@ -374,8 +501,8 @@ class GameController {
      * 开始计时
      */
     startTimer() {
-        // 测试模式不启动计时器
-        if (this.isTestMode()) return;
+        // 测试模式/闯关模式不启动计时器
+        if (this.isTestMode() || (this.campaignState && this.campaignState.active)) return;
         
         this.stopTimer();
         this.remainingTime = this.timeLimit;
@@ -661,10 +788,10 @@ class GameController {
             score = -1;
         }
         
-        // 当summa单次加分特别高时（>4）给额外加分
-        if (this.currentPlayer === 'B' && score > 4) {
-            score += 4;
-        }
+        // 当summa单次加分特别高时（>4）给额外加分（已根据要求禁用）
+        // if (this.currentPlayer === 'B' && score > 4) {
+        //     score += 4;
+        // }
         
         this.roundState.score = score;
         this.players[this.currentPlayer].score += score;
@@ -698,7 +825,27 @@ class GameController {
             expression: this.roundState.functionExpression,
             round: this.currentRound
         });
-        
+
+        // 闯关模式：不进入换人/下一回合逻辑，由 UI 决定是重试还是进入下一关
+        if (this.campaignState && this.campaignState.active) {
+            const pass = !!this.roundState.hitTarget && !hitForbidden;
+            const clearedMax = this.getCampaignProgress();
+            if (pass && this.currentRound > clearedMax) {
+                this.setCampaignProgress(this.currentRound);
+            }
+            this.emit('campaignLevelResult', {
+                levelId: this.currentRound,
+                pass,
+                score,
+                expression: this.roundState.functionExpression,
+                clearedMax: this.getCampaignProgress(),
+                totalLevels: this.campaignState.totalLevels
+            });
+            // 冻结在 INIT，等待 UI 触发重试/下一关
+            this.setPhase(this.phases.INIT);
+            return;
+        }
+
         this.setPhase(this.phases.SWITCH_PLAYER);
     }
     

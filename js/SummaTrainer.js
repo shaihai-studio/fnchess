@@ -61,36 +61,51 @@ class SummaTrainer {
             this.isTraining = true;
             
             const TOTAL_ITERATIONS = trainAmount;
-            
-            // 为了“不控制时长，尽可能快但在30分钟以内”，我们直接设置极低的延迟，靠浏览器自己的极限去跑
-            // 让 chunk 变大，以增加单次阻塞的计算量，从而让运算更快
-            const chunk = Math.min(2000, Math.max(100, Math.floor(TOTAL_ITERATIONS / 500))); 
-            
+            const FIRST_PHASE = Math.floor(TOTAL_ITERATIONS * 0.95);
+            const REVIEW_PHASE = TOTAL_ITERATIONS - FIRST_PHASE;
+            const WRONG_COLLECT_START = Math.floor(FIRST_PHASE * 0.7); // 95%训练的最后30%
+            const chunk = Math.min(1500, Math.max(100, Math.floor(TOTAL_ITERATIONS / 600)));
+
             let i = 0;
             let logsArray = [];
-            
+            let wrongLogged = 0;
+            let reviewSolved = 0;
+
             let modelWeights = {
                 best_functions: []
             };
-            
+
             const opsCollection = ['+', '-', '*', '/', '^', 'sin', 'cos', 'abs', 'e', 'ln', 'tan', 'sqrt'];
-            
-            // 构建真实的AST节点并快速计算，避免 JIT 编译导致的 OOM 内存溢出
-            const generateASTNode = (depth) => {
+
+            const wrongQuestions = [];
+            const MAX_WRONG_QUESTIONS = 1200;
+
+            const randInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+            const chance = (p) => Math.random() < p;
+            const randomCell = (half) => ({ x: randInt(-half, half - 1), y: randInt(-half, half - 1) });
+            const sameCell = (a, b) => a.x === b.x && a.y === b.y;
+            const uniquePushCell = (arr, cell) => {
+                if (!arr.some(c => sameCell(c, cell))) arr.push(cell);
+            };
+
+            // 构建真实的AST节点并快速计算
+            const generateASTNode = (depth, availableOps) => {
                 if (depth <= 0) {
                     const r = Math.random();
                     if(r < 0.5) return { t: 'var' };
                     if(r < 0.8) return { t: 'num', v: Math.floor(Math.random() * 9 + 1) };
                     return { t: 'e' };
                 }
-                let op = opsCollection[Math.floor(Math.random() * opsCollection.length)];
+                const activeOps = availableOps.filter(o => ['+', '-', '*', '/', '^', 'sin', 'cos', 'abs', 'e', 'ln', 'tan', 'sqrt'].includes(o));
+                if (activeOps.length === 0) return { t: 'var' };
+                let op = activeOps[Math.floor(Math.random() * activeOps.length)];
                 if (['+', '-', '*', '/', '^'].includes(op)) {
-                    if (op === '^') return { t: 'op', op: '^', l: generateASTNode(depth - 1), r: { t: 'var' } }; // 防爆
-                    return { t: 'op', op: op, l: generateASTNode(depth - 1), r: generateASTNode(depth - 1) };
+                    if (op === '^') return { t: 'op', op: '^', l: generateASTNode(depth - 1, availableOps), r: { t: 'var' } };
+                    return { t: 'op', op: op, l: generateASTNode(depth - 1, availableOps), r: generateASTNode(depth - 1, availableOps) };
                 } else if (['sin', 'cos', 'tan', 'abs', 'ln', 'sqrt'].includes(op)) {
-                    return { t: 'func', op: op, arg: generateASTNode(depth - 1) };
+                    return { t: 'func', op: op, arg: generateASTNode(depth - 1, availableOps) };
                 } else if (op === 'e') {
-                    return { t: 'op', op: '^', l: { t: 'e' }, r: generateASTNode(depth - 1) }; 
+                    return { t: 'op', op: '^', l: { t: 'e' }, r: generateASTNode(depth - 1, availableOps) };
                 }
                 return { t: 'var' };
             };
@@ -134,93 +149,225 @@ class SummaTrainer {
                 return 'x';
             };
 
-            const batchProcess = () => {
-                i += chunk;
-                
-                // 完全根据真实游玩规则模拟训练回合
-                for(let k = 0; k < Math.min(chunk, 500); k++) {
-                    // 随机模拟 1 到 24 回合
-                    const simRound = Math.floor(Math.random() * 24) + 1;
-                    
-                    // 锁定元素规则：
-                    let maxLock = 2;
-                    if(simRound <= 4) maxLock = 0;
-                    else if(simRound <= 12) maxLock = 1;
-                    
-                    // 模拟对方锁定元素
-                    let availableOps = [...opsCollection];
-                    let locked = [];
-                    // 不能锁定 x 或括号，且每局可以锁定不同元素
-                    let lockableOps = opsCollection.filter(op => op !== 'x');
-                    for (let l = 0; l < maxLock; l++) {
-                        if (lockableOps.length === 0) break;
-                        const toLock = lockableOps[Math.floor(Math.random() * lockableOps.length)];
-                        locked.push(toLock);
-                        availableOps = availableOps.filter(op => op !== toLock);
-                        lockableOps = lockableOps.filter(op => op !== toLock);
-                    }
-                    
-                    // 使用可用的操作符生成表达式，这符合"选锁定"的规则
-                    const generateASTNodeValid = (depth) => {
-                        if (depth <= 0) {
-                            const r = Math.random();
-                            if(r < 0.5) return { t: 'var' };
-                            if(r < 0.8) return { t: 'num', v: Math.floor(Math.random() * 9 + 1) };
-                            if(availableOps.includes('e')) return { t: 'e' };
-                            return { t: 'var' };
-                        }
-                        // 从可用的 ops 中选
-                        let activeOps = availableOps.filter(o => ['+', '-', '*', '/', '^', 'sin', 'cos', 'abs', 'ln', 'tan', 'sqrt'].includes(o));
-                        if(activeOps.length === 0) return {t: 'var'};
-                        
-                        let op = activeOps[Math.floor(Math.random() * activeOps.length)];
-                        if (['+', '-', '*', '/', '^'].includes(op)) {
-                            if (op === '^') return { t: 'op', op: '^', l: generateASTNodeValid(depth - 1), r: { t: 'var' } }; 
-                            return { t: 'op', op: op, l: generateASTNodeValid(depth - 1), r: generateASTNodeValid(depth - 1) };
-                        } else if (['sin', 'cos', 'tan', 'abs', 'ln', 'sqrt'].includes(op)) {
-                            return { t: 'func', op: op, arg: generateASTNodeValid(depth - 1) };
-                        }
-                        return { t: 'var' };
+            const evalExprAt = (astNode, x) => {
+                const y = evalAST(astNode, x);
+                return Number.isFinite(y) ? y : null;
+            };
+
+            const verifyCase = (astNode, targets, forbidden) => {
+                for (const t of targets) {
+                    const tx = t.x + 0.5;
+                    const ty = t.y + 0.5;
+                    const y = evalExprAt(astNode, tx);
+                    if (y === null || Math.abs(y - ty) >= 0.5) return false;
+                }
+                for (const f of forbidden) {
+                    const fx = f.x + 0.5;
+                    const fy = f.y + 0.5;
+                    const y = evalExprAt(astNode, fx);
+                    if (y !== null && Math.abs(y - fy) < 0.5) return false;
+                }
+                return true;
+            };
+
+            const buildCase = (simRound, useSpecial, presetQuestion = null) => {
+                const half = 5;
+                let targetCount = 1;
+                if(difficulty === 'normal' || difficulty === 'hard') targetCount = 2;
+                if(difficulty === 'expert') targetCount = 3;
+
+                if (presetQuestion) {
+                    return {
+                        simRound: presetQuestion.simRound,
+                        targets: presetQuestion.targets.map(c => ({ ...c })),
+                        forbidden: presetQuestion.forbidden.map(c => ({ ...c })),
+                        lockedOps: [...presetQuestion.lockedOps],
+                        lockedDigits: [...presetQuestion.lockedDigits],
+                        lockDecimal: presetQuestion.lockDecimal
                     };
-                    
-                    const depth = Math.floor(Math.random() * 3) + 1;
-                    const astNode = generateASTNodeValid(depth);
-                    
-                    // 模拟选格子：
-                    // 根据难度计算 targetCount
-                    let targetCount = 1;
-                    if(difficulty === 'normal') targetCount = 2; // 原困难
-                    if(difficulty === 'expert') targetCount = 3;
-                    
-                    // 禁区规则
-                    let maxForbidden = 3;
-                    if (simRound <= 8) maxForbidden = 1;
-                    else if (simRound <= 16) maxForbidden = 2;
-                    
-                    if (Math.random() < 0.2) { 
-                        // 在训练时，主要通过有效性判断，以及模拟"有没有在这个被锁定的条件下生成出正常形变能力的函数"
-                        let v1 = evalAST(astNode, -2);
-                        let v2 = evalAST(astNode, 3);
-                        let v3 = evalAST(astNode, 0);
-                        
-                        if (isFinite(v1) && isFinite(v2) && isFinite(v3) && 
-                            v1 !== v2 && 
-                            Math.abs(v1) < 1000 && Math.abs(v2) < 1000) {
-                            
-                            const rndFunc = astToString(astNode);
-                            if (rndFunc.length < 50 && !rndFunc.includes('NaN')) {
-                                modelWeights.best_functions.push(rndFunc);
-                                if(modelWeights.best_functions.length > 5000) {
-                                    modelWeights.best_functions.shift();
+                }
+
+                const targets = [];
+                const forbidden = [];
+                const lockedOps = [];
+                const lockedDigits = [];
+                let lockDecimal = false;
+
+                for (let t = 0; t < targetCount; t++) uniquePushCell(targets, randomCell(half));
+                while (targets.length < targetCount) uniquePushCell(targets, randomCell(half));
+
+                let maxForbidden = 3;
+                if (simRound <= 8) maxForbidden = 1;
+                else if (simRound <= 16) maxForbidden = 2;
+                const forbiddenCount = randInt(0, maxForbidden);
+                for (let f = 0; f < forbiddenCount; f++) {
+                    const c = randomCell(half);
+                    if (!targets.some(t => sameCell(t, c))) uniquePushCell(forbidden, c);
+                }
+
+                if (useSpecial) {
+                    // 加强：绿格同列（在原 1/20 基础上叠加一次增强采样）
+                    if (targets.length >= 2 && (chance(1 / 20) || chance(1 / 12))) {
+                        const colX = randInt(-half, half - 1);
+                        for (let idx = 0; idx < targets.length; idx++) {
+                            targets[idx].x = colX;
+                        }
+                    }
+
+                    // 1/20：第一绿格周围8格内有不同数量红格
+                    if (chance(1 / 20) && targets.length > 0) {
+                        const c = targets[0];
+                        const around = [];
+                        for (let dx = -1; dx <= 1; dx++) {
+                            for (let dy = -1; dy <= 1; dy++) {
+                                if (dx === 0 && dy === 0) continue;
+                                const nx = c.x + dx, ny = c.y + dy;
+                                if (nx >= -half && nx < half && ny >= -half && ny < half) {
+                                    around.push({ x: nx, y: ny });
                                 }
                             }
                         }
+                        const pick = Math.min(around.length, randInt(1, 5));
+                        for (let p = 0; p < pick; p++) {
+                            uniquePushCell(forbidden, around[p]);
+                        }
+                    }
+
+                    // 1/40：红格在两个绿格连线上
+                    if (chance(1 / 40) && targets.length >= 2) {
+                        const a = targets[0], b = targets[1];
+                        const mx = (a.x + b.x) / 2;
+                        const my = (a.y + b.y) / 2;
+                        if (Number.isInteger(mx) && Number.isInteger(my)) {
+                            const mid = { x: mx, y: my };
+                            if (!targets.some(t => sameCell(t, mid))) uniquePushCell(forbidden, mid);
+                        }
+                    }
+
+                    // 1/40：红格在两绿格作坐标轴平行线交点
+                    if (chance(1 / 40) && targets.length >= 2) {
+                        const a = targets[0], b = targets[1];
+                        const cross1 = { x: a.x, y: b.y };
+                        const cross2 = { x: b.x, y: a.y };
+                        if (!targets.some(t => sameCell(t, cross1))) uniquePushCell(forbidden, cross1);
+                        if (!targets.some(t => sameCell(t, cross2)) && chance(0.5)) uniquePushCell(forbidden, cross2);
+                    }
+
+                    // 1/40：四则运算+乘方+小数点被锁（简单模式仅 ^ 和 .）
+                    if (chance(1 / 40)) {
+                        if (difficulty === 'easy') {
+                            if (chance(0.8)) lockedOps.push('^');
+                            lockDecimal = true;
+                        } else {
+                            const candidates = ['+', '-', '*', '/', '^'];
+                            for (const op of candidates) {
+                                if (chance(0.5)) lockedOps.push(op);
+                            }
+                            if (lockedOps.length === 0) lockedOps.push('^');
+                            lockDecimal = chance(0.7);
+                        }
+                    }
+
+                    // 1/40：数字被锁
+                    if (chance(1 / 40)) {
+                        const lockCount = randInt(1, 3);
+                        while (lockedDigits.length < lockCount) {
+                            const d = String(randInt(0, 9));
+                            if (!lockedDigits.includes(d)) lockedDigits.push(d);
+                        }
                     }
                 }
-                
+
+                return { simRound, targets, forbidden, lockedOps, lockedDigits, lockDecimal };
+            };
+
+            const isExpressionAllowed = (expr, qaCase) => {
+                for (const op of qaCase.lockedOps) {
+                    if (expr.includes(op)) return false;
+                }
+                if (qaCase.lockDecimal && expr.includes('.')) return false;
+                for (const d of qaCase.lockedDigits) {
+                    if (expr.includes(d)) return false;
+                }
+                return true;
+            };
+
+            const batchProcess = () => {
+                const loopCount = Math.min(chunk, TOTAL_ITERATIONS - i);
+
+                for (let k = 0; k < loopCount; k++) {
+                    const globalIndex = i + k;
+                    const inFirstPhase = globalIndex < FIRST_PHASE;
+                    const inWrongCollectWindow = inFirstPhase && globalIndex >= WRONG_COLLECT_START;
+                    const inReviewPhase = !inFirstPhase;
+
+                    let qaCase = null;
+                    let reviewPickIndex = -1;
+                    if (inReviewPhase && wrongQuestions.length > 0) {
+                        reviewPickIndex = Math.floor(Math.random() * wrongQuestions.length);
+                        qaCase = buildCase(1, false, wrongQuestions[reviewPickIndex]);
+                    } else {
+                        const simRound = randInt(1, 24);
+                        qaCase = buildCase(simRound, inFirstPhase);
+                    }
+
+                    // 基础锁定规则 + 特殊规则叠加（特殊规则可能与普通规则同时出现）
+                    let maxLock = 2;
+                    if (qaCase.simRound <= 4) maxLock = 0;
+                    else if (qaCase.simRound <= 12) maxLock = 1;
+                    const randomLocks = [];
+                    let lockableOps = opsCollection.filter(op => op !== 'x');
+                    for (let l = 0; l < maxLock; l++) {
+                        if (lockableOps.length === 0) break;
+                        const idx = Math.floor(Math.random() * lockableOps.length);
+                        randomLocks.push(lockableOps[idx]);
+                        lockableOps.splice(idx, 1);
+                    }
+                    const lockedOps = [...new Set([...randomLocks, ...qaCase.lockedOps])];
+                    const availableOps = opsCollection.filter(op => !lockedOps.includes(op));
+
+                    const depth = randInt(1, 3);
+                    const astNode = generateASTNode(depth, availableOps);
+                    const rndFunc = astToString(astNode);
+                    if (!isExpressionAllowed(rndFunc, qaCase)) continue;
+
+                    const v1 = evalExprAt(astNode, -2);
+                    const v2 = evalExprAt(astNode, 0);
+                    const v3 = evalExprAt(astNode, 3);
+                    const basicValid = v1 !== null && v2 !== null && v3 !== null &&
+                        v1 !== v3 && Math.abs(v1) < 1000 && Math.abs(v3) < 1000;
+                    if (!basicValid || rndFunc.length >= 60 || rndFunc.includes('NaN')) {
+                        continue;
+                    }
+
+                    const passCase = verifyCase(astNode, qaCase.targets, qaCase.forbidden);
+                    if (passCase) {
+                        modelWeights.best_functions.push(rndFunc);
+                        if (modelWeights.best_functions.length > 5000) modelWeights.best_functions.shift();
+
+                        if (inReviewPhase && wrongQuestions.length > 0) {
+                            reviewSolved++;
+                            if (reviewPickIndex >= 0 && reviewPickIndex < wrongQuestions.length) {
+                                wrongQuestions.splice(reviewPickIndex, 1);
+                            }
+                        }
+                    } else if (inWrongCollectWindow && chance(0.18) && wrongQuestions.length < MAX_WRONG_QUESTIONS) {
+                        wrongQuestions.push({
+                            simRound: qaCase.simRound,
+                            targets: qaCase.targets.map(c => ({ ...c })),
+                            forbidden: qaCase.forbidden.map(c => ({ ...c })),
+                            lockedOps: [...qaCase.lockedOps],
+                            lockedDigits: [...qaCase.lockedDigits],
+                            lockDecimal: qaCase.lockDecimal
+                        });
+                        wrongLogged++;
+                    }
+                }
+
+                i += loopCount;
+
                 if (i % (chunk * 4) === 0 || i <= chunk) {
                     let op = opsCollection[Math.floor(Math.random() * opsCollection.length)];
-                    let simRRound = Math.floor(Math.random() * 24) + 1;
                     let type = [
                         '目标区捕捉场优化', 
                         '禁区引力规避矩阵', 
@@ -229,15 +376,15 @@ class SummaTrainer {
                         '高维空间漫步', 
                         '符号允许域穷举'
                     ][Math.floor(Math.random()*6)];
-                    
-                    logsArray.push(`Epoch ${i}: ${type} [抓取组合=${op}, 记忆池大小=${modelWeights.best_functions.length}]`);
+
+                    logsArray.push(
+                        `Epoch ${i}: ${type} [抓取组合=${op}, 记忆池=${modelWeights.best_functions.length}, 错题池=${wrongQuestions.length}]`
+                    );
                     if(logsArray.length > 4) logsArray.shift();
                 }
-                
-                if (i > TOTAL_ITERATIONS) i = TOTAL_ITERATIONS;
-                
+
                 this.updateUI(i, TOTAL_ITERATIONS, logsArray);
-                
+
                 if (i >= TOTAL_ITERATIONS) {
                     this.isTraining = false;
                     setTimeout(() => {
@@ -247,7 +394,7 @@ class SummaTrainer {
                         window.summaCharacter && window.summaCharacter.speak("startGame", "smug");
                         const msgBox = document.getElementById('summa-message');
                         if(msgBox) {
-                            msgBox.textContent = `训练完毕，当前环境[${difficulty}]的特征图谱已掌握。记忆池容量: ${modelWeights.best_functions.length}`;
+                            msgBox.textContent = `训练完毕[${difficulty}] 记忆池:${modelWeights.best_functions.length} 错题记录:${wrongLogged} 复练命中:${reviewSolved}`;
                             msgBox.classList.add('visible');
                             setTimeout(() => msgBox.classList.remove('visible'), 5000);
                         }

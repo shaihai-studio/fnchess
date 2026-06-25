@@ -161,6 +161,7 @@ class FunctionRenderer {
      */
     findDiscontinuities(expression, xMin, xMax) {
         const discontinuities = [];
+        if (!expression) return discontinuities;
         const cleanExpr = expression.toLowerCase().replace(/\s/g, '');
         
         // 1. tan(x) 的断点：π/2 + nπ
@@ -264,7 +265,15 @@ class FunctionRenderer {
                     }
                     continue;
                 }
-                
+
+                // 防止跨越隐藏断点（如 abs(x)/x 在 x=0）时被错误连成竖线
+                if (points.length > 0 && points[points.length - 1].y !== null) {
+                    const prevPoint = points[points.length - 1];
+                    if (this.shouldBreakBetweenPoints(expression, prevPoint, { x, y })) {
+                        points.push({ x, y: null, isBreak: true });
+                    }
+                }
+
                 points.push({ x, y });
             } else {
                 if (points.length > 0 && points[points.length - 1].y !== null) {
@@ -274,6 +283,28 @@ class FunctionRenderer {
         }
         
         return points;
+    }
+
+    /**
+     * 判断两个有效采样点之间是否应强制断开，避免竖线伪连接
+     */
+    shouldBreakBetweenPoints(expression, p1, p2) {
+        const dy = Math.abs(p2.y - p1.y);
+
+        // 规则1：明显跳变且异号（典型 jump discontinuity）
+        const signChanged = p1.y * p2.y < 0;
+        if (signChanged && Math.abs(p1.y) > 0.5 && Math.abs(p2.y) > 0.5 && dy > 1) {
+            return true;
+        }
+
+        // 规则2：中点不可算，说明中间存在未采到的不连续点
+        const midX = (p1.x + p2.x) / 2;
+        const midY = this.parser.evaluate(expression, midX);
+        if (midY === null || !isFinite(midY)) {
+            return true;
+        }
+
+        return false;
     }
     
     /**
@@ -521,18 +552,17 @@ class FunctionRenderer {
         // 先清除之前的函数
         this.gridSystem.draw();
         
-        // 快速绘制（降低采样精度）
+        // 快速绘制（降低采样精度），但仍按断点分段，避免预览时出现竖线伪连接
         const range = this.gridSystem.getRange();
         const previewDeltaX = 0.05; // 预览时使用较低精度
-        
-        const points = [];
-        for (let x = range.min; x <= range.max; x += previewDeltaX) {
-            const y = this.parser.evaluate(expression, x);
-            if (y !== null && isFinite(y)) {
-                points.push({ x, y });
-            }
-        }
-        
+
+        const points = this.sampleWithDiscontinuities(
+            expression,
+            range.min,
+            range.max,
+            previewDeltaX
+        );
+
         this.drawPoints(points);
     }
     
