@@ -120,6 +120,10 @@ class SummaCharacter {
 
         this.animator = null;    // SummaAnimator 实例，render() 后赋值
         this.bubbleTimeout = null;
+        this._speechQueue = [];
+        this._isSpeaking = false;
+        this._speechToken = 0;
+        this.onSpeechQueueEmpty = null;
 
         this.render();
     }
@@ -404,30 +408,58 @@ class SummaCharacter {
         return false;
     }
 
-    speak(situation, mood = 'neutral') {
-        const lines = this.dialogues[situation];
-        if (!lines || lines.length === 0) return;
+    _enqueueSpeech(line, mood) {
+        this._speechQueue.push({ line, mood });
+        if (!this._isSpeaking) {
+            this._processSpeechQueue();
+        }
+    }
 
-        const line = lines[Math.floor(Math.random() * lines.length)];
+    _processSpeechQueue() {
+        if (this._isSpeaking || this._speechQueue.length === 0) return;
+        const next = this._speechQueue.shift();
+        this._isSpeaking = true;
+
+        const token = ++this._speechToken;
+        const line = next.line;
+        const mood = next.mood || 'neutral';
+        const duration = Math.max(1400, Math.min(6000, line.length * 110 + 450));
 
         this.setExpression(mood);
         this.messageBox.textContent = '';
         this.messageBox.classList.add('visible');
 
-        if (window.audioManager && typeof window.audioManager.playSummaTalkSequence === 'function') {
-            // 传入回调，逐字同步显示文本
-            window.audioManager.playSummaTalkSequence(line, mood, (ch) => {
-                this.messageBox.textContent += ch;
-            });
-        } else {
-            // 降级：直接显示全部文本
-            this.messageBox.textContent = line;
-        }
-
         if (this.bubbleTimeout) clearTimeout(this.bubbleTimeout);
         this.bubbleTimeout = setTimeout(() => {
             this.messageBox.classList.remove('visible');
-        }, 5000);
+        }, duration + 200);
+
+        if (window.audioManager && typeof window.audioManager.playSummaTalkSequence === 'function') {
+            window.audioManager.playSummaTalkSequence(line, mood, (ch) => {
+                if (token !== this._speechToken) return;
+                this.messageBox.textContent += ch;
+            });
+        } else {
+            this.messageBox.textContent = line;
+        }
+
+        setTimeout(() => {
+            if (token !== this._speechToken) return;
+            this._isSpeaking = false;
+            if (this._speechQueue.length > 0) {
+                this._processSpeechQueue();
+            } else if (typeof this.onSpeechQueueEmpty === 'function') {
+                this.onSpeechQueueEmpty();
+            }
+        }, duration);
+    }
+
+    speak(situation, mood = 'neutral') {
+        const lines = this.dialogues[situation];
+        if (!lines || lines.length === 0) return;
+
+        const line = lines[Math.floor(Math.random() * lines.length)];
+        this._enqueueSpeech(line, mood);
     }
 
     // ── 游戏事件快捷接口 ─────────────────────────────────

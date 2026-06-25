@@ -1,10 +1,15 @@
 class AudioManager {
     constructor() {
         this.enabled = true;
-        this.masterVolume = 0.6;
+        this.masterVolume = 1.0;
+        this.sfxVolume = 1.0;
+        this.bgmVolume = 0.33;
+        this.sfxBoost = 3.2;
+        this.bgmEnabled = true;
         
         // 本地音效文件目录
         this.localBaseUrl = "sounds/";
+        this.bgmBaseUrl = "bgm/";
         
         // 映射所有的动作音效
         this.sounds = {
@@ -17,12 +22,31 @@ class AudioManager {
             phaseChange: 'water_droplet.mp3'
         };
         
+        // 背景音乐列表：把音频文件放到 `函数棋 10.0/bgm/` 下即可自动随机播放
+        this.bgmTracks = [
+            'bgm1.mp3',
+            'bgm2.mp3',
+            'bgm3.mp3',
+            'bgm4.mp3',
+            'bgm5.mp3',
+            'bgm6.mp3'
+        ];
+        this._bgmPlaylist = [];
+        this._currentBgmIndex = -1;
+        this._bgmAudio = null;
+        this._bgmStarted = false;
+        
         // 使用纯 HTML Audio 元素（兼容 file:// 协议）
         this._audioPool = {};
         this.isLoaded = false;
         
         // 预加载所有音效
         this._preloadAllSounds();
+        this._initBgmPlayer();
+
+        // 页面加载 1 秒后主动开始播放（绑定交互回退作为兜底）
+        this._bindBgmUnlock();
+        setTimeout(() => this.startBgm(), 1000);
         
         // 尝试初始化 Web Audio API（用于合成音效）
         this._audioCtx = null;
@@ -57,6 +81,20 @@ class AudioManager {
         this.isLoaded = true;
         console.log(`[Audio] HTML Audio 元素已创建 (${Object.keys(this.sounds).length} 个音效)`);
     }
+
+    _initBgmPlayer() {
+        this._bgmPlaylist = [...this.bgmTracks].filter(Boolean);
+        if (this._bgmPlaylist.length === 0) return;
+
+        if (!this._bgmAudio) {
+            this._bgmAudio = new Audio();
+            this._bgmAudio.preload = 'auto';
+            this._bgmAudio.loop = false;
+            this._bgmAudio.volume = this.bgmVolume;
+            this._bgmAudio.addEventListener('ended', () => this._playNextBgm());
+            this._bgmAudio.addEventListener('error', () => this._playNextBgm(true));
+        }
+    }
     
     /**
      * 核心播放方法 - 使用 HTML Audio 元素
@@ -67,13 +105,101 @@ class AudioManager {
         if (this._audioPool && this._audioPool[key]) {
             try {
                 const snd = this._audioPool[key].cloneNode(true);
-                snd.volume = this.masterVolume * volume;
+                snd.volume = Math.min(1, this.sfxVolume * this.sfxBoost * volume);
                 snd.play().catch(() => {}); // 忽略自动播放被阻止
                 snd.onended = () => snd.remove();
             } catch (e) {
                 console.warn('[Audio] 播放异常:', e);
             }
         }
+    }
+
+    _pickRandomBgmIndex(excludeIndex = -1) {
+        if (!this._bgmPlaylist.length) return -1;
+        if (this._bgmPlaylist.length === 1) return 0;
+
+        let nextIndex = excludeIndex;
+        let guard = 0;
+        while (nextIndex === excludeIndex && guard < 20) {
+            nextIndex = Math.floor(Math.random() * this._bgmPlaylist.length);
+            guard++;
+        }
+        return nextIndex;
+    }
+
+    _playNextBgm(forceSkipBroken = false) {
+        if (!this.bgmEnabled || !this._bgmAudio || this._bgmPlaylist.length === 0) return;
+
+        if (forceSkipBroken && this._currentBgmIndex >= 0 && this._currentBgmIndex < this._bgmPlaylist.length) {
+            this._bgmPlaylist.splice(this._currentBgmIndex, 1);
+            this._currentBgmIndex = -1;
+            if (this._bgmPlaylist.length === 0) return;
+        }
+
+        const nextIndex = this._pickRandomBgmIndex(this._currentBgmIndex);
+        if (nextIndex < 0) return;
+        this._currentBgmIndex = nextIndex;
+        this._bgmAudio.src = this.bgmBaseUrl + this._bgmPlaylist[nextIndex];
+        this._bgmAudio.volume = this.bgmVolume;
+        this._bgmAudio.play().catch(() => {
+            // 用户未交互前可能被浏览器拦截，后续交互时会自动恢复
+        });
+    }
+
+    _bindBgmUnlock() {
+        const unlock = () => {
+            this.startBgm();
+            window.removeEventListener('pointerdown', unlock, true);
+            window.removeEventListener('keydown', unlock, true);
+            window.removeEventListener('click', unlock, true);
+        };
+        window.addEventListener('pointerdown', unlock, true);
+        window.addEventListener('keydown', unlock, true);
+        window.addEventListener('click', unlock, true);
+    }
+
+    startBgm() {
+        if (!this.bgmEnabled) return;
+        if (this._bgmStarted && this._bgmAudio && !this._bgmAudio.paused) return;
+        this._bgmStarted = true;
+
+        // 尝试 resume AudioContext（部分浏览器要求 context 被 resume 后才允许 HTMLAudioElement play）
+        if (this._audioCtx && this._audioCtx.state === 'suspended') {
+            this._audioCtx.resume().catch(() => {});
+        }
+
+        if (!this._bgmAudio) this._initBgmPlayer();
+        if (this._bgmAudio) {
+            this._playNextBgm();
+        }
+    }
+
+    stopBgm() {
+        this._bgmStarted = false;
+        if (this._bgmAudio) {
+            this._bgmAudio.pause();
+            this._bgmAudio.currentTime = 0;
+        }
+    }
+
+    setBgmEnabled(enabled) {
+        this.bgmEnabled = !!enabled;
+        if (!this.bgmEnabled) {
+            this.stopBgm();
+        } else {
+            this.startBgm();
+        }
+    }
+
+    setBgmVolume(volume) {
+        const v = Math.max(0, Math.min(1, Number(volume)));
+        this.bgmVolume = v;
+        if (this._bgmAudio) this._bgmAudio.volume = v;
+    }
+
+    setSfxVolume(volume) {
+        const v = Math.max(0, Math.min(1, Number(volume)));
+        this.sfxVolume = v;
     }
 
     // --- 具体场景接口 ---
@@ -118,7 +244,7 @@ class AudioManager {
             filter.Q.value = 0.9;
 
             gain.gain.setValueAtTime(0.0001, now);
-            gain.gain.linearRampToValueAtTime(this.masterVolume * 0.045 * intensity, now + 0.004);
+            gain.gain.linearRampToValueAtTime(Math.min(1, this.sfxVolume * this.sfxBoost * 0.045 * intensity), now + 0.004);
             gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
 
             osc.connect(filter);
@@ -204,7 +330,7 @@ class AudioManager {
             // 包络
             const gain = ctx.createGain();
             gain.gain.setValueAtTime(0.001, ctx.currentTime);
-            gain.gain.linearRampToValueAtTime(this.masterVolume * 0.65, ctx.currentTime + 0.03);
+            gain.gain.linearRampToValueAtTime(Math.min(1, this.sfxVolume * this.sfxBoost * 0.65), ctx.currentTime + 0.03);
             gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
             
             source.connect(filter);

@@ -23,7 +23,17 @@ class UIController {
         // AI触发队列
         this.aiTriggerQueue = [];
         this.isProcessingAITrigger = false;
-        
+
+        // Modal 状态追踪（状态机：防止重复触发动画）
+        this._modalStates = new Map();
+        // 每-modal 独立的跳过回调标志（替代全局 _modalSkipCallback）
+        this._modalSkipCallbacks = new Map();
+        // 记录每个 modal 当前活跃的退场完成函数（用于强制取消）
+        this._modalExitFinishers = new Map();
+
+        // 游戏活跃标记（退出后设为 false，阻止 AI/计时器继续运行）
+        this._gameActive = false;
+
         // 当前表达式
         this.currentExpression = '';
         this.expressionElements = [];
@@ -58,6 +68,15 @@ class UIController {
         this.expressionDisplay = document.getElementById('expression-display');
         this.messageElement = document.getElementById('message');
         this.messagePanel = document.getElementById('message-panel');
+        this.bgmEnabledCheckbox = document.getElementById('bgm-enabled');
+        this.bgmVolumeSlider = document.getElementById('bgm-volume');
+        this.bgmVolumeValue = document.getElementById('bgm-volume-value');
+        this.sfxVolumeSlider = document.getElementById('sfx-volume');
+        this.sfxVolumeValue = document.getElementById('sfx-volume-value');
+        this.bgmOpenBtn = document.getElementById('bgm-open-btn');
+        this.startBgmOpenBtn = document.getElementById('start-bgm-open-btn');
+        this.bgmModal = document.getElementById('bgm-modal');
+        this.bgmCloseBtn = document.getElementById('bgm-close-btn');
         
         // 按钮
         this.confirmBtn = document.getElementById('confirm-btn');
@@ -204,9 +223,134 @@ class UIController {
         this.refreshUnsovableDifficultyVisibility();
         this.addCampaignDrawDelayToggle();
         this.updateCampaignDrawDelayToggleVisibility();
+        this.bindBackgroundMusicControls();
+        this.initBackgroundMusic();
 
     }
     
+    // ─────────────────────────────────────────────────────────
+    //  界面切换过渡动效辅助方法（状态机版）
+    // ─────────────────────────────────────────────────────────
+
+    /**
+     * 获取 modal 当前状态
+     */
+    _getModalState(el) {
+        return this._modalStates.get(el) || 'hidden';
+    }
+
+    _setModalState(el, state) {
+        this._modalStates.set(el, state);
+    }
+
+    /**
+     * 显示一个 modal（带入场动效）— 状态机保护，防重复触发
+     * @param {HTMLElement|string} modal - DOM 元素或 ID
+     * @param {string} [display='flex']  - 目标 display 值
+     */
+    showModal(modal, display = 'flex') {
+        const el = typeof modal === 'string' ? document.getElementById(modal) : modal;
+        if (!el) return;
+
+        const state = this._getModalState(el);
+        // 已在显示或正在入场 → 忽略
+        if (state === 'visible' || state === 'entering') return;
+
+        // 正在退场中：立即同步完成上一次隐藏（彻底杜绝竞态）
+        if (state === 'exiting') {
+            // 取消退场动画和监听器
+            el.classList.remove('modal-exiting');
+            el.removeEventListener('animationend', this._modalExitFinishers.get(el));
+            this._modalExitFinishers.delete(el);
+            // 立即完成隐藏：display:none + 状态归 hidden
+            el.style.display = 'none';
+            this._setModalState(el, 'hidden');
+            this._modalSkipCallbacks.delete(el);
+        }
+
+        this._setModalState(el, 'entering');
+        el.classList.remove('modal-exiting');
+        el.style.display = display;
+
+        // 强制 reflow 确保动画从头播放
+        void el.offsetWidth;
+
+        el.classList.add('modal-entering');
+
+        const onEnterEnd = () => {
+            el.classList.remove('modal-entering');
+            el.removeEventListener('animationend', onEnterEnd);
+            this._setModalState(el, 'visible');
+        };
+        el.addEventListener('animationend', onEnterEnd);
+    }
+
+    /**
+     * 隐藏一个 modal（带退场动效）— 状态机保护，防重复触发
+     * @param {HTMLElement|string} modal - DOM 元素或 ID
+     * @param {Function} [callback]       - 动画结束后的回调（仅执行一次）
+     */
+    hideModal(modal, callback) {
+        const el = typeof modal === 'string' ? document.getElementById(modal) : modal;
+        if (!el) {
+            if (callback) callback();
+            return;
+        }
+
+        const computed = window.getComputedStyle(el).display;
+        const styleNone = el.style.display === 'none';
+        // 已经隐藏了
+        if (styleNone || computed === 'none') {
+            this._setModalState(el, 'hidden');
+            if (callback) callback();
+            return;
+        }
+
+        const state = this._getModalState(el);
+        // 已经在退场或已隐藏 → 忽略（callback 至多执行一次）
+        if (state === 'exiting' || state === 'hidden') {
+            if (callback) callback();
+            return;
+        }
+        // 正在入场：先取消入场类
+        if (state === 'entering') {
+            el.classList.remove('modal-entering');
+        }
+
+        this._setModalState(el, 'exiting');
+        el.classList.remove('modal-entering');
+        el.classList.add('modal-exiting');
+
+        let called = false;
+        const doCallback = () => {
+            if (called) return;
+            called = true;
+            el.classList.remove('modal-exiting');
+            el.style.display = 'none';
+            this._setModalState(el, 'hidden');
+            this._modalExitFinishers.delete(el);
+            this._modalSkipCallbacks.delete(el);
+            if (callback) callback();
+        };
+
+        const onExitEnd = () => {
+            el.removeEventListener('animationend', onExitEnd);
+            doCallback();
+        };
+        // 记录退场监听器引用，以便 showModal 在需要时强制移除
+        this._modalExitFinishers.set(el, onExitEnd);
+        el.addEventListener('animationend', onExitEnd);
+
+        // 保险：若动画未正常触发，400ms 后强制完成
+        setTimeout(() => {
+            if (this._getModalState(el) === 'exiting') {
+                doCallback();
+            }
+        }, 400);
+    }
+
+    // ─────────────────────────────────────────────────────────
+
     /**
      * 更新难度选择提示
      */
@@ -436,6 +580,7 @@ class UIController {
                 window.audioManager.audioCtx.resume();
             }
             window.audioManager.playClick();
+            window.audioManager.startBgm();
         }
         
         this.selectedMode = mode;
@@ -839,16 +984,26 @@ class UIController {
         
         this.gameController.on('gameEnd', (data) => {
             if (window.audioManager) window.audioManager.playGameWin();
-            this.showGameOver(data);
-            
+            const finishGameOver = () => this.showGameOver(data);
+
             // Summa Reaction Hook
             if (this.gameController.gameMode === 'ai' && window.summaCharacter) {
+                const summa = window.summaCharacter;
+                const prevHandler = summa.onSpeechQueueEmpty;
+                summa.onSpeechQueueEmpty = () => {
+                    summa.onSpeechQueueEmpty = prevHandler || null;
+                    finishGameOver();
+                    if (typeof prevHandler === 'function') prevHandler();
+                };
                 if (data.winner === 'B') {
-                    window.summaCharacter.reactWin();
+                    summa.reactWin();
+                    return;
                 } else if (data.winner === 'A') {
-                    window.summaCharacter.reactLose();
+                    summa.reactLose();
+                    return;
                 }
             }
+            finishGameOver();
         });
     }
     
@@ -897,7 +1052,23 @@ class UIController {
     showGameDialog(options) {
         return new Promise((resolve) => {
             this.summaDialogResolve = resolve;
-            
+
+            // ── 防御性重置：确保 summaDialog 不处于卡死状态 ──
+            // 如果上次隐藏因竞态未完成（如连续两次确认），强制清理
+            const sd = this.summaDialog;
+            if (sd) {
+                const s = this._getModalState(sd);
+                if (s === 'exiting' || s === 'entering') {
+                    sd.classList.remove('modal-entering', 'modal-exiting');
+                    sd.style.display = 'none';
+                    const finisher = this._modalExitFinishers.get(sd);
+                    if (finisher) { sd.removeEventListener('animationend', finisher); }
+                    this._modalExitFinishers.delete(sd);
+                    this._modalSkipCallbacks.delete(sd);
+                    this._setModalState(sd, 'hidden');
+                }
+            }
+
             const {
                 title = '提示',
                 message = '',
@@ -954,14 +1125,15 @@ class UIController {
                     exitBtn.textContent = '退出';
                     exitBtn.onclick = () => {
                         if (window.audioManager) window.audioManager.playClick();
+                        this.forceStopGame();
                         this.hideSummaDialog();
-                        this.startModal.style.display = 'flex';
+                        this.showModal(this.startModal);
                     };
                 }
             }
             
             // 显示弹窗
-            this.summaDialog.style.display = 'flex';
+            this.showModal(this.summaDialog);
         });
     }
     
@@ -972,8 +1144,9 @@ class UIController {
      * 隐藏 Summa 训练弹窗
      */
     hideSummaDialog() {
-        this.summaDialog.style.display = 'none';
-        this.summaDialogResolve = null;
+        this.hideModal(this.summaDialog, () => {
+            this.summaDialogResolve = null;
+        });
     }
     
     /**
@@ -1629,21 +1802,27 @@ class UIController {
     async triggerAITurn(phase) {
         // 测试模式不触发AI
         if (this.gameController.isTestMode()) return;
-        
+
+        // ★ 游戏已停止（退出后），不再触发AI
+        if (!this._gameActive) return;
+
         // 只处理AI可以操作的阶段，忽略evaluate/switch_player等中间阶段
         const aiActionablePhases = ['select_target', 'set_forbidden', 'set_locks', 'input_function'];
         if (!aiActionablePhases.includes(phase)) {
             console.log(`[UI] 阶段 ${phase} 无需AI操作，跳过`);
             return;
         }
-        
+
         // 检查当前是否是AI的回合
         const state = this.gameController.getGameState();
         if (state.currentPlayer !== 'B') {
             console.log('[UI] 当前不是AI的回合，跳过');
             return;
         }
-        
+
+        // 再次检查（异步期间可能已退出）
+        if (!this._gameActive) return;
+
         // 添加到队列
         this.aiTriggerQueue.push(phase);
         console.log(`[UI] AI触发请求入队: ${phase}, 队列长度: ${this.aiTriggerQueue.length}`);
@@ -1665,12 +1844,18 @@ class UIController {
         if (this.aiTriggerQueue.length === 0 || this.isProcessingAITrigger) {
             return;
         }
-        
+
         this.isProcessingAITrigger = true;
-        
+
         while (this.aiTriggerQueue.length > 0) {
+            // ★ 游戏已停止，立即清空队列退出
+            if (!this._gameActive) {
+                this.aiTriggerQueue = [];
+                break;
+            }
+
             const phase = this.aiTriggerQueue.shift();
-            
+
             // 如果AI正在思考，将阶段放回队首并等待，避免phase丢失
             if (this.aiController.isThinking) {
                 console.log('[UI] AI正在思考，等待完成');
@@ -2222,6 +2407,9 @@ class UIController {
                 // 更新函数列表
                 this.updateFunctionList();
 
+                // 重新绘制所有测试模式函数，避免新函数绘制时把旧函数覆盖掉
+                await this.redrawTestModeFunctions();
+
                 // 渲染后再刷新一次，确保调试层/曲线层都稳定显示
                 await this.postRenderRefresh();
 
@@ -2342,6 +2530,62 @@ class UIController {
             btn.style.color = active ? '#fff' : '#e5e7eb';
             btn.style.boxShadow = active ? '0 0 0 1px rgba(255,255,255,0.18) inset' : 'none';
         });
+    }
+
+    bindBackgroundMusicControls() {
+        if (this.bgmEnabledCheckbox) {
+            this.bgmEnabledCheckbox.addEventListener('change', () => {
+                if (window.audioManager) window.audioManager.setBgmEnabled(this.bgmEnabledCheckbox.checked);
+            });
+        }
+        if (this.bgmVolumeSlider) {
+            this.bgmVolumeSlider.addEventListener('input', () => {
+                const volume = Number(this.bgmVolumeSlider.value) / 100;
+                if (this.bgmVolumeValue) this.bgmVolumeValue.textContent = `${this.bgmVolumeSlider.value}%`;
+                if (window.audioManager) window.audioManager.setBgmVolume(volume);
+            });
+        }
+        if (this.sfxVolumeSlider) {
+            this.sfxVolumeSlider.addEventListener('input', () => {
+                const volume = Number(this.sfxVolumeSlider.value) / 100;
+                if (this.sfxVolumeValue) this.sfxVolumeValue.textContent = `${this.sfxVolumeSlider.value}%`;
+                if (window.audioManager) window.audioManager.setSfxVolume(volume);
+            });
+        }
+        if (this.bgmOpenBtn) {
+            this.bgmOpenBtn.addEventListener('click', () => {
+                if (this.bgmModal) this.showModal(this.bgmModal);
+            });
+        }
+        if (this.startBgmOpenBtn) {
+            this.startBgmOpenBtn.addEventListener('click', () => {
+                if (this.bgmModal) this.showModal(this.bgmModal);
+            });
+        }
+        if (this.bgmCloseBtn) {
+            this.bgmCloseBtn.addEventListener('click', () => {
+                if (window.audioManager) window.audioManager.playClick();
+                if (this.bgmModal) this.hideModal(this.bgmModal);
+            });
+        }
+    }
+
+    initBackgroundMusic() {
+        if (!window.audioManager) return;
+        if (this.bgmEnabledCheckbox) this.bgmEnabledCheckbox.checked = window.audioManager.bgmEnabled;
+        if (this.bgmVolumeSlider) {
+            this.bgmVolumeSlider.value = String(Math.round(window.audioManager.bgmVolume * 100));
+        }
+        if (this.bgmVolumeValue && this.bgmVolumeSlider) {
+            this.bgmVolumeValue.textContent = `${this.bgmVolumeSlider.value}%`;
+        }
+        if (this.sfxVolumeSlider) {
+            this.sfxVolumeSlider.value = String(Math.round((window.audioManager.sfxVolume ?? 1) * 100));
+        }
+        if (this.sfxVolumeValue && this.sfxVolumeSlider) {
+            this.sfxVolumeValue.textContent = `${this.sfxVolumeSlider.value}%`;
+        }
+        window.audioManager.startBgm();
     }
 
     async renderAndEvaluate(expression) {
@@ -2532,6 +2776,34 @@ class UIController {
         
         this.gameController.skipPhase();
     }
+
+    /**
+     * 强制停止当前对局（退出前调用）
+     * 停止计时器、清除AI队列、标记游戏非活跃
+     */
+    forceStopGame() {
+        // 1. 停止计时器
+        if (this.gameController && typeof this.gameController.stopTimer === 'function') {
+            this.gameController.stopTimer();
+        }
+
+        // 2. 清空 AI 触发队列，防止退出后 AI 继续行动
+        this.aiTriggerQueue = [];
+        this.isProcessingAITrigger = false;
+
+        // 3. 如果 AI 正在思考，标记为已取消（aiController 检查此标志）
+        this._gameActive = false;
+
+        // 4. 清除消息提示
+        this.showMessage('');
+    }
+
+    /**
+     * 标记游戏为活跃状态（开始新对局时调用）
+     */
+    _markGameActive() {
+        this._gameActive = true;
+    }
     
     /**
      * 处理退出按钮点击（根据模式决定是否显示气泡框）
@@ -2576,13 +2848,16 @@ class UIController {
     handleExit() {
         if (window.audioManager) window.audioManager.playClick();
         this.hideExitConfirm();
-        
-        // 闯关模式：退出按钮改为返回难度选择界面
+
+        // ★ 先强制停止游戏运行（停计时器、清AI队列、标记非活跃）
+        this.forceStopGame();
+
+        // 闯关模式：返回难度选择界面
         if (this.gameController.gameMode === 'campaign') {
             this.returnCampaignToDifficulty();
             return;
         }
-        
+
         // 如果是测试模式，执行退出测试逻辑
         if (this.gameController.isTestMode()) {
             this.exitTestMode();
@@ -2590,8 +2865,8 @@ class UIController {
             // 普通对战模式：返回开始界面
             this.gameController.resetGame();
             this.resetBattleGrid();
-            document.getElementById('start-modal').style.display = 'flex';
-            if (this.gameOverModal) this.gameOverModal.style.display = 'none';
+            this.hideModal(this.gameOverModal);
+            this.showModal(this.startModal);
         }
     }
     
@@ -2665,7 +2940,7 @@ class UIController {
         }
         
         // 返回开始界面
-        this.startModal.style.display = 'flex';
+        this.showModal(this.startModal);
         this.showMessage('');
         this.refreshStartSelectorDisplay();
     }
@@ -2763,7 +3038,7 @@ class UIController {
             
             if (shouldTrain) {
                 if (this.aiModeHint) this.aiModeHint.textContent = '正在训练 AI，请稍候...';
-                this.startModal.style.display = 'none';
+                this.hideModal(this.startModal);
                 // 重新训练前删除旧模型
                 localStorage.removeItem(`summa_model_v2_${difficulty}`);
                 await window.summaTrainer.startTraining(difficulty, trainAmount);
@@ -2771,12 +3046,13 @@ class UIController {
                 // 用户跳过但已有模型，直接开始游戏
             } else {
                 // 用户取消且未训练，返回
-                this.startModal.style.display = 'flex';
+                this.showModal(this.startModal);
                 return;
             }
             
             // 训练完成或已训练，开始游戏
-            this.startModal.style.display = 'none';
+            this.hideModal(this.startModal);
+            this._markGameActive();
             this.gameController.initGame(rounds, difficulty, gameMode);
             if (this.aiModeHint) this.aiModeHint.textContent = 'AI 模式已启动，Summa 正在对战';
             
@@ -2786,9 +3062,10 @@ class UIController {
             }
             return;
         } else {
-            this.startModal.style.display = 'none';
+            this.hideModal(this.startModal);
         }
 
+        this._markGameActive();
         this.gameController.initGame(rounds, difficulty, gameMode);
 
         if (this.aiModeHint && gameMode === 'ai') {
@@ -2905,6 +3182,7 @@ class UIController {
         const safeStart = Number(startLevelId) || 1;
         this.campaignCurrentLevelId = safeStart;
         this.campaignCurrentLevelBestRecord = this.getCampaignLevelBestRecord(safeStart);
+        this._markGameActive();
         this.gameController.initCampaign(pack, safeStart);
         if (this.gridSystem && this.gridSystem.setCampaignFixedRange) {
             this.gridSystem.setCampaignFixedRange(true);
@@ -2934,16 +3212,16 @@ class UIController {
         }
         const starCount = Math.max(1, Math.min(5, Number(data.score) || 1));
         this.renderCampaignVictoryStars(starCount);
-        this.campaignVictoryModal.style.display = 'flex';
         this.campaignVictoryModal.dataset.levelId = String(levelId);
         this.campaignVictoryModal.dataset.totalLevels = String(data.totalLevels || (this.campaignPack && this.campaignPack.levels ? this.campaignPack.levels.length : 0));
         this.campaignVictoryModal.dataset.difficulty = data.difficulty || this.campaignDifficulty || '';
         this.campaignVictoryModal.dataset.stars = String(starCount);
         this.campaignVictoryModal.dataset.length = String(length);
+        this.showModal(this.campaignVictoryModal);
     }
 
     hideCampaignVictory() {
-        if (this.campaignVictoryModal) this.campaignVictoryModal.style.display = 'none';
+        if (this.campaignVictoryModal) this.hideModal(this.campaignVictoryModal);
     }
 
     getCurrentExpressionLength() {
@@ -3022,18 +3300,20 @@ class UIController {
 
     returnToCampaignLevelSelect() {
         this.hideCampaignVictory();
-        if (this.campaignModal) this.campaignModal.style.display = 'flex';
+        if (this.campaignModal) this.showModal(this.campaignModal);
         this.showCampaignDifficulty();
         this.refreshCampaignStartUI();
     }
 
     returnCampaignToDifficulty() {
+        // ★ 强制停止当前对局
+        this.forceStopGame();
         this.hideCampaignVictory();
         this.resetBattleGrid();
         this.gameController.resetGame();
         this.campaignCurrentLevelId = null;
         this.campaignCurrentLevelBestRecord = null;
-        if (this.campaignModal) this.campaignModal.style.display = 'flex';
+        if (this.campaignModal) this.showModal(this.campaignModal);
         this.showCampaignDifficulty();
         this.updateCampaignDrawDelayToggleVisibility();
         this.restoreBattleUI();
@@ -3042,8 +3322,9 @@ class UIController {
     }
 
     openCampaignUI() {
-        if (this.startModal) this.startModal.style.display = 'none';
-        if (this.campaignModal) this.campaignModal.style.display = 'flex';
+        this.hideModal(this.startModal, () => {
+            this.showModal(this.campaignModal);
+        });
         this.showCampaignDifficulty();
         this.hideBattleUI();
         this.updateCampaignDrawDelayToggleVisibility();
@@ -3052,9 +3333,12 @@ class UIController {
     }
 
     closeCampaignUI() {
-        if (this.campaignModal) this.campaignModal.style.display = 'none';
+        // ★ 强制停止当前对局（闯关中退出时）
+        this.forceStopGame();
+        this.hideModal(this.campaignModal, () => {
+            this.showModal(this.startModal);
+        });
         this.hideCampaignVictory();
-        if (this.startModal) this.startModal.style.display = 'flex';
         this.resetBattleGrid();
         this.restoreBattleUI();
         const badge = document.getElementById('campaign-level-badge');
@@ -3192,6 +3476,9 @@ class UIController {
                 showSkip: false
             });
             if (!firstConfirm) return;
+
+            // 等待 200ms 间隙，让第一次弹窗退场动画完成
+            await new Promise(r => setTimeout(r, 200));
 
             const secondConfirm = await this.showGameDialog({
                 title: '再次确认',
@@ -3347,7 +3634,7 @@ class UIController {
                 if (locked) return;
                 if (window.audioManager) window.audioManager.playClick();
                 // 进入游戏界面
-                if (this.campaignModal) this.campaignModal.style.display = 'none';
+                if (this.campaignModal) this.hideModal(this.campaignModal);
                 this.startCampaign(id).catch(err => console.error('[Campaign] startCampaign failed:', err));
             });
             this.campaignLevelGrid.appendChild(cell);
@@ -3612,6 +3899,17 @@ class UIController {
             container.appendChild(item);
         });
     }
+
+    async redrawTestModeFunctions() {
+        if (!this.gameController?.isTestMode()) return;
+        if (!this.gridSystem || !this.renderer) return;
+
+        const functions = this.gameController.getTestModeFunctions();
+        this.gridSystem.draw();
+        for (const func of functions) {
+            await this.renderer.drawFunction(func.expression, false, func.color);
+        }
+    }
     
     /**
      * 将表达式字符串智能拆分为元素数组
@@ -3729,15 +4027,16 @@ class UIController {
      */
     handleRestart() {
         if (window.audioManager) window.audioManager.playClick();
-        this.gameOverModal.style.display = 'none';
-        
-        // 如果在测试模式，先退出测试模式
-        if (this.gameController.isTestMode()) {
-            this.exitTestMode();
-        }
-        
-        // 返回主页
-        this.startModal.style.display = 'flex';
+        // ★ 先强制停止游戏运行
+        this.forceStopGame();
+        this.hideModal(this.gameOverModal, () => {
+            // 如果在测试模式，先退出测试模式
+            if (this.gameController.isTestMode()) {
+                this.exitTestMode();
+            }
+            // 返回主页
+            this.showModal(this.startModal);
+        });
     }
     
     /**
@@ -3933,7 +4232,7 @@ class UIController {
             <div>玩家B: ${data.scores.B} 分</div>
         `;
         
-        this.gameOverModal.style.display = 'flex';
+        this.showModal(this.gameOverModal);
     }
     
     /**
@@ -4010,7 +4309,7 @@ class UIController {
         this.reportContentElement.scrollTop = 0;
         this.reportContentElement.style.overflowY = 'auto';
         this.reportContentElement.style.maxHeight = 'calc(90vh - 100px)';
-        this.reportModal.style.display = 'flex';
+        this.showModal(this.reportModal);
     }
     
     /**
@@ -4018,7 +4317,7 @@ class UIController {
      */
     hideGameReport() {
         if (window.audioManager) window.audioManager.playClick();
-        this.reportModal.style.display = 'none';
+        this.hideModal(this.reportModal);
     }
     
     /**

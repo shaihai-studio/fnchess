@@ -8,6 +8,14 @@
     <link rel="stylesheet" href="css/shaihai-theme.css">
 </head>
 <body>
+    <!-- 启动界面（仅首次加载时显示） -->
+    <div id="splash-screen">
+        <div class="splash-content">
+            <div class="splash-title">函数棋</div>
+            <div class="splash-hint">点击屏幕进入游戏</div>
+        </div>
+    </div>
+
     <div id="summa-container"></div>
 
     <!-- 顶部信息栏 -->
@@ -34,6 +42,10 @@
         <div class="campaign-level-badge" id="campaign-level-badge" style="display:none;">
             <span class="campaign-level-value" id="campaign-level-value">Lv. 1</span>
         </div>
+
+        <button class="bgm-float-btn" id="bgm-open-btn" type="button" aria-label="背景音乐设置" title="背景音乐设置">
+            <img src="images/VolumeButton.png" alt="背景音乐设置" class="bgm-float-icon-img">
+        </button>
     </header>
     
     <!-- 主容器 -->
@@ -104,7 +116,7 @@
     </section>
     
     <!-- 开始界面模态框 -->
-    <div class="modal" id="start-modal">
+    <div class="modal" id="start-modal" style="display:none;">
         <div class="modal-content">
             <div class="start-settings-layout">
                 <!-- 左侧：标题图片 + 难度/回合选择 -->
@@ -133,6 +145,12 @@
 
                 <!-- 右侧：模式按钮 + 开始按钮 -->
                 <div class="start-right-column">
+                    <div class="start-top-actions">
+                        <button class="bgm-float-btn start-bgm-btn" id="start-bgm-open-btn" type="button" aria-label="背景音乐设置" title="背景音乐设置">
+                            <img src="images/VolumeButton.png" alt="背景音乐设置" class="bgm-float-icon-img">
+                        </button>
+                    </div>
+
                     <div class="mode-select start-modes-right">
                         <div class="mode-toggle mode-toggle-vertical">
                             <button class="mode-btn active" id="mode-local" data-mode="local">本地对战</button>
@@ -162,7 +180,7 @@
                 </select>
                 <small id="campaign-progress" style="display:block; margin-top:6px; opacity:0.7;"></small>
             </div>
-            
+            <a class="about-us-link" href="https://space.bilibili.com/3690976753223882" target="_blank" rel="noopener noreferrer">关于我们</a>
         </div>
     </div>
 
@@ -212,6 +230,31 @@
 
     <input id="campaign-file-input" type="file" accept=".txt,application/json,text/plain" style="display:none;">
     
+    <!-- 背景音乐设置弹窗 -->
+    <div class="modal" id="bgm-modal" style="display:none;">
+        <div class="modal-content bgm-modal-content">
+            <h2>背景音乐</h2>
+            <div class="bgm-modal-body">
+                <label class="music-toggle-row" style="justify-content:center;">
+                    <input type="checkbox" id="bgm-enabled" checked>
+                    <span>启用背景音乐</span>
+                </label>
+                <div class="music-volume-row bgm-volume-row">
+                    <span>BGM</span>
+                    <input type="range" id="bgm-volume" min="0" max="100" value="33">
+                    <span id="bgm-volume-value">33%</span>
+                </div>
+                <div class="music-volume-row bgm-volume-row">
+                    <span>音效</span>
+                    <input type="range" id="sfx-volume" min="0" max="100" value="100">
+                    <span id="sfx-volume-value">100%</span>
+                </div>
+                <div class="bgm-hint">BGM 会在每首结束后随机切换到下一首</div>
+            </div>
+            <button class="btn btn-primary" id="bgm-close-btn" style="width:100%;">关闭</button>
+        </div>
+    </div>
+
     <!-- 游戏结束模态框 -->
     <div class="modal" id="game-over-modal" style="display: none;">
         <div class="modal-content">
@@ -319,21 +362,38 @@
             // 创建核心组件
             const gridSystem = new GridSystem('game-canvas');
             const gameController = new GameController();
-            
+
             // 创建UI控制器
             const uiController = new UIController(gridSystem, gameController);
-            
+
             // 创建Summa训练器
             const summaTrainer = new SummaTrainer(gameController, gridSystem);
-            
+
             // 将训练器暴露到全局，方便控制台调用
             window.summaTrainer = summaTrainer;
             window.gameController = gameController;
             window.uiController = uiController;
-            
-            // 显示开始界面
-            document.getElementById('start-modal').style.display = 'flex';
-            
+
+            // ── 启动界面：点击后酷炫转场到主界面 ──
+            const splash = document.getElementById('splash-screen');
+            if (splash) {
+                splash.addEventListener('click', function _onSplashClick() {
+                    splash.removeEventListener('click', _onSplashClick);
+                    // 触发转场动画（旋转 + 放大 + 虚化）
+                    splash.classList.add('splash-exit');
+
+                    // 动画结束后移除启动界面，显示主界面，启动BGM
+                    setTimeout(() => {
+                        splash.style.display = 'none';
+                        uiController.showModal(document.getElementById('start-modal'));
+                        if (window.audioManager) window.audioManager.startBgm();
+                    }, 900);
+                });
+                // start-modal 由启动界面接管显示时机，此处不主动 show
+            } else {
+                uiController.showModal(document.getElementById('start-modal'));
+            }
+
             console.log('函数棋游戏已加载完成！');
             console.log('游戏模块:', {
                 gridSystem: !!gridSystem,
@@ -341,7 +401,7 @@
                 uiController: !!uiController,
                 summaTrainer: !!summaTrainer
             });
-            
+
             console.log('\n=== Summa训练器已就绪 ===');
             console.log('使用方法：');
             console.log('1. 开始训练: summaTrainer.startTraining({totalGames: 1000, difficulty: "hard"})');
