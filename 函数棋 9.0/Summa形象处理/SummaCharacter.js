@@ -16,99 +16,107 @@ class SummaCharacter {
             exhausted: 'Summa形象处理/summa_image/exhausted.PNG'
         };
 
-        // 微微高冷、学术风范、带着点风趣与极简少女味的对话库（总计 50+）
+        // 温和、鼓励、带点数学趣味的对话库
         this.dialogues = {
             startGame: [
-                "坐标轴已展开。希望你能坚持得久一点。",
-                "拓扑检测完毕。不要让我太无聊哦。",
-                "这可是高维空间的切片，注意你的参数范围。",
-                "如果你准备好了，我不介意稍微放点水……才怪。",
-                "算力唤醒中。请提供有效映射。",
-                "今天的心情正好是个凸函数，来一局吧。"
+                "坐标轴已展开。一起享受这场函数对战吧！",
+                "拓扑检测完毕。放轻松，好好享受对局吧！",
+                "这可是高维空间的切片，注意你的参数范围哦～",
+                "准备好了吗？期待你的精彩表现！",
+                "算力唤醒中。来一局愉快的数学对决吧！",
+                "今天的心情正好是个凸函数，开始吧！"
             ],
             aiThink: [
-                "唔……这点该用什么切线滑过去呢？",
+                "唔……让我想想用什么函数好呢？",
                 "正尝试从常微分方程中寻找灵感……",
                 "计算洛必达法则的极限，稍微等我一下。",
-                "这局的拓扑结构略显单调，得加点非线性干扰。",
-                "多项式展开中……有点无聊的计算。",
+                "这局的拓扑结构有点意思，得好好思考。",
+                "多项式展开中……再给我一点时间。",
                 "思考中。别急，脑海里的曲线正在成型。",
                 "锁定特征向量，寻找最优的拟合路径。"
             ],
             aiPlay: [
                 "得出极值。就是这个表达式了。",
-                "看来这根曲线刚好可以完美刺穿。",
-                "代入常数。你躲不开这一下的。",
-                "不用看了，绝对收敛于这几个坐标。",
-                "计算完毕，这可是我挑选并在脑内跑了上千遍的解。",
-                "当当！降维打击准备就绪。"
+                "希望这根曲线能顺利穿过目标点～",
+                "代入常数。看看这次效果如何。",
+                "计算完毕，这是我精心挑选的解。",
+                "希望这条曲线能命中目标~",
+                "试试这个表达式，感觉还不错！"
             ],
             playerAction: [
-                "到你了。时间复杂度别太高，我会困的。",
-                "请输出你的防线，让我看看你的解析几何功底。",
-                "只要不出现除以零的愚蠢失误就好。",
-                "观察你的拟合走向……不要让我失望。",
-                "算式写快点，我的 CPU 等得很无聊。",
-                "请给出你的闭式解。"
+                "到你了。慢慢思考，不用着急哦。",
+                "请输出你的防线，期待你的精彩解法！",
+                "小心禁区，不过我相信你能处理好的。",
+                "观察你的拟合走向……加油，你行的！",
+                "不用着急，认真构建你的函数吧。",
+                "请给出你的闭式解，我相信你能做到！"
             ],
             aiSuccess: [
-                "理所当然的命中。这连泰勒展开都算不上。",
-                "精准打击。数学是不会骗人的。",
-                "轻轻松松，我的函数连续且可导哦。",
-                "误差在浮点下溢的级别，也就是完美。",
-                "看来我的权重更新得非常顺利。",
-                "得分。这难道不是显而易见的吗？"
+                "精准命中！这次的曲线选得不错～",
+                "漂亮，成功命中目标！",
+                "看来我的拟合方向是对的，开心！",
+                "误差在可控范围内，顺利命中！",
+                "成功命中！继续加油哦！",
+                "命中目标！看来状态还可以～"
             ],
             aiSuccess_Multiple: [
-                "一箭双雕。多重覆盖解就是这么丝滑。",
-                "看吧，这就是高阶组合函数的含金量。",
-                "曲率调整得恰到好处，精准穿透所有的特征点。",
-                "这根曲线划过的角度，简直是艺术品。",
-                "一次收割完毕，这就是降维打击带来的畅快感。"
+                "一箭双雕！多重覆盖成功命中！",
+                "漂亮，一条曲线覆盖了多个目标！",
+                "曲率调整得恰到好处，精准穿透～",
+                "这根曲线划过的角度，还挺完美的！",
+                "一次收割完毕，这种感觉真好！"
             ],
             aiSuccess_Complex: [
-                "这套非线性的组合算式，凭你大概是防不住的。",
-                "跳出了基础函数的局限，体会到几何恐惧了吗？",
-                "这种带着绝对值的复合震荡，算是我送你的礼物。",
-                "把算子相互嵌套的快感，你体会到了吗？",
-                "你以为锁住基础算子我就没办法了吗？天真。"
+                "这套非线性的组合表达式，居然成功了！",
+                "跳出了基础函数的局限，效果还不错嘛～",
+                "这种复合表达式能命中，我自己也有点惊喜！",
+                "把算子相互嵌套，居然真的有效！",
+                "尝试了复杂表达式，结果令人满意～"
+            ],
+            aiSuccess_Discontinuous: [
+                "虽然表达式有点不连续，但还是命中啦！",
+                "函数在间断点附近跳了跳，不过效果还可以～",
+                "尽管有点跳跃，但结果还是好的！",
+                "不连续也没关系，命中目标就是胜利～",
+                "有一点间断，但照样能命中，还不错吧！"
             ],
             aiError: [
                 "……计算产生了溢出，刚才那个不算。",
                 "什么？截断误差居然把我的曲线带偏了？",
-                "由于刚才那个无聊的参数，我的拟合失效了……",
-                "该死，遇到了非法的自变量区……可恶。",
-                "失手了。不过只是为了拉取更多梯度特征而已。",
-                "这绝对是 JavaScript 浮点数精度的问题！绝对！"
+                "参数没选好，我的拟合失效了……",
+                "哎呀，遇到了非法的自变量区间……",
+                "失手了。下次我会调整得更好的。",
+                "这可能是浮点数精度的问题，再来一次！"
             ],
             playerSuccess: [
-                "曲线的斜率刚好对准了……这次算你运气好。",
-                "竟然真的穿破了我的防守？有点意思。",
-                "巧合的解析式。不过，值得记录到我的负反馈集中。",
-                "稍微对你另眼相看了，你的直觉还不算太差。",
-                "啊，击中了。下一局我可不会再给你这样的空隙。",
-                "勉勉强强算是给出了个有效解吧。"
+                "哇，你的曲线精准命中了！真厉害！",
+                "竟然真的突破了我的防守？太棒了！",
+                "这组解析式选得很漂亮，令人佩服！",
+                "精彩的表现！你的思路非常清晰！",
+                "漂亮的一击！看来我也得加油了～",
+                "这个解法很巧妙！值得我学习呢！"
             ],
             playerError: [
-                "完全偏离了目标域。你是在画随手涂鸦吗？",
-                "呀，报错了。看来就算给你再多的常数你也凑不出来。",
-                "你的不连续点太多了，完全是一场灾难。",
-                "这函数在实数域内甚至都不收敛，你在想什么？",
-                "完全没有命中哦，看来你需要复习一下初中代数了。",
-                "这根线歪得可真离谱，你是不是把符号弄反了？"
+                "稍微偏离了目标域，不过没关系，再试一次！",
+                "啊，差一点就命中了，下次加油！",
+                "没关系的，函数构建本来就需要多尝试。",
+                "这次没命中，但你已经很努力了！",
+                "再来一次吧，我相信你能找到正确的解法！",
+                "不要灰心，调整一下思路，你一定能成功！",
+                "失败是成功之母，多试几次就会越来越好的！"
             ],
             win: [
-                "比赛结束。这就是高维算力对人类的绝对碾压。",
-                "积分收割完毕。你的函数库实在太贫乏了。",
-                "承让了。回去把《数学分析》再抄写三遍再来找我吧。",
-                "算力压制。看来我们需要重新定义这里的边界了。",
-                "不过如此。下次希望能有点让我期待的解法。"
+                "比赛结束！这真是一场精彩的对局。",
+                "积分收割完毕。你的表现也很不错！",
+                "承让了！期待下次与你更精彩的对决！",
+                "今天的发挥还不错，不过你也有潜力哦～",
+                "险胜而已，下次你一定能做得更好！"
             ],
             lose: [
-                "……居然被一堆低级算式绕过了防御网，我不服。",
-                "这局算你厉害。等我更新一下深层神经网络，明天再战！",
-                "概率论出了点错觉……你的表现，确实比预期稍微好一点。",
-                "输了？这不符合逻辑。肯定是我的权重还没调好。",
+                "……居然被你用巧妙的解法打败了，佩服！",
+                "这局你赢了！你的函数构建能力很强！",
+                "你的表现真的很出色，我输得心服口服！",
+                "输了？这说明你的策略比我更优！",
                 "好吧，我承认你在这种残局下的代数直觉很准。"
             ]
         };
@@ -361,6 +369,44 @@ class SummaCharacter {
         if (this.animator) this.animator.setLookMode(mode);
     }
 
+    /**
+     * 判断表达式是否存在不连续点（间断、除零、尖点炸裂等）
+     */
+    _hasDiscontinuity(expression) {
+        if (!expression) return false;
+
+        // 快速特征筛查：包含 tan 一定有间断
+        if (expression.includes('tan')) return true;
+
+        // 包含除法时，在定义域内采样检查是否存在 NaN/Infinity
+        if (expression.includes('/')) {
+            return this._sampleHasNaN(expression);
+        }
+
+        // 包含 sqrt 时负数测试
+        if (expression.includes('sqrt') || expression.includes('log') || expression.includes('ln')) {
+            return this._sampleHasNaN(expression);
+        }
+
+        return false;
+    }
+
+    /**
+     * 在 [-10, 10] 区间以 0.5 为步长采样，检查是否存在非法值
+     */
+    _sampleHasNaN(expression) {
+        try {
+            const fn = new Function('x', `try { return (${expression}); } catch(e) { return NaN; }`);
+            for (let x = -10; x <= 10; x += 0.5) {
+                const val = fn(x);
+                if (!isFinite(val) || isNaN(val)) return true;
+            }
+        } catch (e) {
+            return true;
+        }
+        return false;
+    }
+
     speak(situation, mood = 'neutral') {
         const lines = this.dialogues[situation];
         if (!lines || lines.length === 0) return;
@@ -368,11 +414,17 @@ class SummaCharacter {
         const line = lines[Math.floor(Math.random() * lines.length)];
 
         this.setExpression(mood);
-        this.messageBox.textContent = line;
+        this.messageBox.textContent = '';
         this.messageBox.classList.add('visible');
 
         if (window.audioManager && typeof window.audioManager.playSummaTalkSequence === 'function') {
-            window.audioManager.playSummaTalkSequence(line, mood);
+            // 传入回调，逐字同步显示文本
+            window.audioManager.playSummaTalkSequence(line, mood, (ch) => {
+                this.messageBox.textContent += ch;
+            });
+        } else {
+            // 降级：直接显示全部文本
+            this.messageBox.textContent = line;
         }
 
         if (this.bubbleTimeout) clearTimeout(this.bubbleTimeout);
@@ -398,12 +450,17 @@ class SummaCharacter {
 
     reactAiSuccess({ hitTarget, hitForbidden, targetCount, expression } = {}) {
         if (targetCount > 1) {
-            this.speak('aiSuccess_Multiple', 'smug');
+            this.speak('aiSuccess_Multiple', 'happy');
         } else if (expression && (
             expression.includes('abs') || expression.includes('cos') ||
             expression.includes('sin') || expression.includes('exp')
         )) {
-            this.speak('aiSuccess_Complex', 'smug');
+            // 检查表达式是否有间断点
+            if (this._hasDiscontinuity(expression)) {
+                this.speak('aiSuccess_Discontinuous', 'exhausted');
+            } else {
+                this.speak('aiSuccess_Complex', 'happy');
+            }
         } else {
             this.speak('aiSuccess', 'happy');
         }
@@ -411,7 +468,7 @@ class SummaCharacter {
 
     reactAiError() { this.speak('aiError', 'surprised'); }
     reactPlayerSuccess() { this.speak('playerSuccess', 'surprised'); }
-    reactPlayerError() { this.speak('playerError', 'smug'); }
+    reactPlayerError() { this.speak('playerError', 'neutral'); }
     reactWin() { this.speak('win', 'happy'); }
     reactLose() { this.speak('lose', 'sad'); }
 

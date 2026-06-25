@@ -1638,9 +1638,9 @@ class AIController {
 
             if (window.summaCharacter) {
                 const msg = (dx === 0 && dy === 0)
-                    ? '这个局面让我很困惑……那就请你来试试？'
-                    : '换个方向，同样的难题……你能解出来吗？';
-                window.summaCharacter.say(msg, 'smug');
+                    ? '这个局面让我很困惑……你来帮帮我吧？'
+                    : '换个方向，同样的难题……你能找到解法吗？';
+                window.summaCharacter.say(msg, 'neutral');
             }
             console.log(`[AI] 挑衅反转成功，平移 (${dx}, ${dy})，放置 ${finalTargets.length}/${targetCount} 个目标格`);
             return true;
@@ -1716,7 +1716,7 @@ class AIController {
         this._saveArchiveRevengeTraining();
 
         if (window.summaCharacter) {
-            window.summaCharacter.say(`"${expression}"……已记录。下次不会再让你得逢了。`, 'determined');
+            window.summaCharacter.say(`"${expression}"……这个解法我记下了，下次就不会再被难倒了！`, 'determined');
         }
     }
 
@@ -1726,7 +1726,7 @@ class AIController {
     notifyPlayerFailedRevenge() {
         this.pendingRevengePuzzle = null;
         if (window.summaCharacter) {
-            window.summaCharacter.say('连你也解不出来？果然是个困难的局面……', 'smug');
+            window.summaCharacter.say('看来这个局面确实有难度……我们一起加油吧！', 'neutral');
         }
     }
 

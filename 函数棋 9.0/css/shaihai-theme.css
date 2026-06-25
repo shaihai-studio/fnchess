@@ -19,47 +19,24 @@
 }
 
 /* ================================================================
-   2. 字体全局覆盖 —— 所有 UI 文字应用得意黑
-      保留等宽字体的例外见下方
+   2. Summa 气泡文字
    ================================================================ */
-
-/* body 设置继承 — 默认等宽字体（用于纯数字/字母/符号） */
-body {
-    font-family: 'Courier New', 'Consolas', monospace !important;
+.summa-message,
+.summa-dialog-message {
+    font-family: 'SmileySans', 'Segoe UI', 'Microsoft YaHei', sans-serif !important;
+    letter-spacing: 0.5px;
 }
 
-/* 显式覆盖所有含汉字的 UI 文字元素（用得意黑显示中文） */
-.game-title,
-.winner-text,
-.panel-card h3,
-.score-display,
-.score-display .player,
-.phase-hint,
-.category-label,
-.campaign-level-label,
-.campaign-victory-text,
-.btn,
-.mode-btn,
-.btn-exit,
-.btn-small,
-.btn-cancel,
-.btn-confirm-exit,
-.modal-content h2,
-.modal-content p,
-.report-summary h3,
-.report-history h3,
-.difficulty-select label,
-.round-select label,
-.function-list-title,
-.summa-dialog-title,
-.summa-dialog-message,
-.summa-dialog-skip-btn,
-.summa-dialog-exit-btn {
+/* ================================================================
+   3. 字体全局覆盖 —— 所有 UI 文字应用得意黑
+   ================================================================ */
+
+/* 全局默认字体 */
+* {
     font-family: 'SmileySans', 'Segoe UI', 'Microsoft YaHei', sans-serif !important;
 }
 
-/* ─── 保留等宽字体的元素 ───
-   计时器、表达式构建区、函数表达式、坐标格子、底部键盘按钮等需要等宽对齐的地方 */
+/* 保留等宽对齐的元素（数字、表达式、代码等） */
 .timer-value,
 .expression-display,
 .expression-element,
@@ -74,8 +51,13 @@ body {
 #campaign-lrsigma-display,
 .summa-dialog-icon,
 .summa-dialog-option-btn,
-.summa-dialog-input {
-    font-family: 'Courier New', 'SmileySans Mono', monospace !important;
+.summa-dialog-input,
+input,
+textarea,
+select,
+pre,
+code {
+    font-family: 'Courier New', 'Consolas', monospace !important;
 }
 
 /* ================================================================

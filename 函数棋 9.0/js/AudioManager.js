@@ -131,31 +131,37 @@ class AudioManager {
         }
     }
 
-    playSummaTalkSequence(text = '', mood = 'neutral') {
+    playSummaTalkSequence(text = '', mood = 'neutral', onChar = null) {
         const src = String(text || '');
         if (!src) return;
 
         const moodMap = {
-            happy: { base: 700, spread: 42, delay: 0.05, waveType: 'triangle' },
-            surprised: { base: 720, spread: 50, delay: 0.05, waveType: 'square' },
-            angry: { base: 600, spread: 30, delay: 0.05, waveType: 'sawtooth' },
-            sad: { base: 560, spread: 26, delay: 0.05, waveType: 'triangle' },
-            thinking: { base: 620, spread: 24, delay: 0.05, waveType: 'square' },
-            determined: { base: 650, spread: 22, delay: 0.05, waveType: 'square' },
-            smug: { base: 670, spread: 18, delay: 0.05, waveType: 'square' },
-            neutral: { base: 640, spread: 28, delay: 0.05, waveType: 'square' }
+            happy: { base: 700, spread: 42, delay: 0.08, waveType: 'triangle' },
+            surprised: { base: 720, spread: 50, delay: 0.08, waveType: 'square' },
+            angry: { base: 600, spread: 30, delay: 0.08, waveType: 'sawtooth' },
+            sad: { base: 560, spread: 26, delay: 0.08, waveType: 'triangle' },
+            thinking: { base: 620, spread: 24, delay: 0.08, waveType: 'square' },
+            determined: { base: 650, spread: 22, delay: 0.08, waveType: 'square' },
+            smug: { base: 670, spread: 18, delay: 0.08, waveType: 'square' },
+            neutral: { base: 640, spread: 28, delay: 0.08, waveType: 'square' }
         };
         const voice = moodMap[mood] || moodMap.neutral;
 
         const chars = [...src];
-        let delay = 0.3;
+        let delay = 0.5;
         for (const ch of chars) {
             if (/\s/.test(ch)) {
-                delay += 0.03;
+                // 空格也触发回调，用于同步显示
+                if (onChar) {
+                    const currentDelay = delay;
+                    setTimeout(() => onChar(ch), currentDelay * 1000);
+                }
+                delay += 0.05;
                 continue;
             }
             const punctuationBoost = /[，。！？!?]/.test(ch) ? 1.35 : /[,.]/.test(ch) ? 0.88 : 1.0;
             const pitchShift = /[，。！？!?]/.test(ch) ? -14 : /[,.]/.test(ch) ? -6 : 0;
+            const charDelay = delay;
             setTimeout(() => {
                 this.playSummaTalkBlip({
                     baseFrequency: voice.base + (Math.random() * voice.spread - voice.spread / 2),
@@ -164,7 +170,8 @@ class AudioManager {
                     duration: /[，。！？!?]/.test(ch) ? 0.055 : 0.045,
                     waveType: voice.waveType
                 });
-            }, delay * 1000);
+                if (onChar) onChar(ch);
+            }, charDelay * 1000);
             delay += voice.delay + (/[，。！？!?]/.test(ch) ? 0.05 : 0);
         }
     }
