@@ -60,6 +60,30 @@ class UIController {
         this.startBtn = document.getElementById('start-btn');
         this.roundSelect = document.getElementById('round-select');
         this.difficultySelect = document.getElementById('difficulty-select');
+        this.difficultyHint = document.getElementById('difficulty-hint');
+        this.header = document.getElementById('header');
+        
+        // 绑定难度选择提示更新
+        if (this.difficultySelect && this.difficultyHint) {
+            this.difficultySelect.addEventListener('change', () => {
+                this.updateDifficultyHint();
+            });
+        }
+    }
+    
+    /**
+     * 更新难度选择提示
+     */
+    updateDifficultyHint() {
+        const difficulty = this.difficultySelect.value;
+        const hints = {
+            'easy': '简单模式：1个目标格，四则运算无法被锁定，每回合+20秒',
+            'normal': '普通模式：1个目标格，标准规则',
+            'hard': '困难模式：2个目标格',
+            'expert': '专家模式：3个目标格',
+            'test': '测试模式：自由绘图，无目标格，函数持续显示'
+        };
+        this.difficultyHint.textContent = hints[difficulty] || hints['normal'];
     }
     
     /**
@@ -74,7 +98,13 @@ class UIController {
             this.roundElement.textContent = data.currentRound;
             this.totalRoundsElement.textContent = data.totalRounds;
             this.messageElement.textContent = '';
-            this.showMessage('游戏开始！玩家B请选择目标网格');
+            
+            // 测试模式特殊提示
+            if (data.isTestMode) {
+                this.showMessage('测试模式：自由构造函数，函数将持续显示在画布上');
+            } else {
+                this.showMessage('游戏开始！玩家B请选择目标网格');
+            }
         });
         
         this.gameController.on('phaseChange', (data) => {
@@ -98,7 +128,7 @@ class UIController {
             // 更新阶段提示
             const state = this.gameController.getGameState();
             if (state.targetCount > 1) {
-                this.phaseHintElement.textContent = `请点击棋盘选择 ${state.targetCount} 个目标网格 (${this.gameController.roundState.targetCells.length}/${state.targetCount})，按回车确认`;
+                this.phaseHintElement.textContent = `请点击棋盘选择 ${state.targetCount} 个目标网格 (${this.gameController.roundState.targetCells.length}/${state.targetCount})`;
             }
         });
         
@@ -110,7 +140,7 @@ class UIController {
             // 更新阶段提示
             const state = this.gameController.getGameState();
             if (state.targetCount > 1) {
-                this.phaseHintElement.textContent = `请点击棋盘选择 ${state.targetCount} 个目标网格 (${this.gameController.roundState.targetCells.length}/${state.targetCount})，按回车确认`;
+                this.phaseHintElement.textContent = `请点击棋盘选择 ${state.targetCount} 个目标网格 (${this.gameController.roundState.targetCells.length}/${state.targetCount})`;
             }
         });
         
@@ -351,6 +381,13 @@ class UIController {
         label.textContent = `选择要锁定的元素 (${alreadyLocked.length}/${state.maxLocks})`;
         title.appendChild(label);
         
+        // 同步更新阶段提示文本
+        if (state.difficulty === 'easy') {
+            this.phaseHintElement.textContent = `点击下方元素锁定对方 (${alreadyLocked.length}/${state.maxLocks})，四则运算无法被锁定`;
+        } else {
+            this.phaseHintElement.textContent = `点击下方元素锁定对方 (${alreadyLocked.length}/${state.maxLocks})`;
+        }
+        
         const itemsDiv = document.createElement('div');
         itemsDiv.className = 'element-items';
         
@@ -391,7 +428,7 @@ class UIController {
                 // 简单难度：四则运算显示为保护状态，无法点击
                 btn.classList.add('protected');
                 btn.disabled = true;
-                btn.title = '新手保护：四则运算无法被锁定';
+                btn.title = '四则运算无法被锁定';
             } else {
                 btn.addEventListener('click', () => this.toggleLockElement(element, btn));
             }
@@ -602,6 +639,12 @@ class UIController {
             return;
         }
         
+        // 测试模式：不需要验证锁定元素，直接绘制
+        if (this.gameController.isTestMode()) {
+            this.renderTestModeFunction(expression);
+            return;
+        }
+        
         // 验证锁定元素
         const lockCheck = this.parser.validateExpressionForLocks(expression);
         if (!lockCheck.valid) {
@@ -614,6 +657,65 @@ class UIController {
         
         // 绘制函数并检测碰撞
         this.renderAndEvaluate(expression);
+    }
+    
+    /**
+     * 绘制测试模式函数
+     */
+    async renderTestModeFunction(expression) {
+        // 防止重复提交
+        if (this.isRenderingTestFunction) {
+            return;
+        }
+        this.isRenderingTestFunction = true;
+        
+        // 锁定缩放按钮
+        this.lockZoomButtons();
+        
+        try {
+            // 检查是否已存在相同的函数
+            const existingFunctions = this.gameController.getTestModeFunctions();
+            if (existingFunctions.some(f => f.expression === expression)) {
+                this.showMessage('该函数已存在', 'error');
+                this.isRenderingTestFunction = false;
+                this.unlockZoomButtons();
+                return;
+            }
+            
+            // 绘制函数（使用不同颜色，测试模式无光晕）
+            const color = this.getTestModeColor();
+            const points = await this.renderer.drawFunction(expression, true, color, true);
+            
+            if (points && points.length > 0) {
+                // 保存函数
+                this.gameController.addTestModeFunction(expression, color);
+                
+                // 清空当前表达式
+                this.clearExpression();
+                
+                // 更新函数列表
+                this.updateFunctionList();
+                
+                this.showMessage(`函数已绘制: ${expression}`, 'success');
+            } else {
+                this.showMessage('函数绘制失败，请检查表达式', 'error');
+            }
+        } catch (error) {
+            this.showMessage('函数计算错误: ' + error.message, 'error');
+        } finally {
+            // 重置提交标志并解锁缩放按钮
+            this.isRenderingTestFunction = false;
+            this.unlockZoomButtons();
+        }
+    }
+    
+    /**
+     * 获取测试模式函数颜色
+     */
+    getTestModeColor() {
+        const colors = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#ffeaa7', '#dfe6e9', '#fd79a8', '#a29bfe'];
+        const functions = this.gameController.getTestModeFunctions();
+        return colors[functions.length % colors.length];
     }
     
     /**
@@ -677,7 +779,7 @@ class UIController {
         } else {
             // 多个目标格但未全部命中的情况
             if (data.targetCount > 1 && data.hitCount > 0) {
-                message = `❌ 玩家${constructorPlayer}只命中 ${data.hitCount}/${data.targetCount} 个目标！需全部穿过才得分，扣1分`;
+                message = `❌ 玩家${constructorPlayer}只命中 ${data.hitCount}/${data.targetCount} 个目标，扣1分`;
             } else {
                 message = `❌ 玩家${constructorPlayer}未命中目标！扣1分`;
             }
@@ -738,6 +840,13 @@ class UIController {
      * 处理清除按钮
      */
     handleClear() {
+        // 测试模式：只清除当前输入，不清除已绘制的函数
+        if (this.gameController.isTestMode()) {
+            this.clearExpression();
+            this.showMessage('已清除当前输入');
+            return;
+        }
+        
         this.clearExpression();
         this.gridSystem.draw();
     }
@@ -746,7 +855,67 @@ class UIController {
      * 处理跳过按钮
      */
     handleSkip() {
+        // 测试模式：结束测试返回开始界面
+        if (this.gameController.isTestMode()) {
+            this.exitTestMode();
+            return;
+        }
         this.gameController.skipPhase();
+    }
+    
+    /**
+     * 退出测试模式
+     */
+    exitTestMode() {
+        // 清空函数
+        this.gameController.clearTestModeFunctions();
+        this.gridSystem.clearAll();
+        
+        // 恢复header样式
+        if (this.header) this.header.classList.remove('test-mode');
+        
+        // 恢复标题
+        const gameTitle = document.querySelector('.game-title');
+        if (gameTitle) {
+            gameTitle.textContent = '函数棋';
+            gameTitle.style.color = '';
+            gameTitle.style.position = '';
+            gameTitle.style.left = '';
+            gameTitle.style.top = '';
+            gameTitle.style.margin = '';
+            gameTitle.style.transform = '';
+        }
+        
+        // 恢复UI显示
+        this.timerElement.parentElement.style.display = '';
+        this.currentPlayerElement.parentElement.style.display = '';
+        document.querySelectorAll('.score-display').forEach(el => {
+            el.style.display = '';
+        });
+        const roundDisplay = document.getElementById('round-display');
+        if (roundDisplay) roundDisplay.style.display = '';
+        
+        // 移除函数列表
+        const functionList = document.getElementById('function-list');
+        if (functionList) functionList.remove();
+        
+        // 移除缩放按钮
+        const zoomControls = document.getElementById('zoom-controls');
+        if (zoomControls) zoomControls.remove();
+        
+        // 恢复坐标系范围
+        this.gridSystem.setRange(5);
+        
+        // 恢复跳过按钮
+        this.skipBtn.textContent = '跳过';
+        this.skipBtn.className = 'btn btn-secondary';
+        
+        // 恢复确认按钮
+        this.confirmBtn.textContent = '确认';
+        
+        // 返回开始界面
+        this.startModal.style.display = 'flex';
+        this.showMessage('');
     }
     
     /**
@@ -755,8 +924,262 @@ class UIController {
     handleStart() {
         const rounds = parseInt(this.roundSelect.value);
         const difficulty = this.difficultySelect.value;
+        
         this.startModal.style.display = 'none';
         this.gameController.initGame(rounds, difficulty);
+        
+        // 测试模式特殊初始化
+        if (this.gameController.isTestMode()) {
+            this.initTestModeUI();
+        }
+    }
+    
+    /**
+     * 初始化测试模式UI
+     */
+    initTestModeUI() {
+        // 添加测试模式样式到header
+        if (this.header) this.header.classList.add('test-mode');
+        
+        // 修改标题为"测试模式"，显示在左上角
+        const gameTitle = document.querySelector('.game-title');
+        if (gameTitle) {
+            gameTitle.textContent = '测试模式';
+            gameTitle.style.color = '#ffffff';
+            gameTitle.style.position = 'absolute';
+            gameTitle.style.left = '20px';
+            gameTitle.style.top = '10px';
+            gameTitle.style.margin = '0';
+            gameTitle.style.transform = 'none';
+        }
+        
+        // 隐藏游戏相关的UI元素
+        this.timerElement.parentElement.style.display = 'none';
+        this.currentPlayerElement.parentElement.style.display = 'none';
+        
+        // 隐藏分数显示
+        document.querySelectorAll('.score-display').forEach(el => {
+            el.style.display = 'none';
+        });
+        
+        // 隐藏回合显示
+        const roundDisplay = document.getElementById('round-display');
+        if (roundDisplay) roundDisplay.style.display = 'none';
+        
+        // 修改提示
+        this.showMessage('测试模式：自由构造函数，点击函数表达式可编辑或删除');
+        
+        // 添加函数列表容器
+        this.addFunctionListContainer();
+        
+        // 添加缩放按钮
+        this.addZoomButtons();
+        
+        // 修改跳过按钮为结束按钮
+        this.skipBtn.textContent = '结束测试';
+        this.skipBtn.className = 'btn btn-danger';
+        
+        // 初始化元素选择
+        this.initDraggableElements();
+    }
+    
+    /**
+     * 添加缩放按钮
+     */
+    addZoomButtons() {
+        // 检查是否已存在
+        if (document.getElementById('zoom-controls')) return;
+        
+        const container = document.createElement('div');
+        container.id = 'zoom-controls';
+        container.className = 'zoom-controls';
+        container.innerHTML = `
+            <button id="zoom-out-btn" class="zoom-btn" title="放大坐标系 (+)">+</button>
+            <span id="zoom-range" class="zoom-range">±${this.gridSystem.range}</span>
+            <button id="zoom-in-btn" class="zoom-btn" title="缩小坐标系 (-)">−</button>
+        `;
+        
+        // 添加到 canvas 容器
+        const canvasSection = document.querySelector('.canvas-section');
+        if (canvasSection) {
+            canvasSection.appendChild(container);
+        }
+        
+        // 绑定事件
+        document.getElementById('zoom-out-btn').addEventListener('click', () => {
+            // 取消正在进行的绘制
+            this.renderer.cancelDrawing();
+            const newRange = this.gridSystem.zoomOut();
+            this.updateZoomDisplay(newRange);
+            this.redrawAllTestFunctions();
+        });
+        
+        document.getElementById('zoom-in-btn').addEventListener('click', () => {
+            // 取消正在进行的绘制
+            this.renderer.cancelDrawing();
+            const newRange = this.gridSystem.zoomIn();
+            this.updateZoomDisplay(newRange);
+            this.redrawAllTestFunctions();
+        });
+    }
+    
+    /**
+     * 更新缩放显示
+     */
+    updateZoomDisplay(range) {
+        const display = document.getElementById('zoom-range');
+        if (display) {
+            display.textContent = `±${range}`;
+        }
+    }
+    
+    /**
+     * 锁定缩放按钮
+     */
+    lockZoomButtons() {
+        const zoomOutBtn = document.getElementById('zoom-out-btn');
+        const zoomInBtn = document.getElementById('zoom-in-btn');
+        if (zoomOutBtn) zoomOutBtn.disabled = true;
+        if (zoomInBtn) zoomInBtn.disabled = true;
+    }
+    
+    /**
+     * 解锁缩放按钮
+     */
+    unlockZoomButtons() {
+        const zoomOutBtn = document.getElementById('zoom-out-btn');
+        const zoomInBtn = document.getElementById('zoom-in-btn');
+        if (zoomOutBtn) zoomOutBtn.disabled = false;
+        if (zoomInBtn) zoomInBtn.disabled = false;
+    }
+    
+    /**
+     * 添加函数列表容器
+     */
+    addFunctionListContainer() {
+        // 检查是否已存在
+        if (document.getElementById('function-list')) return;
+        
+        const container = document.createElement('div');
+        container.id = 'function-list';
+        container.className = 'function-list';
+        container.innerHTML = '<div class="function-list-title">已绘制函数（点击编辑或删除）</div>';
+        
+        // 插入到按钮区域之后
+        const buttonArea = this.confirmBtn.parentElement;
+        buttonArea.parentElement.insertBefore(container, buttonArea.nextSibling);
+    }
+    
+    /**
+     * 更新函数列表显示
+     */
+    updateFunctionList() {
+        const container = document.getElementById('function-list');
+        if (!container) return;
+        
+        const functions = this.gameController.getTestModeFunctions();
+        
+        // 清除旧的列表项（保留标题）
+        const title = container.querySelector('.function-list-title');
+        container.innerHTML = '';
+        container.appendChild(title);
+        
+        // 添加每个函数的条目
+        functions.forEach((func, index) => {
+            const item = document.createElement('div');
+            item.className = 'function-item';
+            item.style.borderLeftColor = func.color;
+            item.innerHTML = `
+                <span class="function-expr">${func.expression}</span>
+                <div class="function-actions">
+                    <button class="btn-edit" data-index="${index}" title="编辑">✎</button>
+                    <button class="btn-delete" data-index="${index}" title="删除">✕</button>
+                </div>
+            `;
+            
+            // 绑定编辑事件
+            item.querySelector('.btn-edit').addEventListener('click', () => {
+                this.editTestFunction(index);
+            });
+            
+            // 绑定删除事件
+            item.querySelector('.btn-delete').addEventListener('click', () => {
+                this.deleteTestFunction(index);
+            });
+            
+            container.appendChild(item);
+        });
+    }
+    
+    /**
+     * 编辑测试模式函数
+     */
+    editTestFunction(index) {
+        const functions = this.gameController.getTestModeFunctions();
+        const func = functions[index];
+        if (!func) return;
+        
+        // 将函数表达式加载到输入区
+        this.expressionElements = func.expression.split('');
+        this.updateExpressionDisplay();
+        
+        // 删除原函数（重新绘制时会添加新的）
+        this.deleteTestFunction(index);
+        
+        this.showMessage(`正在编辑: ${func.expression}`);
+    }
+    
+    /**
+     * 删除测试模式函数
+     */
+    deleteTestFunction(index) {
+        const functions = this.gameController.getTestModeFunctions();
+        functions.splice(index, 1);
+        
+        // 重新绘制所有函数
+        this.redrawAllTestFunctions();
+        this.updateFunctionList();
+        
+        this.showMessage('函数已删除');
+    }
+    
+    /**
+     * 重新绘制所有测试模式函数
+     */
+    redrawAllTestFunctions() {
+        // 取消任何正在进行的绘制
+        this.renderer.cancelDrawing();
+        
+        this.gridSystem.clearAll();
+        const functions = this.gameController.getTestModeFunctions();
+        
+        // 使用 requestAnimationFrame 批量绘制，避免阻塞UI（测试模式无光晕）
+        requestAnimationFrame(() => {
+            for (const func of functions) {
+                this.renderer.drawFunction(func.expression, false, func.color, true);
+            }
+        });
+    }
+    
+    /**
+     * 添加清空函数按钮
+     */
+    addClearFunctionsButton() {
+        // 检查是否已存在
+        if (document.getElementById('clear-functions-btn')) return;
+        
+        const btn = document.createElement('button');
+        btn.id = 'clear-functions-btn';
+        btn.className = 'btn btn-secondary';
+        btn.textContent = '清空所有函数';
+        btn.addEventListener('click', () => {
+            this.gameController.clearTestModeFunctions();
+            this.gridSystem.clearAll();
+            this.showMessage('已清空所有函数');
+        });
+        
+        // 插入到确认按钮之前
+        this.confirmBtn.parentElement.insertBefore(btn, this.confirmBtn);
     }
     
     /**
@@ -764,7 +1187,13 @@ class UIController {
      */
     handleRestart() {
         this.gameOverModal.style.display = 'none';
-        this.startModal.style.display = 'flex';
+        
+        // 如果在测试模式，先退出测试模式
+        if (this.gameController.isTestMode()) {
+            this.exitTestMode();
+        } else {
+            this.startModal.style.display = 'flex';
+        }
     }
     
     /**
@@ -772,6 +1201,15 @@ class UIController {
      */
     updatePhaseUI(phase) {
         const state = this.gameController.getGameState();
+        
+        // 测试模式：简化UI显示
+        if (state.isTestMode) {
+            this.currentPlayerElement.textContent = '测试模式';
+            this.phaseHintElement.textContent = '构造函数并点击确认，函数将持续显示在画布上';
+            this.confirmBtn.textContent = '绘制函数';
+            this.initDraggableElements();
+            return;
+        }
         
         this.currentPlayerElement.textContent = `玩家 ${state.currentPlayer}`;
         
@@ -781,28 +1219,28 @@ class UIController {
         switch (phase) {
             case 'select_target':
                 if (state.targetCount > 1) {
-                    hint = `请点击棋盘选择 ${state.targetCount} 个目标网格 (${state.roundState.targetCells.length}/${state.targetCount})，按回车确认`;
+                    hint = `请点击棋盘选择 ${state.targetCount} 个目标网格 (${state.roundState.targetCells.length}/${state.targetCount})`;
                 } else {
-                    hint = '请点击棋盘选择目标网格，按回车确认';
+                    hint = '请点击棋盘选择目标网格';
                 }
                 confirmText = '确认目标';
                 this.confirmBtn.disabled = state.roundState.targetCells.length < state.targetCount;
                 break;
             case 'set_forbidden':
-                hint = `设置禁止区 (${state.roundState.forbiddenCells.length}/${state.maxForbidden}) - 点击棋盘选择，按回车确认`;
+                hint = `设置禁止区 (${state.roundState.forbiddenCells.length}/${state.maxForbidden})`;
                 confirmText = '确认禁止区';
                 break;
             case 'set_locks':
                 if (state.difficulty === 'easy') {
-                    hint = `点击下方元素锁定对方 (${state.roundState.lockedElements.length}/${state.maxLocks})，按回车确认（新手保护：四则运算无法被锁定）`;
+                    hint = `点击下方元素锁定对方 (${state.roundState.lockedElements.length}/${state.maxLocks})，四则运算无法被锁定`;
                 } else {
-                    hint = `点击下方元素锁定对方 (${state.roundState.lockedElements.length}/${state.maxLocks})，按回车确认`;
+                    hint = `点击下方元素锁定对方 (${state.roundState.lockedElements.length}/${state.maxLocks})`;
                 }
                 confirmText = '确认锁定';
                 this.initDraggableElements(); // 刷新为锁定视图
                 break;
             case 'input_function':
-                hint = '点击下方元素构建函数表达式，按回车提交';
+                hint = '点击下方元素构建函数表达式';
                 confirmText = '提交函数';
                 this.initDraggableElements(); // 刷新为函数构建视图
                 break;
@@ -849,8 +1287,14 @@ class UIController {
      * 显示消息
      */
     showMessage(message, type = 'info') {
+        // 清除之前的定时器
+        if (this.messageTimeout) {
+            clearTimeout(this.messageTimeout);
+        }
+        
         this.messageElement.textContent = message;
         this.messageElement.className = 'message';
+        this.messageElement.style.opacity = '1';
         
         if (type === 'error') {
             this.messageElement.classList.add('error');
@@ -858,11 +1302,37 @@ class UIController {
             this.messageElement.classList.add('success');
         }
         
-        // 3秒后清除消息
-        setTimeout(() => {
-            this.messageElement.textContent = '';
-            this.messageElement.className = 'message';
-        }, 5000);
+        // 测试模式下消息渐隐消失
+        if (this.gameController.isTestMode()) {
+            // 2秒后开始渐隐
+            this.messageTimeout = setTimeout(() => {
+                this.fadeOutMessage();
+            }, 2000);
+        } else {
+            // 普通模式5秒后清除
+            this.messageTimeout = setTimeout(() => {
+                this.messageElement.textContent = '';
+                this.messageElement.className = 'message';
+            }, 5000);
+        }
+    }
+    
+    /**
+     * 渐隐消息
+     */
+    fadeOutMessage() {
+        let opacity = 1;
+        const fadeInterval = setInterval(() => {
+            opacity -= 0.05;
+            if (opacity <= 0) {
+                clearInterval(fadeInterval);
+                this.messageElement.textContent = '';
+                this.messageElement.className = 'message';
+                this.messageElement.style.opacity = '1';
+            } else {
+                this.messageElement.style.opacity = opacity.toString();
+            }
+        }, 50); // 每50ms减少0.05，总共1秒完成渐隐
     }
     
     /**

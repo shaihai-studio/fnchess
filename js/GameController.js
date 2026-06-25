@@ -10,8 +10,11 @@ class GameController {
         this.currentRound = 1;
         
         // 难度设置
-        this.difficulty = 'normal'; // normal, hard, expert
+        this.difficulty = 'normal'; // easy, normal, hard, expert, test
         this.targetCount = 1; // 根据难度设置目标格数量
+        
+        // 测试模式：保存绘制的函数
+        this.testModeFunctions = []; // { expression: string, color: string, timestamp: number }
         
         // 玩家状态
         this.players = {
@@ -79,7 +82,7 @@ class GameController {
     /**
      * 初始化游戏
      * @param {number} rounds - 总回合数
-     * @param {string} difficulty - 难度级别 (normal, hard, expert)
+     * @param {string} difficulty - 难度级别 (easy, normal, hard, expert, test)
      */
     initGame(rounds = 8, difficulty = 'normal') {
         this.totalRounds = Math.min(Math.max(rounds, 4), 24);
@@ -88,20 +91,78 @@ class GameController {
         this.currentRound = 1;
         this.players.A.score = 0;
         this.players.B.score = 0;
+        
+        // 清空测试模式函数
+        this.testModeFunctions = [];
+        
         // 第1回合B选择目标，A构建函数
         this.currentPlayer = 'B';
         
         this.updateTimeLimit();
         this.resetRoundState();
-        this.setPhase(this.phases.SELECT_TARGET);
+        
+        // 测试模式直接进入输入函数阶段，跳过目标选择等
+        if (this.isTestMode()) {
+            this.setPhase(this.phases.INPUT_FUNCTION);
+        } else {
+            this.setPhase(this.phases.SELECT_TARGET);
+        }
         
         this.emit('gameInit', {
             totalRounds: this.totalRounds,
             currentRound: this.currentRound,
             timeLimit: this.timeLimit,
             difficulty: this.difficulty,
-            targetCount: this.targetCount
+            targetCount: this.targetCount,
+            isTestMode: this.isTestMode()
         });
+    }
+    
+    /**
+     * 检查是否为测试模式
+     * @returns {boolean}
+     */
+    isTestMode() {
+        return this.difficulty === 'test';
+    }
+    
+    /**
+     * 添加测试模式函数
+     * @param {string} expression - 函数表达式
+     * @param {string} color - 函数颜色
+     */
+    addTestModeFunction(expression, color = null) {
+        if (!this.isTestMode()) return;
+        
+        // 生成随机颜色（如果没有指定）
+        if (!color) {
+            const colors = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#ffeaa7', '#dfe6e9', '#fd79a8', '#a29bfe'];
+            color = colors[this.testModeFunctions.length % colors.length];
+        }
+        
+        this.testModeFunctions.push({
+            expression: expression,
+            color: color,
+            timestamp: Date.now()
+        });
+        
+        this.emit('testModeFunctionAdded', { expression, color });
+    }
+    
+    /**
+     * 清空测试模式函数
+     */
+    clearTestModeFunctions() {
+        this.testModeFunctions = [];
+        this.emit('testModeFunctionsCleared');
+    }
+    
+    /**
+     * 获取测试模式函数列表
+     * @returns {Array}
+     */
+    getTestModeFunctions() {
+        return this.testModeFunctions;
     }
     
     /**
@@ -111,6 +172,8 @@ class GameController {
      */
     getTargetCountByDifficulty(difficulty) {
         switch (difficulty) {
+            case 'test':
+                return 0; // 测试模式无目标格
             case 'hard':
                 return 2;
             case 'expert':
@@ -123,11 +186,19 @@ class GameController {
     }
     
     /**
-     * 检查是否为简单难度（新手保护）
+     * 检查是否为简单难度
      * @returns {boolean}
      */
     isEasyMode() {
         return this.difficulty === 'easy';
+    }
+    
+    /**
+     * 检查是否为测试模式
+     * @returns {boolean}
+     */
+    isTestMode() {
+        return this.difficulty === 'test';
     }
     
     /**
@@ -168,7 +239,7 @@ class GameController {
             this.timeLimit = Math.min(50 + (group - 1) * 10, 90);
         }
         
-        // 简单难度：每回合多20秒（新手保护）
+        // 简单难度：每回合多20秒
         if (this.isEasyMode()) {
             this.timeLimit += 20;
         }
@@ -265,6 +336,9 @@ class GameController {
      * 开始计时
      */
     startTimer() {
+        // 测试模式不启动计时器
+        if (this.isTestMode()) return;
+        
         this.stopTimer();
         this.remainingTime = this.timeLimit;
         
@@ -496,6 +570,12 @@ class GameController {
         if (this.currentPhase !== this.phases.INPUT_FUNCTION) return false;
         
         this.roundState.functionExpression = expression;
+        
+        // 测试模式：不进入评估阶段，保持在输入阶段
+        if (this.isTestMode()) {
+            return true;
+        }
+        
         this.setPhase(this.phases.EVALUATE);
         return true;
     }
@@ -646,6 +726,8 @@ class GameController {
             timeLimit: this.timeLimit,
             difficulty: this.difficulty,
             targetCount: this.targetCount,
+            isTestMode: this.isTestMode(),
+            testModeFunctions: this.testModeFunctions,
             scores: {
                 A: this.players.A.score,
                 B: this.players.B.score

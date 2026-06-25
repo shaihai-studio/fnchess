@@ -28,9 +28,69 @@ class GridSystem {
         this.targetCells = []; // [{x, y}, ...] - 多个目标格
         this.forbiddenCells = []; // [{x, y}, ...]
         
+        // 缩放配置（用于测试模式）
+        this.minRange = 5;   // 最小范围
+        this.maxRange = 50;  // 最大范围
+        this.rangeStep = 5;  // 每次缩放步长
+        
+        // 防抖定时器
+        this.resizeTimeout = null;
+        
         // 绑定 resize 事件
-        window.addEventListener('resize', () => this.resize());
+        window.addEventListener('resize', () => this.debounceResize());
         this.resize();
+    }
+    
+    /**
+     * 防抖调整大小
+     */
+    debounceResize() {
+        if (this.resizeTimeout) {
+            clearTimeout(this.resizeTimeout);
+        }
+        this.resizeTimeout = setTimeout(() => {
+            this.resize();
+        }, 100);
+    }
+    
+    /**
+     * 放大坐标系（范围增加）
+     * @returns {number} 新的范围值
+     */
+    zoomOut() {
+        if (this.range < this.maxRange) {
+            this.range += this.rangeStep;
+            this.gridSize = this.range * 2;
+            // 使用 requestAnimationFrame 优化性能
+            requestAnimationFrame(() => this.resize());
+        }
+        return this.range;
+    }
+    
+    /**
+     * 缩小坐标系（范围减小）
+     * @returns {number} 新的范围值
+     */
+    zoomIn() {
+        if (this.range > this.minRange) {
+            this.range -= this.rangeStep;
+            this.gridSize = this.range * 2;
+            // 使用 requestAnimationFrame 优化性能
+            requestAnimationFrame(() => this.resize());
+        }
+        return this.range;
+    }
+    
+    /**
+     * 设置坐标系范围
+     * @param {number} newRange - 新的范围值
+     */
+    setRange(newRange) {
+        if (newRange >= this.minRange && newRange <= this.maxRange) {
+            this.range = newRange;
+            this.gridSize = newRange * 2;
+            this.resize();
+        }
     }
     
     /**
@@ -273,23 +333,24 @@ class GridSystem {
         ctx.strokeStyle = this.colors.gridLine;
         ctx.lineWidth = 1;
         
+        // 使用单次路径绘制所有网格线，减少绘制调用
+        ctx.beginPath();
+        
         // 垂直线
         for (let i = 0; i <= this.gridSize; i++) {
             const x = (i / this.gridSize) * size;
-            ctx.beginPath();
             ctx.moveTo(x, 0);
             ctx.lineTo(x, size);
-            ctx.stroke();
         }
         
         // 水平线
         for (let i = 0; i <= this.gridSize; i++) {
             const y = (i / this.gridSize) * size;
-            ctx.beginPath();
             ctx.moveTo(0, y);
             ctx.lineTo(size, y);
-            ctx.stroke();
         }
+        
+        ctx.stroke();
     }
     
     /**
@@ -303,14 +364,10 @@ class GridSystem {
         ctx.strokeStyle = this.colors.axis;
         ctx.lineWidth = 2;
         
-        // X轴
+        // 使用单次路径绘制 X轴和Y轴
         ctx.beginPath();
         ctx.moveTo(0, center.y);
         ctx.lineTo(size, center.y);
-        ctx.stroke();
-        
-        // Y轴
-        ctx.beginPath();
         ctx.moveTo(center.x, 0);
         ctx.lineTo(center.x, size);
         ctx.stroke();
@@ -332,36 +389,71 @@ class GridSystem {
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         
-        // X轴刻度
+        // 根据范围计算刻度间隔
+        const step = this.getTickStep();
+        
+        // 合并绘制所有刻度线（减少绘制调用）
+        ctx.beginPath();
+        
+        // X轴刻度线
         for (let i = -this.range; i <= this.range; i++) {
             if (i === 0) continue;
             const pos = this.mathToCanvas(i, 0);
-            ctx.fillText(i.toString(), pos.x, center.y + 15);
-            
-            // 小刻度线
-            ctx.beginPath();
             ctx.moveTo(pos.x, center.y - 3);
             ctx.lineTo(pos.x, center.y + 3);
-            ctx.stroke();
         }
         
-        // Y轴刻度
-        ctx.textAlign = 'right';
+        // Y轴刻度线
         for (let i = -this.range; i <= this.range; i++) {
             if (i === 0) continue;
             const pos = this.mathToCanvas(0, i);
-            ctx.fillText(i.toString(), center.x - 8, pos.y);
-            
-            // 小刻度线
-            ctx.beginPath();
             ctx.moveTo(center.x - 3, pos.y);
             ctx.lineTo(center.x + 3, pos.y);
-            ctx.stroke();
+        }
+        
+        ctx.stroke();
+        
+        // 绘制数字标签
+        // X轴数字
+        for (let i = -this.range; i <= this.range; i++) {
+            if (i === 0) continue;
+            if (i % step === 0) {
+                const pos = this.mathToCanvas(i, 0);
+                ctx.fillText(i.toString(), pos.x, center.y + 15);
+            }
+        }
+        
+        // Y轴数字
+        ctx.textAlign = 'right';
+        for (let i = -this.range; i <= this.range; i++) {
+            if (i === 0) continue;
+            if (i % step === 0) {
+                const pos = this.mathToCanvas(0, i);
+                ctx.fillText(i.toString(), center.x - 8, pos.y);
+            }
         }
         
         // 原点
-        ctx.textAlign = 'right';
         ctx.fillText('0', center.x - 8, center.y + 15);
+    }
+    
+    /**
+     * 根据坐标系范围获取刻度间隔
+     * @returns {number} 刻度间隔
+     */
+    getTickStep() {
+        // 根据范围自适应调整刻度间隔
+        if (this.range <= 5) {
+            return 1;  // 范围 <= 5，每个整数都显示
+        } else if (this.range <= 10) {
+            return 1;  // 范围 <= 10，每个整数都显示
+        } else if (this.range <= 20) {
+            return 2;  // 范围 <= 20，每2个显示一个
+        } else if (this.range <= 40) {
+            return 5;  // 范围 <= 40，每5个显示一个
+        } else {
+            return 10; // 范围 > 40，每10个显示一个
+        }
     }
     
     /**

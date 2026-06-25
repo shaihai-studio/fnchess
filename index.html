@@ -8,7 +8,7 @@
 </head>
 <body>
     <!-- 顶部信息栏 -->
-    <header class="header">
+    <header class="header" id="header">
         <div class="score-display">
             <span class="player">玩家A</span>
             <span class="score" id="score-a">0</span>
@@ -17,7 +17,7 @@
         
         <h1 class="game-title">函数棋</h1>
         
-        <div class="round-info">
+        <div class="round-info" id="round-display">
             <span>回合</span>
             <span class="current"><span id="current-round">1</span> / <span id="total-rounds">8</span></span>
         </div>
@@ -108,13 +108,15 @@
             </div>
             
             <div class="difficulty-select">
-                <label for="difficulty-select">选择难度：</label>
+                <label for="difficulty-select">选择难度/模式：</label>
                 <select id="difficulty-select">
-                    <option value="easy" selected>简单 - 1个目标格（新手保护）</option>
+                    <option value="easy" selected>简单 - 1个目标格</option>
                     <option value="normal">普通 - 1个目标格</option>
-                    <option value="hard">困难 - 2个目标格（需全部穿过）</option>
-                    <option value="expert">专家 - 3个目标格（需全部穿过）</option>
+                    <option value="hard">困难 - 2个目标格</option>
+                    <option value="expert">专家 - 3个目标格</option>
+                    <option value="test">测试模式 - 自由绘图</option>
                 </select>
+                <small id="difficulty-hint" style="display: block; margin-top: 5px; opacity: 0.7;">简单模式：1个目标格，四则运算无法被锁定，每回合+20秒</small>
             </div>
             
             <button class="btn btn-primary" id="start-btn" style="width: 100%;">开始游戏</button>

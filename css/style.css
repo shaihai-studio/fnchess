@@ -82,6 +82,17 @@ body {
     background-clip: text;
 }
 
+/* 测试模式：标题居中 */
+.header.test-mode {
+    justify-content: center;
+}
+
+.header.test-mode .game-title {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
 .round-info {
     display: flex;
     align-items: center;
@@ -363,6 +374,7 @@ body {
 
 .lock-icon {
     font-size: 12px;
+    filter: grayscale(100%) brightness(1.5);
 }
 
 /* 模态框 */
@@ -448,6 +460,146 @@ body {
 
 .difficulty-select select option[value="expert"] {
     color: #ef4444;
+}
+
+.difficulty-select select option[value="test"] {
+    color: #a78bfa;
+}
+
+/* 测试模式函数列表 */
+.function-list {
+    margin-top: 15px;
+    padding: 10px;
+    background: rgba(15, 23, 42, 0.5);
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    max-height: 200px;
+    overflow-y: auto;
+    animation: fadeIn 0.3s ease-out;
+}
+
+.function-list-title {
+    font-size: 12px;
+    color: #94a3b8;
+    margin-bottom: 8px;
+    text-align: center;
+}
+
+.function-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 10px;
+    margin-bottom: 5px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 6px;
+    border-left: 3px solid;
+    transition: background 0.2s, opacity 0.3s ease-out;
+    animation: fadeIn 0.3s ease-out;
+}
+
+.function-item:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.function-expr {
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    color: #e2e8f0;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.function-actions {
+    display: flex;
+    gap: 5px;
+}
+
+.function-actions button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 2px 5px;
+    font-size: 14px;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.function-actions button:hover {
+    opacity: 1;
+    color: #ffffff;
+}
+
+/* 渐显动画 */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-5px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* 缩放控制按钮 */
+.zoom-controls {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(15, 23, 42, 0.8);
+    backdrop-filter: blur(10px);
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    z-index: 10;
+    animation: fadeIn 0.3s ease-out;
+}
+
+.zoom-btn {
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: 6px;
+    background: rgba(59, 130, 246, 0.8);
+    color: white;
+    font-size: 20px;
+    font-weight: bold;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.zoom-btn:hover {
+    background: rgba(59, 130, 246, 1);
+    transform: scale(1.05);
+}
+
+.zoom-btn:active {
+    transform: scale(0.95);
+}
+
+.zoom-btn:disabled {
+    background: rgba(107, 114, 128, 0.5);
+    cursor: not-allowed;
+    transform: none;
+}
+
+.zoom-range {
+    font-size: 14px;
+    font-weight: bold;
+    color: #e2e8f0;
+    min-width: 40px;
+    text-align: center;
+    font-family: 'Courier New', monospace;
 }
 
 /* 游戏结束界面 */
@@ -586,6 +738,7 @@ body {
     top: -5px;
     right: -5px;
     font-size: 10px;
+    filter: grayscale(100%) brightness(1.5);
 }
 
 .element-btn.protected:hover {

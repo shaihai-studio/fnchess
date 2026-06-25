@@ -153,17 +153,19 @@ class FunctionParser {
     }
     
     /**
-     * 处理 ln 和 log 的括号省略形式
-     * 如 ln x -> ln(x), log 10 -> log(10)
+     * 处理函数的括号省略形式
+     * 如 ln x -> ln(x), log 10 -> log(10), sin x -> sin(x)
      * @param {string} expression - 原始表达式
      * @returns {string} 转换后的表达式
      */
-    convertLogWithoutParen(expression) {
+    convertFunctionWithoutParen(expression) {
         let converted = expression;
         
         // 处理 ln 后跟变量、数字、常数、括号表达式或函数
-        // 模式1: ln x -> ln(x)
-        converted = converted.replace(/\bln\s+([a-zA-Zπe]\w*)/gi, 'ln($1)');
+        // 模式1: ln x -> ln(x), ln sin -> ln(sin)
+        // 注意：这里匹配单个字母变量（如x）或多字母标识符（如sin）
+        // 支持空格或没有空格的情况（如 lnx 或 ln x）
+        converted = converted.replace(/\bln\s*([a-zA-Zπe](?:\w*))/gi, 'ln($1)');
         
         // 模式2: ln 数字 -> ln(数字)
         converted = converted.replace(/\bln\s+(\d+(?:\.\d+)?)/gi, 'ln($1)');
@@ -180,7 +182,8 @@ class FunctionParser {
         
         // 处理 log 的类似形式
         // 模式1: log x -> log(x)
-        converted = converted.replace(/\blog\s+([a-zA-Zπe]\w*)/gi, 'log($1)');
+        // 支持空格或没有空格的情况（如 logx 或 log x）
+        converted = converted.replace(/\blog\s*([a-zA-Zπe]\w*)/gi, 'log($1)');
         
         // 模式2: log 数字 -> log(数字)
         converted = converted.replace(/\blog\s+(\d+(?:\.\d+)?)/gi, 'log($1)');
@@ -193,6 +196,32 @@ class FunctionParser {
         
         // 模式5: log e -> log(e)
         converted = converted.replace(/\blog\s+e\b/gi, 'log(e)');
+        
+        // 处理 sin, cos, tan, abs, exp, sqrt 的括号省略形式
+        // 如 sin x -> sin(x), cos x -> cos(x)
+        const trigFuncs = ['sin', 'cos', 'tan', 'abs', 'exp', 'sqrt'];
+        
+        for (const func of trigFuncs) {
+            // 模式1: func x -> func(x)，支持空格或无空格
+            const funcVarPattern = new RegExp(`\\b${func}\\s*([a-zA-Zπe](?:\\w*))`, 'gi');
+            converted = converted.replace(funcVarPattern, `${func}($1)`);
+            
+            // 模式2: func 数字 -> func(数字)
+            const funcNumPattern = new RegExp(`\\b${func}\\s+(\\d+(?:\\.\\d+)?)`, 'gi');
+            converted = converted.replace(funcNumPattern, `${func}($1)`);
+            
+            // 模式3: func (表达式) -> func(
+            const funcParenPattern = new RegExp(`\\b${func}\\s*\\(`, 'gi');
+            converted = converted.replace(funcParenPattern, `${func}(`);
+            
+            // 模式4: func π -> func(π)
+            const funcPiPattern = new RegExp(`\\b${func}\\s*π`, 'gi');
+            converted = converted.replace(funcPiPattern, `${func}(π)`);
+            
+            // 模式5: func e -> func(e)
+            const funcEPattern = new RegExp(`\\b${func}\\s+e\\b`, 'gi');
+            converted = converted.replace(funcEPattern, `${func}(e)`);
+        }
         
         return converted;
     }
@@ -253,6 +282,33 @@ class FunctionParser {
         const pattern10 = /exp\(\s*(?:PI|π)\s*\*\s*i\s*\)/gi;
         converted = converted.replace(pattern9, '(-1)');
         converted = converted.replace(pattern10, '(-1)');
+        
+        return converted;
+    }
+    
+    /**
+     * 处理虚数单位的运算
+     * i^2 = -1, i*i = -1, i^3 = -i, i^4 = 1
+     * @param {string} expression - 原始表达式
+     * @returns {string} 转换后的表达式
+     */
+    convertImaginaryOperations(expression) {
+        let converted = expression;
+        
+        // i^2 -> (-1)
+        converted = converted.replace(/i\^\s*2/g, '(-1)');
+        converted = converted.replace(/i\*\*\s*2/g, '(-1)');
+        
+        // i*i -> (-1)
+        converted = converted.replace(/i\s*\*\s*i/g, '(-1)');
+        
+        // i^3 -> (-1)*i 或 -i
+        converted = converted.replace(/i\^\s*3/g, '((-1)*i)');
+        converted = converted.replace(/i\*\*\s*3/g, '((-1)*i)');
+        
+        // i^4 -> 1
+        converted = converted.replace(/i\^\s*4/g, '1');
+        converted = converted.replace(/i\*\*\s*4/g, '1');
         
         return converted;
     }
@@ -411,6 +467,10 @@ class FunctionParser {
         converted = converted.replace(/(i)(\()/g, '$1*$2');
         converted = converted.replace(/(\))(i)/g, '$1*$2');
         
+        // 处理 i*i 和 i^2 的情况（i^2 = -1）
+        // 需要在替换 ^ 为 ** 之前处理
+        converted = this.convertImaginaryOperations(converted);
+        
         // 处理数字与括号之间缺少乘号的情况，如 2(x) -> 2*(x)
         converted = converted.replace(/(\d)(\()/g, '$1*$2');
         
@@ -420,14 +480,15 @@ class FunctionParser {
         // 处理括号与括号之间缺少乘号的情况，如 )( -> )*(
         converted = converted.replace(/(\))(\()/g, '$1*$2');
         
-        // 处理 ln 和 log 的括号省略形式，如 ln x -> ln(x)
+        // 处理函数的括号省略形式，如 ln x -> ln(x), sin x -> sin(x)
         // 需要在处理其他隐式乘法之前执行，以确保正确识别
-        converted = this.convertLogWithoutParen(converted);
+        converted = this.convertFunctionWithoutParen(converted);
         
         // 处理 x 与函数之间缺少乘号的情况，如 xsin -> x*sin
         for (const func of this.functions) {
             converted = converted.replace(new RegExp(`(x)(${func})`, 'gi'), '$1*$2');
-            converted = converted.replace(new RegExp(`(${func})(x)`, 'gi'), '$1($2)');
+            // 注意：这里不处理 func(x) 的情况，因为已经在 convertFunctionWithoutParen 中处理了
+            // 避免重复添加括号导致 ln(x) 变成 ln((x))
         }
         
         // 处理 π/e 与函数之间缺少乘号的情况，如 πsin -> PI*sin
@@ -519,6 +580,12 @@ class FunctionParser {
                 // 对数函数
                 const ln = (x) => Math.log(x);           // 自然对数（以e为底）
                 const log = (x) => Math.log(x) / Math.LN10; // 常用对数（以10为底）
+                
+                // 虚数单位 i（当表达式中包含未转换的 i 时使用）
+                const i = Math.sqrt(-1) || NaN;
+                
+                // 自然常数 e
+                const e = Math.E;
                 
                 with (Math) {
                     return ${converted};
@@ -671,7 +738,77 @@ class FunctionParser {
         
         let maxDegree = 0;
         
-        // 匹配 x^n 模式（如 x^2, x^3）
+        // 匹配复合多项式形式 (表达式)^n，如 (x+1)^2, (2x-3)^3
+        // 这种形式展开后次数为 n * (内部表达式的最高次数)
+        const compositePattern = /\(([^()]+)\)\^(\d+)/g;
+        let match;
+        while ((match = compositePattern.exec(cleanExpr)) !== null) {
+            const innerExpr = match[1];
+            const outerPower = parseInt(match[2]);
+            // 递归计算内部表达式的次数
+            const innerDegree = this.getSimplePolynomialDegree(innerExpr);
+            if (innerDegree > 0) {
+                const totalDegree = innerDegree * outerPower;
+                if (totalDegree > maxDegree) {
+                    maxDegree = totalDegree;
+                }
+            }
+        }
+        
+        // 匹配 x^n 模式（如 x^2, x^3），但排除系数为0的情况
+        // 模式：可选的系数（数字或小数）*x^n
+        // 使用 (^|[^\d.]) 来匹配开头或非数字非小数点字符，避免使用负向回顾后发
+        const caretPattern = /(?:^|[^\d.])([\d.]+)?\*?x\^(\d+)/g;
+        while ((match = caretPattern.exec(cleanExpr)) !== null) {
+            const coefficient = match[1] ? parseFloat(match[1]) : 1;
+            const degree = parseInt(match[2]);
+            // 只考虑非零系数
+            if (coefficient !== 0 && degree > maxDegree) {
+                maxDegree = degree;
+            }
+        }
+        
+        // 匹配 x**n 模式（math.js转换后的格式）
+        const powerPattern = /(?:^|[^\d.])([\d.]+)?\*?x\*\*(\d+)/g;
+        while ((match = powerPattern.exec(cleanExpr)) !== null) {
+            const coefficient = match[1] ? parseFloat(match[1]) : 1;
+            const degree = parseInt(match[2]);
+            // 只考虑非零系数
+            if (coefficient !== 0 && degree > maxDegree) {
+                maxDegree = degree;
+            }
+        }
+        
+        // 检查单独的 x（次数为1），但排除系数为0的情况
+        // 匹配 x 后面不是 ^ 或数字的情况
+        const xPattern = /(?:^|[^\d.])([\d.]+)?\*?x(?![\^\d*])/g;
+        while ((match = xPattern.exec(cleanExpr)) !== null) {
+            const coefficient = match[1] ? parseFloat(match[1]) : 1;
+            // 只考虑非零系数
+            if (coefficient !== 0 && maxDegree < 1) {
+                maxDegree = 1;
+            }
+        }
+        
+        // 特殊情况：如果表达式只是 "x"
+        if (cleanExpr === 'x' && maxDegree < 1) {
+            maxDegree = 1;
+        }
+        
+        return maxDegree;
+    }
+    
+    /**
+     * 计算简单多项式表达式的最高次数（用于复合多项式内部）
+     * @param {string} expression - 简单多项式表达式（不含括号）
+     * @returns {number} 最高次数
+     */
+    getSimplePolynomialDegree(expression) {
+        const cleanExpr = expression.toLowerCase().replace(/\s/g, '');
+        
+        let maxDegree = 0;
+        
+        // 匹配 x^n 模式
         const caretPattern = /x\^(\d+)/g;
         let match;
         while ((match = caretPattern.exec(cleanExpr)) !== null) {
@@ -681,7 +818,7 @@ class FunctionParser {
             }
         }
         
-        // 匹配 x**n 模式（math.js转换后的格式）
+        // 匹配 x**n 模式
         const powerPattern = /x\*\*(\d+)/g;
         while ((match = powerPattern.exec(cleanExpr)) !== null) {
             const degree = parseInt(match[1]);
@@ -690,12 +827,9 @@ class FunctionParser {
             }
         }
         
-        // 检查单独的 x（次数为1）
-        // 匹配 x 后面不是 ^ 或数字的情况
-        if (/x(?![\^\d])/.test(cleanExpr) || cleanExpr === 'x') {
-            if (maxDegree < 1) {
-                maxDegree = 1;
-            }
+        // 检查是否有单独的 x
+        if (cleanExpr.includes('x') && maxDegree < 1) {
+            maxDegree = 1;
         }
         
         return maxDegree;
@@ -793,6 +927,21 @@ class FunctionParser {
             { expr: 'log 100', expected: 2 },
             { expr: 'ln π', expected: Math.log(Math.PI) },
             { expr: 'log π', expected: Math.log(Math.PI) / Math.LN10 },
+            // sin, cos, tan 等函数的括号省略
+            { expr: 'sin x', x: 0, expected: 0 },
+            { expr: 'cos x', x: 0, expected: 1 },
+            { expr: 'tan x', x: 0, expected: 0 },
+            { expr: 'sin π', expected: Math.sin(Math.PI) },
+            { expr: 'cos π', expected: Math.cos(Math.PI) },
+            { expr: 'abs x', x: -5, expected: 5 },
+            { expr: 'exp x', x: 0, expected: 1 },
+            { expr: 'sqrt x', x: 4, expected: 2 },
+            // e^x 和 π^x 形式的指数函数
+            { expr: 'e^x', x: 0, expected: 1 },
+            { expr: 'e^x', x: 1, expected: Math.E },
+            { expr: 'π^x', x: 0, expected: 1 },
+            { expr: 'π^x', x: 1, expected: Math.PI },
+            { expr: 'e^(2*x)', x: 1, expected: Math.E * Math.E },
         ];
         
         const results = [];
