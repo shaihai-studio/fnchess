@@ -310,10 +310,8 @@ class AIController {
         let bestExpr = 'x';
         this.lastThinkCount = 0;
                 
-        // 性能优化：将外层尝试次数从 1000 减少至 200
-        // 原因：1000 次并进内部 500 次突变 = 最多 50万次函数求值，会卡顿主线程
-        // 内层算法已经针对性足够负责，200 次幺次即可找到满意解
-        for (let attempt = 0; attempt < 200; attempt++) {
+        // 外层尝试次数增加到 500，内层 20，总计 10000 次
+        for (let attempt = 0; attempt < 500; attempt++) {
             let expression = null;
             if (targetCells.length > 0) {
                 expression = this.constructFunctionForTargets(targetCells, forbiddenCells, lockedElements, strategy);
@@ -329,33 +327,52 @@ class AIController {
             
             bestExpr = expression;
             
-            // 进行严格审查：这个函数是不是废品？
-            let hitCount = this.countTargetHits(expression, targetCells, forbiddenCells);
+            // 严厉的终极审查：使用真实世界(游戏内)的视觉判定引擎！
             let fail = false;
+            let hitCount = 0;
             
-            if (hitCount === 0 && targetCells.length > 0) {
-                fail = true; // 一个目标都没打中
-            }
-            
-            // 检查禁区连坐
-            for (const forbidden of forbiddenCells) {
-                const fx = forbidden.x + 0.5;
-                const fy = this.evaluateFunction(expression, fx);
-                if (fy !== Infinity && Math.abs(fy - (forbidden.y + 0.5)) < 0.5) {
-                    fail = true; 
-                    break;
+            if (this.uiController && this.uiController.renderer) {
+                const range = this.gridSystem.getRange();
+                const polyline = this.uiController.renderer.sampleFunction(expression, range.min, range.max);
+                
+                if (!polyline || polyline.length === 0) {
+                    fail = true;
+                } else {
+                    for (const target of targetCells) {
+                        if (this.uiController.detector.checkHitTarget(polyline, target, this.gridSystem)) {
+                            hitCount++;
+                        }
+                    }
+                    if (hitCount < targetCells.length) {
+                        fail = true; // 目标没全打中
+                    }
+                    if (!fail && this.uiController.detector.checkHitForbidden(polyline, forbiddenCells, this.gridSystem)) {
+                        fail = true; // 撞禁区了
+                    }
+                }
+            } else {
+                // 回退到数学判定
+                hitCount = this.countTargetHits(expression, targetCells, forbiddenCells);
+                if (hitCount < targetCells.length) fail = true;
+                for (const forbidden of forbiddenCells) {
+                    const fx = forbidden.x + 0.5;
+                    const fy = this.evaluateFunction(expression, fx);
+                    if (fy !== Infinity && Math.abs(fy - (forbidden.y + 0.5)) < 0.5) {
+                        fail = true; 
+                        break;
+                    }
                 }
             }
             
             if (!fail) {
-                console.log(`[AI] 第 ${attempt + 1} 次生成尝试即通过审查！准备递交:`, expression);
+                console.log(`[AI] 第 ${attempt + 1} 次生成尝试即通过真实物理检查引擎！准备递交:`, expression);
                 return expression;
             } else {
-                console.log(`[AI] 第 ${attempt + 1} 次尝试由于命中数不够或碰禁区，废除并重新生成...`);
+                console.log(`[AI] 第 ${attempt + 1} 次尝试假命中或碰禁区，废除并重新生成...`);
             }
         }
         
-        console.log('[AI] 连续200次全部失败，强制递交突变解:', bestExpr);
+        console.log('[AI] 连续 500 大轮搜寻全部失败，强制递交次优突变解:', bestExpr);
         return bestExpr;
     }
     
@@ -397,9 +414,8 @@ class AIController {
         let bestExpr = 'x';
         let maxHits = -1;
 
-        // 性能优化：将内层突变次数从 500 减少至 150
-        // 结合外层 200 次幹次，最多 30000 次求值，效果并不减少但性能改善很大
-        for (let j = 0; j < 150; j++) {
+        // 内层突变20次（与外层共同构成 10000 次求值）
+        for (let j = 0; j < 20; j++) {
             this.lastThinkCount++;
             
             // 只保留允许使用的 Core
@@ -411,18 +427,16 @@ class AIController {
             
             const hitCount = this.countTargetHits(expr, targetCells, forbiddenCells);
             
-            if (hitCount > maxHits) {
+            // 优先选择命中数高的，如果命中数一样，优先选择字符更短的（更简单的公式）
+            if (hitCount > maxHits || (hitCount === maxHits && expr.length < bestExpr.length)) {
                 maxHits = hitCount;
                 bestExpr = expr;
             }
             
-            if (hitCount === targetCells.length) {
-                console.log(`[AI] 完美组合找到方程: ${expr}`);
-                return expr;
-            }
+            // 这里我们不再提前 return expr，因为我们需要靠外层的“真实物理引擎”来做绝对检查！
+            // 提前返回可能会返回一个过长或者撞禁区的假阳性结果。我们让其跑完 20 次，筛选出短且命中的。
         }
         
-        console.log(`[AI] 结束无限模拟搜索，使用次优解: ${bestExpr}，命中 ${maxHits} 个`);
         return bestExpr;
     }
     

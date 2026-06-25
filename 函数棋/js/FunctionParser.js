@@ -760,37 +760,32 @@ class FunctionParser {
         return { valid: true, error: null };
     }
     
-    /**
-     * 分析函数类型并计算得分
-     * 临时方案：统一+1分
-     * @param {string} expression - 函数表达式
-     * @returns {Object} {type: string, score: number}
-     */
     analyzeFunctionType(expression) {
-        const cleanExpr = expression.toLowerCase().replace(/\s/g, '');
+        // 移除所有空格和括号
+        const cleanExpr = expression.replace(/\s+/g, '').replace(/[()（）]/g, '');
         
-        // 使用新的函数复杂度分析器
-        if (this.complexityAnalyzer) {
-            const complexity = this.complexityAnalyzer.analyze(expression);
-            
-            // 根据复杂度值映射函数类型
-            let type;
-            if (complexity <= 1) {
-                type = 'degree_1';
-            } else if (complexity === 2) {
-                type = 'degree_2';
-            } else if (complexity === 3) {
-                type = 'degree_3';
-            } else {
-                type = 'high_degree';
-            }
-            
-            return { type, score: complexity };
+        let length = 0;
+        // 匹配：(1)内置函数 (2)连续数字包含小数点 (3)内置常量 (4)操作符 (5)变量 x
+        const tokenRegex = /(sin|cos|tan|abs|exp|ln|log|sqrt|factorial)|(\d+(?:\.\d+)?)|(PI|π|e|i)|([+\-*/^!])|(x)/gi;
+        let match;
+        
+        while ((match = tokenRegex.exec(cleanExpr)) !== null) {
+            length++;
         }
         
-        // 降级方案：如果分析器未加载，使用临时方案
-        console.warn('[WARN] FunctionComplexityAnalyzer 未加载，使用临时方案');
-        return { type: 'degree_1', score: 1 };
+        // 简单保守检查，避免出现不可见字符导致的 0 长度
+        if (length === 0 && cleanExpr.length > 0) {
+            length = cleanExpr.length; // 回退每个字符算一个
+        }
+        
+        let targetScore = 1;
+        if (length === 1 || length === 2) targetScore = 5;
+        else if (length >= 3 && length <= 5) targetScore = 4;
+        else if (length >= 6 && length <= 9) targetScore = 3;
+        else if (length >= 10 && length <= 15) targetScore = 2;
+        else targetScore = 1;
+        
+        return { type: `len_${length}`, score: targetScore };
     }
     
     /**

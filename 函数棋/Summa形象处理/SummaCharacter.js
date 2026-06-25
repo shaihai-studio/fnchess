@@ -139,8 +139,8 @@ class SummaCharacter {
     render() {
         this.container.innerHTML = `
             <div id="summa-root" class="summa-root" style="display:none;">
+                <div id="summa-message" class="summa-message"></div>
                 <div id="summa-body" class="summa-body">
-                    <div id="summa-message" class="summa-message"></div>
                     <div id="summa-face-wrap" class="summa-face-wrap">
                         <img id="summa-avatar" class="summa-avatar"
                              src="${this.imageMap.neutral}" alt="Summa">
@@ -158,6 +158,23 @@ class SummaCharacter {
                         </div>
                     </div>
                 </div>
+            </div>
+            
+            <!-- 物理参数调试面板 -->
+            <div id="summa-debug-panel" style="position:fixed; top:20px; left:20px; background:rgba(0,0,0,0.85); color:#00ffcc; font-family:monospace; padding:15px; border-radius:10px; z-index:10000; display:flex; flex-direction:column; gap:8px; border:1px solid #00ffcc; box-shadow:0 4px 15px rgba(0,255,204,0.4); font-size:12px;">
+                <h3 style="margin:0 0 10px 0; font-size:16px; border-bottom:1px solid #00ffcc; padding-bottom:5px;"> Summa Physics Debug </h3>
+                <label style="display:flex; justify-content:space-between; align-items:center;">链长弹性(CHAIN_K)<input type="number" id="dbg-chainK" step="0.01" style="width:70px; background:#111; color:#00ffcc; border:1px solid #00ffcc; padding:2px;"></label>
+                <label style="display:flex; justify-content:space-between; align-items:center;">回拉弹性(ANCHOR_K)<input type="number" id="dbg-anchorK" step="0.01" style="width:70px; background:#111; color:#00ffcc; border:1px solid #00ffcc; padding:2px;"></label>
+                <label style="display:flex; justify-content:space-between; align-items:center;">拖拽重力(GRAV_DRAG)<input type="number" id="dbg-gravD" step="0.1" style="width:70px; background:#111; color:#00ffcc; border:1px solid #00ffcc; padding:2px;"></label>
+                <label style="display:flex; justify-content:space-between; align-items:center;">微弱重力(GRAV_FREE)<input type="number" id="dbg-gravF" step="0.01" style="width:70px; background:#111; color:#00ffcc; border:1px solid #00ffcc; padding:2px;"></label>
+                <label style="display:flex; justify-content:space-between; align-items:center;">拖拽阻尼(DAMP_DRAG)<input type="number" id="dbg-dampD" step="0.01" max="1" style="width:70px; background:#111; color:#00ffcc; border:1px solid #00ffcc; padding:2px;"></label>
+                <label style="display:flex; justify-content:space-between; align-items:center;">自由阻尼(DAMP_FREE)<input type="number" id="dbg-dampF" step="0.01" max="1" style="width:70px; background:#111; color:#00ffcc; border:1px solid #00ffcc; padding:2px;"></label>
+                <label style="display:flex; justify-content:space-between; align-items:center;">拉伸上限(MAX_STRTCH)<input type="number" id="dbg-maxStretch" step="0.1" style="width:70px; background:#111; color:#00ffcc; border:1px solid #00ffcc; padding:2px;"></label>
+                <label style="display:flex; justify-content:space-between; align-items:center;">压缩下限(MIN_STRTCH)<input type="number" id="dbg-minStretch" step="0.1" style="width:70px; background:#111; color:#00ffcc; border:1px solid #00ffcc; padding:2px;"></label>
+                <label style="display:flex; justify-content:space-between; align-items:center;">形变弯倍率(SKEW_MUL)<input type="number" id="dbg-skew" step="0.1" style="width:70px; background:#111; color:#00ffcc; border:1px solid #00ffcc; padding:2px;"></label>
+                <label style="display:flex; justify-content:space-between; align-items:center;">最大速度(MAX_VEL)<input type="number" id="dbg-maxVel" step="1" style="width:70px; background:#111; color:#00ffcc; border:1px solid #00ffcc; padding:2px;"></label>
+                
+                <button id="dbg-btn-reset" style="margin-top:10px; background:#00ffcc; color:#000; border:none; padding:8px; cursor:pointer; font-weight:bold; border-radius:5px;">重置默认值</button>
             </div>
         `;
 
@@ -204,6 +221,62 @@ class SummaCharacter {
                 }, 2000);
                 this._exprTimers.push(t1);
             };
+            
+            // 绑定面板调试
+            this._bindDebugPanel();
+        }
+    }
+
+    _bindDebugPanel() {
+        const anim = this.animator;
+        if (!anim) return;
+        
+        const inputs = {
+            'dbg-chainK': 'CHAIN_K',
+            'dbg-anchorK': 'ANCHOR_K',
+            'dbg-gravD': 'GRAVITY_DRAG',
+            'dbg-gravF': 'GRAVITY_FREE',
+            'dbg-dampD': 'VEL_DAMP_DRAG',
+            'dbg-dampF': 'VEL_DAMP_FREE',
+            'dbg-maxStretch': 'MAX_STRETCH',
+            'dbg-minStretch': 'MIN_STRETCH',
+            'dbg-skew': 'SKEW_MULT',
+            'dbg-maxVel': 'MAX_VELOCITY'
+        };
+
+        const updateInputs = () => {
+            for (let id in inputs) {
+                const el = document.getElementById(id);
+                if (el) el.value = anim[inputs[id]];
+            }
+        };
+
+        updateInputs();
+
+        for (let id in inputs) {
+            const el = document.getElementById(id);
+            if (el) {
+                el.addEventListener('change', (e) => {
+                    anim[inputs[id]] = parseFloat(e.target.value);
+                });
+            }
+        }
+
+        const btnReset = document.getElementById('dbg-btn-reset');
+        if (btnReset) {
+            btnReset.addEventListener('click', () => {
+                anim.CHAIN_K = 0.05;
+                anim.ANCHOR_K = 0.025;
+                anim.GRAVITY_DRAG = 1.5;
+                anim.GRAVITY_FREE = 0.10;
+                anim.VEL_DAMP_DRAG = 0.89;
+                anim.VEL_DAMP_FREE = 0.95;
+                anim.MAX_STRETCH = 2.0;
+                anim.MIN_STRETCH = 0.5;
+                anim.SKEW_MULT = 2.0;
+                anim.MAX_VELOCITY = 80;
+                updateInputs();
+            });
         }
     }
 
@@ -212,60 +285,23 @@ class SummaCharacter {
         this.wrapper.style.display = (mode === 'ai') ? 'flex' : 'none';
     }
 
-    /**
-     * 带动画的表情切换：缩小+淡出 → 换图 → 弹入（spring 曲线）
-     * @param {string} mood
-     */
     setExpressionAnimated(mood, force = false) {
         if (!this.avatarImg) return;
         const img    = this.avatarImg;
         const newSrc = this.imageMap[mood] || this.imageMap.neutral;
 
-        // 如果已经是该表情则跳过（force=true 时强制刷新，如拖拽开始）
+        // 如果已经是该表情则跳过（force=true 时强制刷新）
         if (!force && img.dataset.currentMood === mood) return;
-        // 拖拽中不允许普通表情切换覆盖 smug（force=true 的拖拽开始除外）
+        // 拖拽中不允许普通表情切换覆盖 smug
         if (!force && this.animator && this.animator.isDragging) return;
+        
         img.dataset.currentMood = mood;
-
-        if (force) {
-            // force 模式（拖拽开始）：跳过淡出阶段，直接从放大状态弹入
-            // 避免初始 neutral 图片在 85ms 内淡出时被用户感知到
-            img.style.transition = 'none';
-            img.style.opacity    = '0';
-            img.style.transform  = 'scale(1.15)';
-            img.src = newSrc;
-            requestAnimationFrame(() => requestAnimationFrame(() => {
-                img.style.transition = 'opacity 160ms ease, transform 240ms cubic-bezier(0.34, 1.56, 0.64, 1)';
-                img.style.opacity    = '1';
-                img.style.transform  = 'scale(1.0)';
-                setTimeout(() => {
-                    img.style.transition = '';
-                    img.style.opacity    = '';
-                    img.style.transform  = '';
-                }, 250);
-            }));
-        } else {
-            // 普通模式：缩小+淡出 → 换图 → 弹入
-            img.style.transition = 'opacity 80ms ease, transform 80ms ease';
-            img.style.opacity    = '0';
-            img.style.transform  = 'scale(0.82)';
-            setTimeout(() => {
-                img.src = newSrc;
-                img.style.transition = 'none';
-                img.style.opacity    = '0';
-                img.style.transform  = 'scale(1.15)';
-                requestAnimationFrame(() => requestAnimationFrame(() => {
-                    img.style.transition = 'opacity 160ms ease, transform 240ms cubic-bezier(0.34, 1.56, 0.64, 1)';
-                    img.style.opacity    = '1';
-                    img.style.transform  = 'scale(1.0)';
-                    setTimeout(() => {
-                        img.style.transition = '';
-                        img.style.opacity    = '';
-                        img.style.transform  = '';
-                    }, 250);
-                }));
-            }, 85);
-        }
+        
+        // 直接替换，移除所有淡入淡出动画
+        img.style.transition = 'none';
+        img.style.opacity    = '1';
+        img.style.transform  = 'scale(1.0)';
+        img.src = newSrc;
 
         // 同时更新眨眼频率
         if (this.animator) {

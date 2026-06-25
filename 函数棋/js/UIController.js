@@ -1202,6 +1202,12 @@ class UIController {
         const phase = this.gameController.currentPhase;
         if (phase !== 'input_function') return;
         
+        // 人机模式下，如果当前是AI的回合，阻止玩家操作
+        const state = this.gameController.getGameState();
+        if (this.gameController.gameMode === 'ai' && state.currentPlayer === 'B') {
+            return;
+        }
+        
         // 如果点击的是某个具体的元素块，则删除该元素
         const elementSpan = e.target.closest('.expression-element');
         if (elementSpan) {

@@ -57,12 +57,18 @@ class SummaAnimator {
         this.CHAIN_HALF  = 90;    // 脚到角色中心的距离（px）
         this.HEAD_OFFSET = -5;    // 头部质点向上偏移量（px），即 -CHAIN_HALF - 5
         this.CHAIN_REST  = 185;   // 头尾自然间距（CHAIN_HALF + (CHAIN_HALF - HEAD_OFFSET)）
-        this.CHAIN_K     = 0.13;  // 链条弹簧刚度（维持头尾距离）
-        this.ANCHOR_K    = 0.07;  // 锚点弹簧刚度（松手后拉回原位）
-        this.GRAVITY_DRAG  = 1.5;  // 拖拽时重力加速度（px/帧²）—— 加大以加快旋转速度
+        this.CHAIN_K     = 0.05;  // 链条弹簧刚度（下调极大降低刚性，使其可以大幅拉伸缩短韧性）
+        this.ANCHOR_K    = 0.025; // 锚点弹簧刚度（下调导致松手后缓慢悠荡而不生硬拉回）
+        this.GRAVITY_DRAG  = 1.5;  // 拖拽时重力加速度（px/帧²）
         this.GRAVITY_FREE  = 0.10; // 非拖拽时的微弱重力（产生轻微自然下垂）
-        this.VEL_DAMP_DRAG = 0.89; // 拖拽时速度衰减（中等阻尼，摆动自然但不过弹）
-        this.VEL_DAMP_FREE = 0.92; // 非拖拽时速度衰减（轻阻尼，让抛出后摔动持续更久）
+        this.VEL_DAMP_DRAG = 0.89; // 拖拽时速度衰减
+        this.VEL_DAMP_FREE = 0.95; // 非拖拽时速度衰减（减小阻尼，让扔出后像布娃娃一样自由晃更久）
+        
+        // ── 弹性形变约束参数 ────────────────────────────────────────────────────────
+        this.MAX_STRETCH   = 2.00; // 被拉极长时的放大比例上限
+        this.MIN_STRETCH   = 0.50; // 被挤压极短时的缩小比例下限
+        this.SKEW_MULT     = 2.0;  // 晃动两端速度差造成的弯曲形变放大率
+        this.MAX_VELOCITY  = 80;   // 质点内部最大运行速度（防止崩坏）
 
         // ── 链式物理状态（根中心相对坐标）────────────────────────────────
         this.ptA = { x: 0, y: -this.CHAIN_HALF + this.HEAD_OFFSET, vx: 0, vy: 0 }; // 头
@@ -499,10 +505,18 @@ class SummaAnimator {
             this.ptB.vy += (+this.CHAIN_HALF - this.ptB.y) * ak_foot;
         }
 
-        // ── 速度衰减 ─────────────────────────────────────────────────────
+        // ── 速度衰减与极限裁切 ─────────────────────────────────────────────────────
         const damp = this.isDragging ? this.VEL_DAMP_DRAG : this.VEL_DAMP_FREE;
         this.ptA.vx *= damp; this.ptA.vy *= damp;
         this.ptB.vx *= damp; this.ptB.vy *= damp;
+        
+        // 限制最大绝对速度
+        const clampV = (val, max) => Math.max(-max, Math.min(max, val));
+        this.ptA.vx = clampV(this.ptA.vx, this.MAX_VELOCITY);
+        this.ptA.vy = clampV(this.ptA.vy, this.MAX_VELOCITY);
+        this.ptB.vx = clampV(this.ptB.vx, this.MAX_VELOCITY);
+        this.ptB.vy = clampV(this.ptB.vy, this.MAX_VELOCITY);
+        
         this.ptA.x  += this.ptA.vx;   this.ptA.y  += this.ptA.vy;
         this.ptB.x  += this.ptB.vx;   this.ptB.y  += this.ptB.vy;
 
@@ -636,12 +650,17 @@ class SummaAnimator {
 
         // 拉伸/压缩：头尾距离相对于自然距离的比值
         const dist      = Math.sqrt(dx * dx + dy * dy) || this.CHAIN_REST;
-        const stretchY  = Math.max(0.60, Math.min(1.60, dist / this.CHAIN_REST));
-        const squashX   = Math.max(0.65, 1 / Math.sqrt(stretchY));
+        const stretchY  = Math.max(this.MIN_STRETCH, Math.min(this.MAX_STRETCH, dist / this.CHAIN_REST)); 
+        const squashX   = Math.max(0.40, 1 / Math.sqrt(stretchY));
+        
+        // 追加惯性弯曲（模拟非刚体弯折）：根据两端点的横向速度差计算形变
+        const dvx = this.ptA.vx - this.ptB.vx;
+        const skewAngle = Math.max(-45, Math.min(45, dvx * this.SKEW_MULT)); // 放大速度差带来的偏移
 
         this.body.style.transform =
             `translate(${midX.toFixed(2)}px, ${midY.toFixed(2)}px) ` +
             `rotate(${charAngle.toFixed(2)}deg) ` +
+            `skewX(${skewAngle.toFixed(2)}deg) ` +
             `scaleX(${squashX.toFixed(3)}) scaleY(${stretchY.toFixed(3)})`;
 
         // ── 眼皮（眨眼）────────────────────────────────────────────────

@@ -214,12 +214,11 @@ class GameController {
         switch (difficulty) {
             case 'test':
                 return 0; // 测试模式无目标格
-            case 'hard':
+            case 'normal':
                 return 2;
             case 'expert':
                 return 3;
             case 'easy':
-            case 'normal':
             default:
                 return 1;
         }
@@ -247,13 +246,6 @@ class GameController {
      * @returns {boolean}
      */
     canLockElement(element) {
-        // 简单难度：四则运算无法被锁定
-        if (this.isEasyMode()) {
-            const basicOperators = ['+', '-', '*', '/'];
-            if (basicOperators.includes(element)) {
-                return false;
-            }
-        }
         
         // 检查该元素是否已经被锁定2次
         const count = this.elementLockCounts.get(element) || 0;
@@ -304,10 +296,7 @@ class GameController {
             this.timeLimit = Math.min(50 + (group - 1) * 10, 90);
         }
         
-        // 简单难度：每回合多20秒
-        if (this.isEasyMode()) {
-            this.timeLimit += 20;
-        }
+        // 移除简单模式+20秒的额外逻辑
         
         this.remainingTime = this.timeLimit;
     }
@@ -436,11 +425,9 @@ class GameController {
      * @returns {number}
      */
     getMaxForbiddenCount() {
-        if (this.currentRound <= 4) return 0;
         if (this.currentRound <= 8) return 1;
-        if (this.currentRound <= 12) return 2;
-        if (this.currentRound <= 16) return 3;
-        return 4;
+        if (this.currentRound <= 16) return 2;
+        return 3;
     }
     
     /**
@@ -449,10 +436,8 @@ class GameController {
      */
     getMaxLockCount() {
         if (this.currentRound <= 4) return 0;
-        if (this.currentRound <= 8) return 1;
-        if (this.currentRound <= 12) return 2;
-        if (this.currentRound <= 16) return 3;
-        return 4;
+        if (this.currentRound <= 12) return 1;
+        return 2;
     }
     
     /**
@@ -520,9 +505,8 @@ class GameController {
         if (this.currentPhase !== this.phases.SET_FORBIDDEN) return false;
         
         // 不能选择目标网格作为禁止区
-        if (this.roundState.targetCell && 
-            this.roundState.targetCell.x === cell.x && 
-            this.roundState.targetCell.y === cell.y) {
+        const isTarget = this.roundState.targetCells.some(c => c.x === cell.x && c.y === cell.y);
+        if (isTarget) {
             return false;
         }
         

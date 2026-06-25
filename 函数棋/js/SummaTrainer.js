@@ -135,16 +135,70 @@ class SummaTrainer {
             };
 
             const batchProcess = () => {
-                // 每次跑一批
                 i += chunk;
                 
-                // 真·自生成神经网：尝试构建有效算式
-                for(let k=0; k<Math.min(chunk, 500); k++) {
-                    const depth = Math.floor(Math.random() * 3) + 1;
-                    const astNode = generateASTNode(depth);
+                // 完全根据真实游玩规则模拟训练回合
+                for(let k = 0; k < Math.min(chunk, 500); k++) {
+                    // 随机模拟 1 到 24 回合
+                    const simRound = Math.floor(Math.random() * 24) + 1;
                     
-                    // 原生 AST 内存计算过滤，速度快 1000 倍且零内存泄漏
+                    // 锁定元素规则：
+                    let maxLock = 2;
+                    if(simRound <= 4) maxLock = 0;
+                    else if(simRound <= 12) maxLock = 1;
+                    
+                    // 模拟对方锁定元素
+                    let availableOps = [...opsCollection];
+                    let locked = [];
+                    // 不能锁定 x 或括号，且每局可以锁定不同元素
+                    let lockableOps = opsCollection.filter(op => op !== 'x');
+                    for (let l = 0; l < maxLock; l++) {
+                        if (lockableOps.length === 0) break;
+                        const toLock = lockableOps[Math.floor(Math.random() * lockableOps.length)];
+                        locked.push(toLock);
+                        availableOps = availableOps.filter(op => op !== toLock);
+                        lockableOps = lockableOps.filter(op => op !== toLock);
+                    }
+                    
+                    // 使用可用的操作符生成表达式，这符合"选锁定"的规则
+                    const generateASTNodeValid = (depth) => {
+                        if (depth <= 0) {
+                            const r = Math.random();
+                            if(r < 0.5) return { t: 'var' };
+                            if(r < 0.8) return { t: 'num', v: Math.floor(Math.random() * 9 + 1) };
+                            if(availableOps.includes('e')) return { t: 'e' };
+                            return { t: 'var' };
+                        }
+                        // 从可用的 ops 中选
+                        let activeOps = availableOps.filter(o => ['+', '-', '*', '/', '^', 'sin', 'cos', 'abs', 'ln', 'tan', 'sqrt'].includes(o));
+                        if(activeOps.length === 0) return {t: 'var'};
+                        
+                        let op = activeOps[Math.floor(Math.random() * activeOps.length)];
+                        if (['+', '-', '*', '/', '^'].includes(op)) {
+                            if (op === '^') return { t: 'op', op: '^', l: generateASTNodeValid(depth - 1), r: { t: 'var' } }; 
+                            return { t: 'op', op: op, l: generateASTNodeValid(depth - 1), r: generateASTNodeValid(depth - 1) };
+                        } else if (['sin', 'cos', 'tan', 'abs', 'ln', 'sqrt'].includes(op)) {
+                            return { t: 'func', op: op, arg: generateASTNodeValid(depth - 1) };
+                        }
+                        return { t: 'var' };
+                    };
+                    
+                    const depth = Math.floor(Math.random() * 3) + 1;
+                    const astNode = generateASTNodeValid(depth);
+                    
+                    // 模拟选格子：
+                    // 根据难度计算 targetCount
+                    let targetCount = 1;
+                    if(difficulty === 'normal') targetCount = 2; // 原困难
+                    if(difficulty === 'expert') targetCount = 3;
+                    
+                    // 禁区规则
+                    let maxForbidden = 3;
+                    if (simRound <= 8) maxForbidden = 1;
+                    else if (simRound <= 16) maxForbidden = 2;
+                    
                     if (Math.random() < 0.2) { 
+                        // 在训练时，主要通过有效性判断，以及模拟"有没有在这个被锁定的条件下生成出正常形变能力的函数"
                         let v1 = evalAST(astNode, -2);
                         let v2 = evalAST(astNode, 3);
                         let v3 = evalAST(astNode, 0);
@@ -166,6 +220,7 @@ class SummaTrainer {
                 
                 if (i % (chunk * 4) === 0 || i <= chunk) {
                     let op = opsCollection[Math.floor(Math.random() * opsCollection.length)];
+                    let simRRound = Math.floor(Math.random() * 24) + 1;
                     let type = [
                         '目标区捕捉场优化', 
                         '禁区引力规避矩阵', 
