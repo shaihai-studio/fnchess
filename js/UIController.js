@@ -59,6 +59,7 @@ class UIController {
         this.startModal = document.getElementById('start-modal');
         this.startBtn = document.getElementById('start-btn');
         this.roundSelect = document.getElementById('round-select');
+        this.difficultySelect = document.getElementById('difficulty-select');
     }
     
     /**
@@ -89,8 +90,28 @@ class UIController {
         });
         
         this.gameController.on('targetSelected', (data) => {
-            this.gridSystem.setTargetCell(data.cell);
-            this.showMessage(`目标网格已选择: (${data.cell.x}, ${data.cell.y})`);
+            // 更新所有目标格的显示
+            this.gridSystem.setTargetCells(this.gameController.roundState.targetCells);
+            const progress = data.count && data.total ? ` (${data.count}/${data.total})` : '';
+            this.showMessage(`目标网格 ${data.count} 已选择: (${data.cell.x}, ${data.cell.y})${progress}`);
+            
+            // 更新阶段提示
+            const state = this.gameController.getGameState();
+            if (state.targetCount > 1) {
+                this.phaseHintElement.textContent = `请点击棋盘选择 ${state.targetCount} 个目标网格 (${this.gameController.roundState.targetCells.length}/${state.targetCount})，按回车确认`;
+            }
+        });
+        
+        this.gameController.on('targetRemoved', (data) => {
+            // 更新所有目标格的显示
+            this.gridSystem.setTargetCells(this.gameController.roundState.targetCells);
+            this.showMessage(`目标网格已取消: (${data.cell.x}, ${data.cell.y})`);
+            
+            // 更新阶段提示
+            const state = this.gameController.getGameState();
+            if (state.targetCount > 1) {
+                this.phaseHintElement.textContent = `请点击棋盘选择 ${state.targetCount} 个目标网格 (${this.gameController.roundState.targetCells.length}/${state.targetCount})，按回车确认`;
+            }
         });
         
         this.gameController.on('forbiddenAdded', (data) => {
@@ -149,8 +170,77 @@ class UIController {
         // 表达式显示区点击删除
         this.expressionDisplay.addEventListener('click', (e) => this.handleExpressionClick(e));
         
+        // 键盘输入事件
+        document.addEventListener('keydown', (e) => this.handleKeyboardInput(e));
+        
         // 初始化拖拽元素
         this.initDraggableElements();
+    }
+    
+    /**
+     * 处理键盘输入
+     */
+    handleKeyboardInput(e) {
+        const phase = this.gameController.currentPhase;
+        const key = e.key;
+        
+        // 回车键确认：在 select_target / set_forbidden / set_locks / input_function 阶段都可用
+        if (key === 'Enter') {
+            e.preventDefault();
+            if (['set_forbidden', 'set_locks', 'input_function'].includes(phase)) {
+                // 这些阶段可以直接确认
+                this.handleConfirm();
+            } else if (phase === 'select_target') {
+                // 选择目标阶段需要检查是否已选择目标
+                const state = this.gameController.getGameState();
+                if (state.roundState.targetCell) {
+                    this.handleConfirm();
+                } else {
+                    this.showMessage('请先点击棋盘选择目标网格', 'error');
+                }
+            }
+            return;
+        }
+        
+        // 以下键盘输入只在 input_function 阶段响应
+        if (phase !== 'input_function') {
+            return;
+        }
+        
+        // 允许的键：x, 0-9, +, -, *, /, ., !, (, ), ^, π, e, i
+        if (key === 'x' || key === 'X') {
+            e.preventDefault();
+            this.addElementToExpression('x');
+        } else if (/^[0-9]$/.test(key)) {
+            e.preventDefault();
+            this.addElementToExpression(key);
+        } else if (['+', '-', '*', '/', '.', '!', '(', ')', '^'].includes(key)) {
+            e.preventDefault();
+            this.addElementToExpression(key);
+        } else if (key === 'p' || key === 'P') {
+            // p 键输入 π
+            e.preventDefault();
+            this.addElementToExpression('π');
+        } else if (key === 'e' || key === 'E') {
+            // e 键输入自然常数 e
+            e.preventDefault();
+            this.addElementToExpression('e');
+        } else if (key === 'i' || key === 'I') {
+            // i 键输入虚数单位 i
+            e.preventDefault();
+            this.addElementToExpression('i');
+        } else if (key === 'Backspace') {
+            e.preventDefault();
+            // 删除最后一个元素
+            if (this.expressionElements.length > 0) {
+                this.expressionElements.pop();
+                this.updateExpressionDisplay();
+            }
+        } else if (key === 'Escape') {
+            e.preventDefault();
+            // 清除表达式
+            this.handleClear();
+        }
     }
     
     /**
@@ -177,9 +267,21 @@ class UIController {
         const categories = [
             { key: 'variable', label: '变量' },
             { key: 'numbers', label: '数字' },
-            { key: 'operators', label: '运算符' },
+            { key: 'basicOperators', label: '四则运算' },
+            { key: 'operators', label: '其他运算符' },
             { key: 'functions', label: '函数' }
         ];
+        
+        // 函数显示名称映射
+        const funcDisplayNames = {
+            'sin': 'sin',
+            'cos': 'cos',
+            'tan': 'tan',
+            'abs': 'abs',
+            'exp': 'exp',
+            'ln': 'ln',
+            'log': 'log'
+        };
         
         for (const cat of categories) {
             const catDiv = document.createElement('div');
@@ -196,7 +298,11 @@ class UIController {
             for (const item of elements[cat.key]) {
                 const btn = document.createElement('button');
                 btn.className = 'element-btn';
-                btn.textContent = item.value;
+                // 使用数学符号显示，函数使用显示名称映射
+                const displayValue = cat.key === 'functions' && funcDisplayNames[item.value] 
+                    ? funcDisplayNames[item.value] 
+                    : this.getDisplaySymbol(item.value);
+                btn.textContent = displayValue;
                 btn.dataset.value = item.value;
                 
                 // 检查是否被本回合锁定
@@ -207,7 +313,10 @@ class UIController {
                 if (isLockedThisRound || isLockedPreviously) {
                     btn.classList.add('locked');
                     btn.disabled = true;
-                    btn.innerHTML = `${item.value} <span class="lock-icon">🔒</span>`;
+                    const lockedDisplayValue = cat.key === 'functions' && funcDisplayNames[item.value] 
+                        ? funcDisplayNames[item.value] 
+                        : this.getDisplaySymbol(item.value);
+                    btn.innerHTML = `${lockedDisplayValue} <span class="lock-icon">🔒</span>`;
                     if (isLockedThisRound) {
                         btn.title = '本回合被锁定';
                     }
@@ -245,17 +354,27 @@ class UIController {
         const itemsDiv = document.createElement('div');
         itemsDiv.className = 'element-items';
         
-        // 收集所有可锁定的元素（除了x）
+        // 收集所有可锁定的元素（除了x, π, e, i）
+        // 注意：简单难度下四则运算也会显示，但处于保护状态
         const allElements = [
-            ...elements.numbers.map(e => e.value),
+            ...elements.numbers.filter(e => e.value !== 'π' && e.value !== 'e' && e.value !== 'i').map(e => e.value),
+            ...elements.basicOperators.map(e => e.value),
             ...elements.operators.filter(e => e.value !== 'x').map(e => e.value),
             ...elements.functions.map(e => e.value)
         ];
         
+        // 函数显示名称映射（用于锁定视图）
+        const lockFuncDisplayNames = {
+            'sin': 'sin', 'cos': 'cos', 'tan': 'tan',
+            'abs': 'abs', 'exp': 'exp',
+            'ln': 'ln', 'log': 'log'
+        };
+        
         for (const element of allElements) {
             const btn = document.createElement('button');
             btn.className = 'element-btn';
-            btn.textContent = element;
+            // 使用数学符号显示，函数使用显示名称映射
+            btn.textContent = lockFuncDisplayNames[element] || this.getDisplaySymbol(element);
             btn.dataset.value = element;
             
             // 检查是否已被本回合锁定
@@ -264,7 +383,19 @@ class UIController {
                 btn.style.background = 'rgba(239, 68, 68, 0.5)';
             }
             
-            btn.addEventListener('click', () => this.toggleLockElement(element, btn));
+            // 检查是否为简单难度的受保护元素（四则运算）
+            const isProtectedInEasyMode = state.difficulty === 'easy' && 
+                ['+', '-', '*', '/'].includes(element);
+            
+            if (isProtectedInEasyMode) {
+                // 简单难度：四则运算显示为保护状态，无法点击
+                btn.classList.add('protected');
+                btn.disabled = true;
+                btn.title = '新手保护：四则运算无法被锁定';
+            } else {
+                btn.addEventListener('click', () => this.toggleLockElement(element, btn));
+            }
+            
             itemsDiv.appendChild(btn);
         }
         
@@ -381,6 +512,18 @@ class UIController {
     }
     
     /**
+     * 将运算符转换为显示符号
+     */
+    getDisplaySymbol(element) {
+        const symbolMap = {
+            '*': '×',
+            '/': '÷',
+            '!': '!'
+        };
+        return symbolMap[element] || element;
+    }
+    
+    /**
      * 更新表达式显示
      */
     updateExpressionDisplay() {
@@ -388,14 +531,15 @@ class UIController {
         this.expressionDisplay.innerHTML = '';
         
         if (this.expressionElements.length === 0) {
-            this.expressionDisplay.innerHTML = '<span class="placeholder">点击元素构建表达式...</span>';
+            this.expressionDisplay.innerHTML = '<span class="placeholder">点击元素或键盘输入构建表达式...</span>';
             return;
         }
         
         for (let i = 0; i < this.expressionElements.length; i++) {
             const span = document.createElement('span');
             span.className = 'expression-element';
-            span.textContent = this.expressionElements[i];
+            // 使用数学符号显示
+            span.textContent = this.getDisplaySymbol(this.expressionElements[i]);
             span.dataset.index = i;
             this.expressionDisplay.appendChild(span);
         }
@@ -482,18 +626,20 @@ class UIController {
         
         // 获取目标网格和禁止区
         const state = this.gameController.getGameState();
-        const targetCell = state.roundState.targetCell;
+        const targetCells = state.roundState.targetCells;
         const forbiddenCells = state.roundState.forbiddenCells;
         
-        // 碰撞检测
-        let hitTarget = false;
-        let hitForbidden = false;
-        
-        if (targetCell) {
+        // 碰撞检测 - 检测所有目标格
+        const hitTargets = [];
+        for (const targetCell of targetCells) {
             const targetRect = this.gridSystem.getCellRect(targetCell);
-            hitTarget = this.detector.polylineIntersectsRect(polyline, targetRect);
+            if (this.detector.polylineIntersectsRect(polyline, targetRect)) {
+                hitTargets.push(targetCell);
+            }
         }
         
+        // 检测禁止区
+        let hitForbidden = false;
         if (forbiddenCells.length > 0) {
             hitForbidden = this.detector.checkHitForbidden(polyline, forbiddenCells);
         }
@@ -502,7 +648,7 @@ class UIController {
         const functionType = this.parser.analyzeFunctionType(expression);
         
         // 评估结果
-        this.gameController.evaluateResult(hitTarget, hitForbidden, functionType);
+        this.gameController.evaluateResult(hitTargets, hitForbidden, functionType);
     }
     
     /**
@@ -518,16 +664,57 @@ class UIController {
         if (data.hitForbidden) {
             message = `❌ 玩家${constructorPlayer}的函数进入禁止区！扣1分`;
             this.flashGrid('forbidden');
+            this.showScorePopup(constructorPlayer, -1);
         } else if (data.hitTarget) {
-            message = `✅ 玩家${constructorPlayer}命中目标！函数类型: ${data.functionType.type}，得分: ${data.score}`;
+            // 多个目标格的情况
+            if (data.targetCount > 1) {
+                message = `✅ 玩家${constructorPlayer}命中全部 ${data.targetCount} 个目标！函数类型: ${data.functionType.type}，得分: ${data.score}`;
+            } else {
+                message = `✅ 玩家${constructorPlayer}命中目标！函数类型: ${data.functionType.type}，得分: ${data.score}`;
+            }
             this.flashGrid('target');
+            this.showScorePopup(constructorPlayer, data.score);
         } else {
-            message = `❌ 玩家${constructorPlayer}未命中目标！扣1分`;
+            // 多个目标格但未全部命中的情况
+            if (data.targetCount > 1 && data.hitCount > 0) {
+                message = `❌ 玩家${constructorPlayer}只命中 ${data.hitCount}/${data.targetCount} 个目标！需全部穿过才得分，扣1分`;
+            } else {
+                message = `❌ 玩家${constructorPlayer}未命中目标！扣1分`;
+            }
             this.flashGrid('miss');
+            this.showScorePopup(constructorPlayer, -1);
         }
         
         this.showMessage(message, data.hitTarget && !data.hitForbidden ? 'success' : 'error');
         this.updateScoreboard();
+    }
+    
+    /**
+     * 显示分数变化气泡
+     * @param {string} player - 'A' 或 'B'
+     * @param {number} scoreChange - 分数变化（正数为加分，负数为扣分）
+     */
+    showScorePopup(player, scoreChange) {
+        const scoreElement = player === 'A' ? this.scoreAElement : this.scoreBElement;
+        
+        // 创建气泡元素
+        const popup = document.createElement('div');
+        popup.className = 'score-popup';
+        popup.textContent = scoreChange >= 0 ? `+${scoreChange}` : `${scoreChange}`;
+        // 非负数（包括+0）显示绿色，负数显示红色
+        popup.style.color = scoreChange >= 0 ? '#22c55e' : '#ef4444';
+        
+        // 定位气泡
+        const rect = scoreElement.getBoundingClientRect();
+        popup.style.left = `${rect.left + rect.width / 2}px`;
+        popup.style.top = `${rect.top}px`;
+        
+        document.body.appendChild(popup);
+        
+        // 动画结束后移除
+        setTimeout(() => {
+            popup.remove();
+        }, 1500);
     }
     
     /**
@@ -567,8 +754,9 @@ class UIController {
      */
     handleStart() {
         const rounds = parseInt(this.roundSelect.value);
+        const difficulty = this.difficultySelect.value;
         this.startModal.style.display = 'none';
-        this.gameController.initGame(rounds);
+        this.gameController.initGame(rounds, difficulty);
     }
     
     /**
@@ -592,21 +780,29 @@ class UIController {
         
         switch (phase) {
             case 'select_target':
-                hint = '请点击棋盘选择目标网格';
+                if (state.targetCount > 1) {
+                    hint = `请点击棋盘选择 ${state.targetCount} 个目标网格 (${state.roundState.targetCells.length}/${state.targetCount})，按回车确认`;
+                } else {
+                    hint = '请点击棋盘选择目标网格，按回车确认';
+                }
                 confirmText = '确认目标';
-                this.confirmBtn.disabled = !state.roundState.targetCell;
+                this.confirmBtn.disabled = state.roundState.targetCells.length < state.targetCount;
                 break;
             case 'set_forbidden':
-                hint = `设置禁止区 (${state.roundState.forbiddenCells.length}/${state.maxForbidden}) - 点击棋盘选择，选好后点击确认`;
+                hint = `设置禁止区 (${state.roundState.forbiddenCells.length}/${state.maxForbidden}) - 点击棋盘选择，按回车确认`;
                 confirmText = '确认禁止区';
                 break;
             case 'set_locks':
-                hint = `点击下方元素锁定对方 (${state.roundState.lockedElements.length}/${state.maxLocks})`;
+                if (state.difficulty === 'easy') {
+                    hint = `点击下方元素锁定对方 (${state.roundState.lockedElements.length}/${state.maxLocks})，按回车确认（新手保护：四则运算无法被锁定）`;
+                } else {
+                    hint = `点击下方元素锁定对方 (${state.roundState.lockedElements.length}/${state.maxLocks})，按回车确认`;
+                }
                 confirmText = '确认锁定';
                 this.initDraggableElements(); // 刷新为锁定视图
                 break;
             case 'input_function':
-                hint = '点击下方元素构建函数表达式';
+                hint = '点击下方元素构建函数表达式，按回车提交';
                 confirmText = '提交函数';
                 this.initDraggableElements(); // 刷新为函数构建视图
                 break;

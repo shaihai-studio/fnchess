@@ -16,9 +16,10 @@ class FunctionParser {
         // 元素分类（用于构建拖拽元素）
         this.elementCategories = {
             variable: ['x'],
-            numbers: ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'],
-            operators: ['+', '-', '*', '/', '^', '(', ')'],
-            functions: ['sin', 'cos', 'tan', 'abs', 'exp']
+            numbers: ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'π', 'e', 'i'],
+            basicOperators: ['+', '-', '*', '/'],
+            operators: ['.', '^', '!', '(', ')'],
+            functions: ['sin', 'cos', 'tan', 'abs', 'exp', 'ln', 'log']
         };
     }
     
@@ -88,6 +89,264 @@ class FunctionParser {
     }
     
     /**
+     * 计算阶乘（使用伽马函数扩展到实数域）
+     * 对于正整数: n! = n * (n-1) * ... * 1
+     * 对于实数: n! = Γ(n+1)，其中 Γ 是伽马函数
+     * @param {number} n - 实数（负整数除外）
+     * @returns {number} 阶乘结果
+     */
+    factorial(n) {
+        // 负整数无定义
+        if (n < 0 && Number.isInteger(n)) return NaN;
+        
+        // 0! = 1, 1! = 1
+        if (n === 0 || n === 1) return 1;
+        
+        // 对于正整数，使用直接计算
+        if (n > 0 && Number.isInteger(n) && n <= 170) {
+            let result = 1;
+            for (let i = 2; i <= n; i++) {
+                result *= i;
+            }
+            return result;
+        }
+        
+        // 对于实数，使用伽马函数: n! = Γ(n+1)
+        return this.gamma(n + 1);
+    }
+    
+    /**
+     * 伽马函数（Lanczos近似算法）
+     * 用于计算实数的阶乘: Γ(z) = (z-1)!
+     * @param {number} z - 实数（负整数除外）
+     * @returns {number} 伽马函数值
+     */
+    gamma(z) {
+        // 负整数无定义
+        if (z <= 0 && Number.isInteger(z)) return NaN;
+        
+        // 使用Lanczos近似算法
+        const p = [
+            676.5203681218851,
+            -1259.1392167224028,
+            771.32342877765313,
+            -176.61502916214059,
+            12.507343278686905,
+            -0.13857109526572012,
+            9.9843695780195716e-6,
+            1.5056327351493116e-7
+        ];
+        
+        // 反射公式处理 z < 0.5 的情况
+        if (z < 0.5) {
+            return Math.PI / (Math.sin(Math.PI * z) * this.gamma(1 - z));
+        }
+        
+        z -= 1;
+        let x = 0.99999999999980993;
+        for (let i = 0; i < p.length; i++) {
+            x += p[i] / (z + i + 1);
+        }
+        
+        const t = z + p.length - 0.5;
+        return Math.sqrt(2 * Math.PI) * Math.pow(t, z + 0.5) * Math.exp(-t) * x;
+    }
+    
+    /**
+     * 处理 ln 和 log 的括号省略形式
+     * 如 ln x -> ln(x), log 10 -> log(10)
+     * @param {string} expression - 原始表达式
+     * @returns {string} 转换后的表达式
+     */
+    convertLogWithoutParen(expression) {
+        let converted = expression;
+        
+        // 处理 ln 后跟变量、数字、常数、括号表达式或函数
+        // 模式1: ln x -> ln(x)
+        converted = converted.replace(/\bln\s+([a-zA-Zπe]\w*)/gi, 'ln($1)');
+        
+        // 模式2: ln 数字 -> ln(数字)
+        converted = converted.replace(/\bln\s+(\d+(?:\.\d+)?)/gi, 'ln($1)');
+        
+        // 模式3: ln (表达式) -> ln((表达式)) 或保持 ln(表达式)
+        // 先处理 ln ( -> ln(
+        converted = converted.replace(/\bln\s*\(/gi, 'ln(');
+        
+        // 模式4: ln π -> ln(π)
+        converted = converted.replace(/\bln\s*π/gi, 'ln(π)');
+        
+        // 模式5: ln e -> ln(e)
+        converted = converted.replace(/\bln\s+e\b/gi, 'ln(e)');
+        
+        // 处理 log 的类似形式
+        // 模式1: log x -> log(x)
+        converted = converted.replace(/\blog\s+([a-zA-Zπe]\w*)/gi, 'log($1)');
+        
+        // 模式2: log 数字 -> log(数字)
+        converted = converted.replace(/\blog\s+(\d+(?:\.\d+)?)/gi, 'log($1)');
+        
+        // 模式3: log (表达式) -> log((表达式)) 或保持 log(表达式)
+        converted = converted.replace(/\blog\s*\(/gi, 'log(');
+        
+        // 模式4: log π -> log(π)
+        converted = converted.replace(/\blog\s*π/gi, 'log(π)');
+        
+        // 模式5: log e -> log(e)
+        converted = converted.replace(/\blog\s+e\b/gi, 'log(e)');
+        
+        return converted;
+    }
+    
+    /**
+     * 处理使用虚数单位 i 的欧拉公式
+     * e^(i*θ) = cos(θ) + i*sin(θ)
+     * 当结果为实数时返回实数部分
+     * @param {string} expression - 原始表达式
+     * @returns {string} 转换后的表达式
+     */
+    convertComplexEuler(expression) {
+        let converted = expression;
+        
+        // 模式1: e^(i*π) 或 e^(i*PI) - 结果为 -1
+        const pattern1 = /e\^\(\s*i\s*\*\s*(?:PI|π)\s*\)/gi;
+        converted = converted.replace(pattern1, '(-1)');
+        
+        // 模式2: e^(π*i) 或 e^(PI*i) - 结果为 -1
+        const pattern2 = /e\^\(\s*(?:PI|π)\s*\*\s*i\s*\)/gi;
+        converted = converted.replace(pattern2, '(-1)');
+        
+        // 模式1b: e^(iπ) 或 e^(iPI) - 隐式乘法，结果为 -1
+        const pattern1b = /e\^\(\s*i(?:PI|π)\s*\)/gi;
+        converted = converted.replace(pattern1b, '(-1)');
+        
+        // 模式2b: e^(πi) 或 e^(PIi) - 隐式乘法，结果为 -1
+        const pattern2b = /e\^\(\s*(?:PI|π)i\s*\)/gi;
+        converted = converted.replace(pattern2b, '(-1)');
+        
+        // 模式3: e^(i*n*π) = cos(n*π) = (-1)^n
+        const pattern3 = /e\^\(\s*i\s*\*\s*(\d+(?:\.\d+)?)\s*\*\s*(?:PI|π)\s*\)/gi;
+        const pattern4 = /e\^\(\s*(\d+(?:\.\d+)?)\s*\*\s*i\s*\*\s*(?:PI|π)\s*\)/gi;
+        const pattern5 = /e\^\(\s*(\d+(?:\.\d+)?)\s*\*\s*(?:PI|π)\s*\*\s*i\s*\)/gi;
+        const pattern6 = /e\^\(\s*i\s*\*\s*(?:PI|π)\s*\*\s*(\d+(?:\.\d+)?)\s*\)/gi;
+        const pattern7 = /e\^\(\s*(?:PI|π)\s*\*\s*i\s*\*\s*(\d+(?:\.\d+)?)\s*\)/gi;
+        const pattern8 = /e\^\(\s*(?:PI|π)\s*\*\s*(\d+(?:\.\d+)?)\s*\*\s*i\s*\)/gi;
+        
+        const handleComplexEuler = (match, n) => {
+            const num = parseFloat(n);
+            if (Number.isInteger(num)) {
+                // e^(i*n*π) = cos(n*π) = (-1)^n
+                return num % 2 === 0 ? '1' : '(-1)';
+            }
+            // 非整数情况返回实数部分
+            return `cos(${n}*PI)`;
+        };
+        
+        converted = converted.replace(pattern3, handleComplexEuler);
+        converted = converted.replace(pattern4, handleComplexEuler);
+        converted = converted.replace(pattern5, handleComplexEuler);
+        converted = converted.replace(pattern6, handleComplexEuler);
+        converted = converted.replace(pattern7, handleComplexEuler);
+        converted = converted.replace(pattern8, handleComplexEuler);
+        
+        // 使用 exp 函数的形式
+        const pattern9 = /exp\(\s*i\s*\*\s*(?:PI|π)\s*\)/gi;
+        const pattern10 = /exp\(\s*(?:PI|π)\s*\*\s*i\s*\)/gi;
+        converted = converted.replace(pattern9, '(-1)');
+        converted = converted.replace(pattern10, '(-1)');
+        
+        return converted;
+    }
+    
+    /**
+     * 检测并转换欧拉公式形式（使用 (-1)^(1/2) 表示虚数单位）
+     * e^(i*θ) = cos(θ) + i*sin(θ)，其中 i = (-1)^(1/2)
+     * 当结果为实数时（如 e^(i*π) = -1），返回实数部分
+     * @param {string} expression - 原始表达式
+     * @returns {string} 转换后的表达式
+     */
+    convertEulerFormula(expression) {
+        let converted = expression;
+        
+        // 标准化输入：将全角括号转换为半角，pie转换为π
+        converted = converted.replace(/（/g, '(').replace(/）/g, ')');
+        converted = converted.replace(/pie/gi, 'π');
+        
+        // 匹配 e^((-1)^(1/2)*π) 或 e^(π*(-1)^(1/2)) 等形式
+        // 即 e^(i*π) 形式，其中 i = (-1)^(1/2)
+        
+        // 模式1: e^((-1)^(1/2)*π) - 标准形式
+        const eulerPattern1 = /e\^\(\s*\(\s*-1\s*\)\^\s*\(?\s*(?:1\s*\/\s*2|0\.5)\s*\)?\s*\*\s*(?:PI|π)\s*\)/gi;
+        
+        // 模式2: e^(π*(-1)^(1/2)) - 交换顺序
+        const eulerPattern2 = /e\^\(\s*(?:PI|π)\s*\*\s*\(\s*-1\s*\)\^\s*\(?\s*(?:1\s*\/\s*2|0\.5)\s*\)?\s*\)/gi;
+        
+        // 模式3: exp((-1)^(1/2)*π) - 使用exp函数
+        const eulerPattern3 = /exp\(\s*\(\s*-1\s*\)\^\s*\(?\s*(?:1\s*\/\s*2|0\.5)\s*\)?\s*\*\s*(?:PI|π)\s*\)/gi;
+        
+        // 模式4: exp(π*(-1)^(1/2)) - 使用exp函数交换顺序
+        const eulerPattern4 = /exp\(\s*(?:PI|π)\s*\*\s*\(\s*-1\s*\)\^\s*\(?\s*(?:1\s*\/\s*2|0\.5)\s*\)?\s*\)/gi;
+        
+        // 替换为 -1（因为 e^(i*π) = cos(π) + i*sin(π) = -1 + 0i = -1）
+        converted = converted.replace(eulerPattern1, '(-1)');
+        converted = converted.replace(eulerPattern2, '(-1)');
+        converted = converted.replace(eulerPattern3, '(-1)');
+        converted = converted.replace(eulerPattern4, '(-1)');
+        
+        // 模式5: e^((-1)^(0.5)*π) - 使用0.5而不是1/2
+        const eulerPattern5 = /e\^\(\s*\(\s*-1\s*\)\^\s*0\.5\s*\*\s*(?:PI|π)\s*\)/gi;
+        const eulerPattern6 = /e\^\(\s*(?:PI|π)\s*\*\s*\(\s*-1\s*\)\^\s*0\.5\s*\)/gi;
+        converted = converted.replace(eulerPattern5, '(-1)');
+        converted = converted.replace(eulerPattern6, '(-1)');
+        
+        // 更通用的模式：e^(i*n*π) = cos(n*π) = (-1)^n
+        // 匹配 e^((-1)^(1/2)*n*π) 或 e^(n*(-1)^(1/2)*π) 等形式
+        const generalPattern1 = /e\^\(\s*\(\s*-1\s*\)\^\s*\(?\s*(?:1\s*\/\s*2|0\.5)\s*\)?\s*\*\s*(\d+(?:\.\d+)?)\s*\*\s*(?:PI|π)\s*\)/gi;
+        const generalPattern2 = /e\^\(\s*(\d+(?:\.\d+)?)\s*\*\s*\(\s*-1\s*\)\^\s*\(?\s*(?:1\s*\/\s*2|0\.5)\s*\)?\s*\*\s*(?:PI|π)\s*\)/gi;
+        const generalPattern3 = /e\^\(\s*(\d+(?:\.\d+)?)\s*\*\s*(?:PI|π)\s*\*\s*\(\s*-1\s*\)\^\s*\(?\s*(?:1\s*\/\s*2|0\.5)\s*\)?\s*\)/gi;
+        
+        const handleGeneralEuler = (match, n) => {
+            const num = parseFloat(n);
+            if (Number.isInteger(num)) {
+                // e^(i*n*π) = cos(n*π) = (-1)^n
+                return num % 2 === 0 ? '1' : '(-1)';
+            }
+            // 非整数情况：e^(i*n*π) = cos(n*π) + i*sin(n*π)，返回实数部分
+            return `cos(${n}*PI)`;
+        };
+        
+        converted = converted.replace(generalPattern1, handleGeneralEuler);
+        converted = converted.replace(generalPattern2, handleGeneralEuler);
+        converted = converted.replace(generalPattern3, handleGeneralEuler);
+        
+        return converted;
+    }
+    
+    /**
+     * 将表达式中的阶乘符号转换为函数调用
+     * @param {string} expression - 原始表达式
+     * @returns {string} 转换后的表达式
+     */
+    convertFactorial(expression) {
+        let converted = expression;
+        
+        // 处理数字阶乘: 5! -> factorial(5)
+        converted = converted.replace(/(\d+)(!)/g, 'factorial($1)');
+        
+        // 处理变量阶乘: x! -> factorial(x)
+        converted = converted.replace(/(x)(!)/gi, 'factorial($1)');
+        
+        // 处理括号阶乘: (expression)! -> factorial(expression)
+        // 使用循环处理嵌套括号
+        let prev;
+        do {
+            prev = converted;
+            converted = converted.replace(/(\([^()]+\))(!)/g, 'factorial($1)');
+        } while (converted !== prev);
+        
+        return converted;
+    }
+    
+    /**
      * 将表达式转换为 math.js 兼容格式
      * @param {string} expression - 原始表达式
      * @returns {string} 转换后的表达式
@@ -95,12 +354,62 @@ class FunctionParser {
     convertToMathJS(expression) {
         let converted = expression;
         
+        // 先处理阶乘（在替换其他符号之前）
+        converted = this.convertFactorial(converted);
+        
+        // 检测并处理欧拉公式形式：e^((-1)^(1/2)*π) 或 e^(π*(-1)^(1/2))
+        // 这需要在替换 π 和 ^ 之前进行，以匹配原始表达式模式
+        converted = this.convertEulerFormula(converted);
+        
+        // 替换 π 为 PI
+        converted = converted.replace(/π/g, 'PI');
+        
+        // 处理虚数单位 i 在欧拉公式中的使用
+        // 将 e^(i*π) 形式转换为欧拉公式处理
+        converted = this.convertComplexEuler(converted);
+        
         // 替换 ^ 为 **
         converted = converted.replace(/\^/g, '**');
         
         // 确保乘法显式表示
         // 处理数字与x之间缺少乘号的情况，如 2x -> 2*x
         converted = converted.replace(/(\d)(x)/gi, '$1*$2');
+        
+        // 处理数字与π/e之间缺少乘号的情况，如 2π -> 2*PI
+        converted = converted.replace(/(\d)(PI)/g, '$1*$2');
+        converted = converted.replace(/(\d)(e)/g, '$1*$2');
+        
+        // 处理π/e与数字之间缺少乘号的情况，如 π2 -> PI*2
+        converted = converted.replace(/(PI)(\d)/g, '$1*$2');
+        converted = converted.replace(/(e)(\d)/g, '$1*$2');
+        
+        // 处理x与π/e之间缺少乘号的情况，如 xπ -> x*PI
+        converted = converted.replace(/(x)(PI)/gi, '$1*$2');
+        converted = converted.replace(/(x)(e)/gi, '$1*$2');
+        
+        // 处理π/e与x之间缺少乘号的情况，如 πx -> PI*x
+        converted = converted.replace(/(PI)(x)/gi, '$1*$2');
+        converted = converted.replace(/(e)(x)/gi, '$1*$2');
+        
+        // 处理i与π/e之间缺少乘号的情况，如 iπ -> i*PI
+        converted = converted.replace(/(i)(PI)/gi, '$1*$2');
+        converted = converted.replace(/(i)(e)/gi, '$1*$2');
+        
+        // 处理π/e与i之间缺少乘号的情况，如 πi -> PI*i
+        converted = converted.replace(/(PI)(i)/gi, '$1*$2');
+        converted = converted.replace(/(e)(i)/gi, '$1*$2');
+        
+        // 处理i与x之间缺少乘号的情况，如 ix -> i*x
+        converted = converted.replace(/(i)(x)/gi, '$1*$2');
+        converted = converted.replace(/(x)(i)/gi, '$1*$2');
+        
+        // 处理i与数字之间缺少乘号的情况，如 i2 -> i*2, 2i -> 2*i
+        converted = converted.replace(/(i)(\d)/gi, '$1*$2');
+        converted = converted.replace(/(\d)(i)/g, '$1*$2');
+        
+        // 处理i与括号之间缺少乘号的情况，如 i(x) -> i*(x)
+        converted = converted.replace(/(i)(\()/g, '$1*$2');
+        converted = converted.replace(/(\))(i)/g, '$1*$2');
         
         // 处理数字与括号之间缺少乘号的情况，如 2(x) -> 2*(x)
         converted = converted.replace(/(\d)(\()/g, '$1*$2');
@@ -111,11 +420,34 @@ class FunctionParser {
         // 处理括号与括号之间缺少乘号的情况，如 )( -> )*(
         converted = converted.replace(/(\))(\()/g, '$1*$2');
         
+        // 处理 ln 和 log 的括号省略形式，如 ln x -> ln(x)
+        // 需要在处理其他隐式乘法之前执行，以确保正确识别
+        converted = this.convertLogWithoutParen(converted);
+        
         // 处理 x 与函数之间缺少乘号的情况，如 xsin -> x*sin
         for (const func of this.functions) {
             converted = converted.replace(new RegExp(`(x)(${func})`, 'gi'), '$1*$2');
             converted = converted.replace(new RegExp(`(${func})(x)`, 'gi'), '$1($2)');
         }
+        
+        // 处理 π/e 与函数之间缺少乘号的情况，如 πsin -> PI*sin
+        for (const func of this.functions) {
+            converted = converted.replace(new RegExp(`(PI)(${func})`, 'gi'), '$1*$2');
+            converted = converted.replace(new RegExp(`(e)(${func})`, 'gi'), '$1*$2');
+        }
+        
+        // 处理 i 与函数之间缺少乘号的情况，如 isin -> i*sin
+        for (const func of this.functions) {
+            converted = converted.replace(new RegExp(`(i)(${func})`, 'gi'), '$1*$2');
+        }
+        
+        // 处理 π 与 e 之间缺少乘号的情况，如 πe -> PI*e
+        converted = converted.replace(/(PI)(e)/gi, '$1*$2');
+        converted = converted.replace(/(e)(PI)/gi, '$1*$2');
+        
+        // 处理 π/e 与括号之间缺少乘号的情况，如 π(x) -> PI*(x)
+        converted = converted.replace(/(PI)(\()/g, '$1*$2');
+        converted = converted.replace(/(e)(\()/g, '$1*$2');
         
         return converted;
     }
@@ -142,8 +474,52 @@ class FunctionParser {
             const pi = Math.PI;
             const e = Math.E;
             
+            // 定义阶乘函数
+            const factorial = (n) => this.factorial(n);
+            
             // 创建函数
             const func = new Function('x', `
+                // 伽马函数（Lanczos近似）
+                const gamma = (z) => {
+                    if (z <= 0 && Number.isInteger(z)) return NaN;
+                    const p = [
+                        676.5203681218851,
+                        -1259.1392167224028,
+                        771.32342877765313,
+                        -176.61502916214059,
+                        12.507343278686905,
+                        -0.13857109526572012,
+                        9.9843695780195716e-6,
+                        1.5056327351493116e-7
+                    ];
+                    if (z < 0.5) {
+                        return Math.PI / (Math.sin(Math.PI * z) * gamma(1 - z));
+                    }
+                    z -= 1;
+                    let x = 0.99999999999980993;
+                    for (let i = 0; i < p.length; i++) {
+                        x += p[i] / (z + i + 1);
+                    }
+                    const t = z + p.length - 0.5;
+                    return Math.sqrt(2 * Math.PI) * Math.pow(t, z + 0.5) * Math.exp(-t) * x;
+                };
+                
+                // 阶乘函数（使用伽马函数扩展到实数域）
+                const factorial = (n) => {
+                    if (n < 0 && Number.isInteger(n)) return NaN;
+                    if (n === 0 || n === 1) return 1;
+                    if (n > 0 && Number.isInteger(n) && n <= 170) {
+                        let result = 1;
+                        for (let i = 2; i <= n; i++) result *= i;
+                        return result;
+                    }
+                    return gamma(n + 1);
+                };
+                
+                // 对数函数
+                const ln = (x) => Math.log(x);           // 自然对数（以e为底）
+                const log = (x) => Math.log(x) / Math.LN10; // 常用对数（以10为底）
+                
                 with (Math) {
                     return ${converted};
                 }
@@ -185,12 +561,7 @@ class FunctionParser {
             return { valid: false, error: '括号不匹配' };
         }
         
-        // 检查是否包含 x
-        if (!expression.toLowerCase().includes('x')) {
-            return { valid: false, error: '表达式必须包含变量 x' };
-        }
-        
-        // 尝试计算几个测试点
+        // 尝试计算几个测试点（常值函数也允许）
         const testPoints = [0, 1, -1, 0.5];
         let validCount = 0;
         
@@ -224,6 +595,7 @@ class FunctionParser {
         console.log(`[DEBUG] analyzeFunctionType: 表达式=${cleanExpr}`);
         
         // 检查是否为常值函数（不含x）
+        // 注意：π 和 e 是常数，不是变量
         if (!cleanExpr.includes('x')) {
             console.log(`[DEBUG] analyzeFunctionType: 常值函数，得分=0`);
             return { type: 'constant', score: 0 };
@@ -235,13 +607,25 @@ class FunctionParser {
             return { type: 'fraction', score: 2 };
         }
         
-        // 检查是否为特殊函数（abs、sin、cos、tan、exp、log、sqrt）
-        const specialFuncs = ['abs', 'sin', 'cos', 'tan', 'exp', 'log', 'sqrt'];
+        // 检查是否为特殊函数（abs、sin、cos、tan、exp、ln、log、sqrt、factorial）
+        const specialFuncs = ['abs', 'sin', 'cos', 'tan', 'exp', 'ln', 'log', 'sqrt'];
         for (const func of specialFuncs) {
             if (cleanExpr.includes(func)) {
                 console.log(`[DEBUG] analyzeFunctionType: 特殊函数${func}，得分=2`);
                 return { type: func, score: 2 };
             }
+        }
+        
+        // 检查是否包含阶乘
+        if (cleanExpr.includes('!')) {
+            console.log(`[DEBUG] analyzeFunctionType: 阶乘函数，得分=2`);
+            return { type: 'factorial', score: 2 };
+        }
+        
+        // 检查是否为欧拉公式形式（包含 (-1)^(1/2) 或虚数单位 i）
+        if (cleanExpr.includes('(-1)^(1/2)') || cleanExpr.includes('(-1)^0.5') || cleanExpr.includes('i')) {
+            console.log(`[DEBUG] analyzeFunctionType: 欧拉公式形式，得分=2`);
+            return { type: 'euler', score: 2 };
         }
         
         // 分析多项式次数
@@ -270,9 +654,19 @@ class FunctionParser {
         const cleanExpr = expression.toLowerCase().replace(/\s/g, '');
         
         // 如果包含非多项式函数，返回特殊标记
-        const nonPolyPattern = /(sin|cos|tan|exp|log|sqrt|abs)/;
+        const nonPolyPattern = /(sin|cos|tan|exp|ln|log|sqrt|abs)/;
         if (nonPolyPattern.test(cleanExpr)) {
             return -1; // 表示非多项式
+        }
+        
+        // 如果包含阶乘，返回特殊标记
+        if (cleanExpr.includes('!')) {
+            return -1; // 表示非多项式
+        }
+        
+        // 如果包含欧拉公式形式（虚数单位），返回特殊标记
+        if (cleanExpr.includes('(-1)^(1/2)') || cleanExpr.includes('(-1)^0.5') || cleanExpr.includes('i')) {
+            return -1; // 表示非多项式（复数运算）
         }
         
         let maxDegree = 0;
@@ -340,6 +734,82 @@ class FunctionParser {
         formatted = formatted.replace(/\s+/g, ' ').trim();
         
         return formatted;
+    }
+    
+    /**
+     * 测试欧拉公式转换
+     * 用于验证 e^(i*π) = -1 的正确性
+     * @returns {Object} 测试结果
+     */
+    testEulerFormula() {
+        const testCases = [
+            // 使用 (-1)^(1/2) 表示虚数单位
+            { expr: 'e^((-1)^(1/2)*π)', expected: -1 },
+            { expr: 'e^(π*(-1)^(1/2))', expected: -1 },
+            { expr: 'exp((-1)^0.5*π)', expected: -1 },
+            { expr: 'e^((-1)^(1/2)*2*π)', expected: 1 },  // e^(i*2π) = 1
+            // 使用 i 表示虚数单位（显式乘法）
+            { expr: 'e^(i*π)', expected: -1 },
+            { expr: 'e^(π*i)', expected: -1 },
+            { expr: 'exp(i*π)', expected: -1 },
+            { expr: 'e^(i*2*π)', expected: 1 },  // e^(i*2π) = 1
+            { expr: 'e^(2*i*π)', expected: 1 },  // e^(2iπ) = 1
+            // 使用 i 表示虚数单位（隐式乘法）
+            { expr: 'e^(iπ)', expected: -1 },    // iπ = i*π
+            { expr: 'e^(πi)', expected: -1 },    // πi = π*i
+        ];
+        
+        const results = [];
+        for (const test of testCases) {
+            const converted = this.convertToMathJS(test.expr);
+            const result = this.evaluate(test.expr, 0);
+            results.push({
+                expression: test.expr,
+                converted: converted,
+                result: result,
+                expected: test.expected,
+                passed: Math.abs(result - test.expected) < 1e-10
+            });
+        }
+        
+        return results;
+    }
+    
+    /**
+     * 测试 ln 和 log 的括号省略功能
+     * @returns {Object} 测试结果
+     */
+    testLogWithoutParen() {
+        const testCases = [
+            // 带括号的标准形式
+            { expr: 'ln(e)', expected: 1 },
+            { expr: 'ln(1)', expected: 0 },
+            { expr: 'log(10)', expected: 1 },
+            { expr: 'log(100)', expected: 2 },
+            // 省略括号的形式
+            { expr: 'ln e', expected: 1 },
+            { expr: 'ln x', x: 1, expected: 0 },
+            { expr: 'log 10', expected: 1 },
+            { expr: 'log 100', expected: 2 },
+            { expr: 'ln π', expected: Math.log(Math.PI) },
+            { expr: 'log π', expected: Math.log(Math.PI) / Math.LN10 },
+        ];
+        
+        const results = [];
+        for (const test of testCases) {
+            const converted = this.convertToMathJS(test.expr);
+            const x = test.x !== undefined ? test.x : 1;
+            const result = this.evaluate(test.expr, x);
+            results.push({
+                expression: test.expr,
+                converted: converted,
+                result: result,
+                expected: test.expected,
+                passed: Math.abs(result - test.expected) < 1e-10
+            });
+        }
+        
+        return results;
     }
 }
 

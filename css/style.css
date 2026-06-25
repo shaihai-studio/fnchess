@@ -47,6 +47,32 @@ body {
     font-size: 24px;
 }
 
+/* 分数变化气泡 */
+.score-popup {
+    position: fixed;
+    font-size: 28px;
+    font-weight: bold;
+    pointer-events: none;
+    z-index: 1000;
+    animation: scorePopupFloat 1.5s ease-out forwards;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+@keyframes scorePopupFloat {
+    0% {
+        opacity: 1;
+        transform: translate(-50%, 0) scale(1);
+    }
+    50% {
+        opacity: 1;
+        transform: translate(-50%, -30px) scale(1.2);
+    }
+    100% {
+        opacity: 0;
+        transform: translate(-50%, -60px) scale(1);
+    }
+}
+
 .game-title {
     font-size: 28px;
     font-weight: bold;
@@ -381,18 +407,21 @@ body {
 }
 
 /* 开始界面 */
-.round-select {
-    margin-bottom: 30px;
+.round-select,
+.difficulty-select {
+    margin-bottom: 20px;
 }
 
-.round-select label {
+.round-select label,
+.difficulty-select label {
     display: block;
     margin-bottom: 10px;
     color: #e5e7eb;
     font-size: 16px;
 }
 
-.round-select select {
+.round-select select,
+.difficulty-select select {
     width: 100%;
     padding: 12px;
     border-radius: 8px;
@@ -403,9 +432,22 @@ body {
     cursor: pointer;
 }
 
-.round-select select:focus {
+.round-select select:focus,
+.difficulty-select select:focus {
     outline: none;
     border-color: #22c55e;
+}
+
+.difficulty-select select option[value="easy"] {
+    color: #22c55e;
+}
+
+.difficulty-select select option[value="hard"] {
+    color: #f59e0b;
+}
+
+.difficulty-select select option[value="expert"] {
+    color: #ef4444;
 }
 
 /* 游戏结束界面 */
@@ -529,4 +571,24 @@ body {
     top: -5px;
     right: -5px;
     font-size: 10px;
+}
+
+/* 简单难度保护状态 */
+.element-btn.protected {
+    background: rgba(34, 197, 94, 0.2);
+    border-color: rgba(34, 197, 94, 0.5);
+    position: relative;
+}
+
+.element-btn.protected::after {
+    content: '🛡️';
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    font-size: 10px;
+}
+
+.element-btn.protected:hover {
+    background: rgba(34, 197, 94, 0.3);
+    box-shadow: 0 0 10px rgba(34, 197, 94, 0.3);
 }

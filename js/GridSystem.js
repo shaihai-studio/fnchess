@@ -24,7 +24,8 @@ class GridSystem {
         };
         
         // 目标网格和禁止区
-        this.targetCell = null; // {x, y}
+        this.targetCell = null; // {x, y} - 兼容旧代码
+        this.targetCells = []; // [{x, y}, ...] - 多个目标格
         this.forbiddenCells = []; // [{x, y}, ...]
         
         // 绑定 resize 事件
@@ -128,12 +129,58 @@ class GridSystem {
     }
     
     /**
-     * 设置目标网格
+     * 设置目标网格（兼容旧代码）
      * @param {Object} cell - {x, y}
      */
     setTargetCell(cell) {
         this.targetCell = cell;
+        if (cell) {
+            this.targetCells = [cell];
+        } else {
+            this.targetCells = [];
+        }
         this.draw();
+    }
+    
+    /**
+     * 设置多个目标网格
+     * @param {Array} cells - [{x, y}, ...]
+     */
+    setTargetCells(cells) {
+        this.targetCells = cells || [];
+        this.targetCell = this.targetCells[0] || null; // 兼容旧代码
+        this.draw();
+    }
+    
+    /**
+     * 添加目标网格
+     * @param {Object} cell - {x, y}
+     */
+    addTargetCell(cell) {
+        // 检查是否已存在
+        const exists = this.targetCells.some(c => c.x === cell.x && c.y === cell.y);
+        if (!exists) {
+            this.targetCells.push(cell);
+            this.targetCell = this.targetCells[0]; // 兼容旧代码
+            this.draw();
+            return true;
+        }
+        return false;
+    }
+    
+    /**
+     * 移除目标网格
+     * @param {Object} cell - {x, y}
+     */
+    removeTargetCell(cell) {
+        const index = this.targetCells.findIndex(c => c.x === cell.x && c.y === cell.y);
+        if (index !== -1) {
+            this.targetCells.splice(index, 1);
+            this.targetCell = this.targetCells[0] || null; // 兼容旧代码
+            this.draw();
+            return true;
+        }
+        return false;
     }
     
     /**
@@ -170,6 +217,7 @@ class GridSystem {
      */
     clearTargetCell() {
         this.targetCell = null;
+        this.targetCells = [];
         this.draw();
     }
     
@@ -186,6 +234,7 @@ class GridSystem {
      */
     clearAll() {
         this.targetCell = null;
+        this.targetCells = [];
         this.forbiddenCells = [];
         this.draw();
     }
@@ -316,20 +365,23 @@ class GridSystem {
     }
     
     /**
-     * 绘制目标网格
+     * 绘制目标网格（支持多个目标格）
      */
     drawTargetCell() {
-        if (!this.targetCell) return;
-        
         const ctx = this.ctx;
-        const topLeft = this.mathToCanvas(this.targetCell.x, this.targetCell.y + 1);
-        const bottomRight = this.mathToCanvas(this.targetCell.x + 1, this.targetCell.y);
         
-        const width = bottomRight.x - topLeft.x;
-        const height = bottomRight.y - topLeft.y;
-        
-        ctx.fillStyle = this.colors.target;
-        ctx.fillRect(topLeft.x, topLeft.y, width, height);
+        // 绘制所有目标格
+        for (const cell of this.targetCells) {
+            const topLeft = this.mathToCanvas(cell.x, cell.y + 1);
+            const bottomRight = this.mathToCanvas(cell.x + 1, cell.y);
+            
+            const width = bottomRight.x - topLeft.x;
+            const height = bottomRight.y - topLeft.y;
+            
+            // 绘制目标格
+            ctx.fillStyle = this.colors.target;
+            ctx.fillRect(topLeft.x, topLeft.y, width, height);
+        }
     }
     
     /**
@@ -365,11 +417,19 @@ class GridSystem {
     }
     
     /**
-     * 获取目标网格
+     * 获取目标网格（兼容旧代码）
      * @returns {Object|null}
      */
     getTargetCell() {
         return this.targetCell;
+    }
+    
+    /**
+     * 获取所有目标网格
+     * @returns {Array}
+     */
+    getTargetCells() {
+        return [...this.targetCells];
     }
     
     /**

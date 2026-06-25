@@ -9,6 +9,10 @@ class GameController {
         this.totalRounds = 8; // 默认8回合
         this.currentRound = 1;
         
+        // 难度设置
+        this.difficulty = 'normal'; // normal, hard, expert
+        this.targetCount = 1; // 根据难度设置目标格数量
+        
         // 玩家状态
         this.players = {
             A: { score: 0, role: 'constructor' }, // 构造函数者
@@ -37,11 +41,13 @@ class GameController {
         
         // 回合状态
         this.roundState = {
-            targetCell: null,
+            targetCells: [], // 多个目标格数组
+            targetCell: null, // 兼容旧代码，指向第一个目标格
             forbiddenCells: [],
             lockedElements: [],
             functionExpression: '',
-            hitTarget: false,
+            hitTargets: [], // 记录哪些目标格被穿过
+            hitTarget: false, // 兼容旧代码，是否全部穿过
             hitForbidden: false,
             score: 0
         };
@@ -73,9 +79,12 @@ class GameController {
     /**
      * 初始化游戏
      * @param {number} rounds - 总回合数
+     * @param {string} difficulty - 难度级别 (normal, hard, expert)
      */
-    initGame(rounds = 8) {
+    initGame(rounds = 8, difficulty = 'normal') {
         this.totalRounds = Math.min(Math.max(rounds, 4), 24);
+        this.difficulty = difficulty;
+        this.targetCount = this.getTargetCountByDifficulty(difficulty);
         this.currentRound = 1;
         this.players.A.score = 0;
         this.players.B.score = 0;
@@ -89,20 +98,81 @@ class GameController {
         this.emit('gameInit', {
             totalRounds: this.totalRounds,
             currentRound: this.currentRound,
-            timeLimit: this.timeLimit
+            timeLimit: this.timeLimit,
+            difficulty: this.difficulty,
+            targetCount: this.targetCount
         });
     }
     
     /**
+     * 根据难度获取目标格数量
+     * @param {string} difficulty - 难度级别
+     * @returns {number} 目标格数量
+     */
+    getTargetCountByDifficulty(difficulty) {
+        switch (difficulty) {
+            case 'hard':
+                return 2;
+            case 'expert':
+                return 3;
+            case 'easy':
+            case 'normal':
+            default:
+                return 1;
+        }
+    }
+    
+    /**
+     * 检查是否为简单难度（新手保护）
+     * @returns {boolean}
+     */
+    isEasyMode() {
+        return this.difficulty === 'easy';
+    }
+    
+    /**
+     * 检查元素是否可被锁定
+     * @param {string} element - 元素
+     * @returns {boolean}
+     */
+    canLockElement(element) {
+        // 简单难度：四则运算无法被锁定
+        if (this.isEasyMode()) {
+            const basicOperators = ['+', '-', '*', '/'];
+            if (basicOperators.includes(element)) {
+                return false;
+            }
+        }
+        return true;
+    }
+    
+    /**
      * 更新当前回合的时间限制
+     * 新规则：
+     * - 1-4回合: 40秒（简单难度+20秒）
+     * - 5-8回合: 50秒（简单难度+20秒）
+     * - 此后每4回合增加10秒，最高90秒（简单难度+20秒）
      */
     updateTimeLimit() {
-        // 1-4回合: 40秒
-        // 5-8回合: 35秒
-        // 9-12回合: 30秒
-        // 每增加4回合减少5秒，最低15秒
         const group = Math.floor((this.currentRound - 1) / 4);
-        this.timeLimit = Math.max(40 - group * 5, 15);
+        
+        if (group === 0) {
+            // 1-4回合
+            this.timeLimit = 40;
+        } else if (group === 1) {
+            // 5-8回合
+            this.timeLimit = 50;
+        } else {
+            // 9-12回合: 60秒，13-16回合: 70秒，17-20回合: 80秒，21-24回合: 90秒
+            // 从第3组开始，每增加1组增加10秒，最高90秒
+            this.timeLimit = Math.min(50 + (group - 1) * 10, 90);
+        }
+        
+        // 简单难度：每回合多20秒（新手保护）
+        if (this.isEasyMode()) {
+            this.timeLimit += 20;
+        }
+        
         this.remainingTime = this.timeLimit;
     }
     
@@ -111,11 +181,13 @@ class GameController {
      */
     resetRoundState() {
         this.roundState = {
-            targetCell: null,
+            targetCells: [], // 多个目标格数组
+            targetCell: null, // 兼容旧代码
             forbiddenCells: [],
             lockedElements: [],
             functionExpression: '',
-            hitTarget: false,
+            hitTargets: [], // 记录哪些目标格被穿过
+            hitTarget: false, // 兼容旧代码
             hitForbidden: false,
             score: 0
         };
@@ -268,8 +340,32 @@ class GameController {
     selectTargetCell(cell) {
         if (this.currentPhase !== this.phases.SELECT_TARGET) return false;
         
-        this.roundState.targetCell = cell;
-        this.emit('targetSelected', { cell });
+        // 检查是否已选择此格子
+        const existsIndex = this.roundState.targetCells.findIndex(
+            c => c.x === cell.x && c.y === cell.y
+        );
+        
+        if (existsIndex !== -1) {
+            // 取消选择
+            this.roundState.targetCells.splice(existsIndex, 1);
+            this.emit('targetRemoved', { cell, count: this.roundState.targetCells.length });
+            
+            // 更新兼容字段
+            this.roundState.targetCell = this.roundState.targetCells[0] || null;
+            return true;
+        }
+        
+        // 检查是否已达到最大目标数
+        if (this.roundState.targetCells.length >= this.targetCount) {
+            // 替换最后一个选择的目标
+            const removedCell = this.roundState.targetCells.pop();
+            this.emit('targetRemoved', { cell: removedCell, count: this.roundState.targetCells.length });
+        }
+        
+        // 添加新目标
+        this.roundState.targetCells.push(cell);
+        this.roundState.targetCell = this.roundState.targetCells[0]; // 兼容旧代码
+        this.emit('targetSelected', { cell, count: this.roundState.targetCells.length, total: this.targetCount });
         return true;
     }
     
@@ -279,7 +375,12 @@ class GameController {
     confirmTargetSelection() {
         console.log(`[DEBUG] confirmTargetSelection: currentPhase=${this.currentPhase}`);
         if (this.currentPhase !== this.phases.SELECT_TARGET) return false;
-        if (!this.roundState.targetCell) return false;
+        
+        // 检查是否已选择足够的目标格
+        if (this.roundState.targetCells.length < this.targetCount) {
+            console.log(`[DEBUG] confirmTargetSelection: 目标格不足 ${this.roundState.targetCells.length}/${this.targetCount}`);
+            return false;
+        }
         
         console.log(`[DEBUG] confirmTargetSelection: 进入下一阶段`);
         // 使用和跳过按钮一致的逻辑
@@ -307,7 +408,9 @@ class GameController {
             c => c.x === cell.x && c.y === cell.y
         );
         if (existsIndex !== -1) {
-            // 点击已存在的禁止区，直接返回（不取消）
+            // 点击已存在的禁止区，取消选择
+            const removedCell = this.roundState.forbiddenCells.splice(existsIndex, 1)[0];
+            this.emit('forbiddenRemoved', { cell: removedCell, count: this.roundState.forbiddenCells.length });
             return true;
         }
         
@@ -356,6 +459,9 @@ class GameController {
         // x 不能被锁定
         if (element === 'x') return false;
         
+        // 检查元素是否可被锁定（简单难度保护）
+        if (!this.canLockElement(element)) return false;
+        
         // 检查是否已存在
         if (this.roundState.lockedElements.includes(element)) return false;
         
@@ -396,14 +502,23 @@ class GameController {
     
     /**
      * 评估函数结果
-     * @param {boolean} hitTarget - 是否命中目标
+     * @param {Array} hitTargets - 命中的目标格数组
      * @param {boolean} hitForbidden - 是否进入禁止区
      * @param {Object} functionType - 函数类型信息
      */
-    evaluateResult(hitTarget, hitForbidden, functionType) {
+    evaluateResult(hitTargets, hitForbidden, functionType) {
         if (this.currentPhase !== this.phases.EVALUATE) return;
         
-        this.roundState.hitTarget = hitTarget;
+        // 兼容旧代码：如果 hitTargets 是布尔值，转换为数组
+        if (typeof hitTargets === 'boolean') {
+            this.roundState.hitTarget = hitTargets;
+            this.roundState.hitTargets = hitTargets ? this.roundState.targetCells : [];
+        } else {
+            this.roundState.hitTargets = hitTargets || [];
+            // 只有当所有目标格都被穿过时才算命中
+            this.roundState.hitTarget = this.roundState.hitTargets.length >= this.targetCount;
+        }
+        
         this.roundState.hitForbidden = hitForbidden;
         
         let score = 0;
@@ -411,11 +526,11 @@ class GameController {
         // 如果进入禁止区，直接失败，扣1分
         if (hitForbidden) {
             score = -1;
-        } else if (hitTarget) {
-            // 命中目标，根据函数类型得分
+        } else if (this.roundState.hitTarget) {
+            // 命中所有目标，根据函数类型得分
             score = functionType.score;
         } else {
-            // 未命中目标，扣1分
+            // 未命中所有目标，扣1分
             score = -1;
         }
         
@@ -423,11 +538,14 @@ class GameController {
         this.players[this.currentPlayer].score += score;
         
         this.emit('evaluationComplete', {
-            hitTarget,
+            hitTarget: this.roundState.hitTarget,
+            hitTargets: this.roundState.hitTargets,
             hitForbidden,
             functionType,
             score,
-            totalScore: this.players[this.currentPlayer].score
+            totalScore: this.players[this.currentPlayer].score,
+            targetCount: this.targetCount,
+            hitCount: this.roundState.hitTargets.length
         });
         
         this.setPhase(this.phases.SWITCH_PLAYER);
@@ -526,6 +644,8 @@ class GameController {
             currentPhase: this.currentPhase,
             remainingTime: this.remainingTime,
             timeLimit: this.timeLimit,
+            difficulty: this.difficulty,
+            targetCount: this.targetCount,
             scores: {
                 A: this.players.A.score,
                 B: this.players.B.score
