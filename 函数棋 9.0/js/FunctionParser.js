@@ -302,6 +302,10 @@ class FunctionParser {
         }
     }
 
+    clearCache() {
+        // 预留给渲染器调用；当前解析器无持久缓存，保留接口用于统一清理
+    }
+
     // ========== 锁定元素管理 ==========
 
     setLockedElements(elements) {
@@ -399,8 +403,7 @@ class FunctionParser {
         const cleanExpr = expression.replace(/\s+/g, '').replace(/[()（）]/g, '');
         let length = 0;
         const tokenRegex = /(sin|cos|tan|abs|exp|ln|log|sqrt|factorial)|(\d+(?:\.\d+)?)|(PI|π|e|i)|([+\-*/^!])|(x)/gi;
-        let match;
-        while ((match = tokenRegex.exec(cleanExpr)) !== null) {
+        while (tokenRegex.exec(cleanExpr) !== null) {
             length++;
         }
         if (length === 0 && cleanExpr.length > 0) {

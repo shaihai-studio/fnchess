@@ -45,22 +45,24 @@
         
         <!-- 右侧控制面板 -->
         <aside class="control-panel">
-            <!-- 计时器 -->
-            <div class="panel-card timer-display">
-                <h3>剩余时间</h3>
-                <div class="timer-value" id="timer">40</div>
-            </div>
-            
-            <!-- 当前玩家 -->
-            <div class="panel-card player-display">
-                <h3>当前玩家</h3>
-                <div class="player-value" id="current-player">玩家 B</div>
-            </div>
-            
-            <!-- 阶段提示 -->
-            <div class="panel-card phase-display">
-                <h3>当前阶段</h3>
-                <div class="phase-hint" id="phase-hint">请点击棋盘选择目标网格</div>
+            <!-- 状态气泡：剩余时间 | 当前玩家 | 当前阶段 -->
+            <div class="panel-card status-bubble">
+                <div class="status-bubble-inner">
+                    <div class="bubble-item timer-display">
+                        <h3>剩余时间</h3>
+                        <div class="timer-value" id="timer">40</div>
+                    </div>
+                    <div class="bubble-divider"></div>
+                    <div class="bubble-item player-display">
+                        <h3>当前玩家</h3>
+                        <div class="player-value" id="current-player">玩家 B</div>
+                    </div>
+                    <div class="bubble-divider"></div>
+                    <div class="bubble-item phase-display">
+                        <h3>当前阶段</h3>
+                        <div class="phase-hint-text" id="phase-hint">请点击棋盘选择目标网格</div>
+                    </div>
+                </div>
             </div>
             
             <!-- 表达式构建区 -->
@@ -74,7 +76,7 @@
             <!-- 按钮组 -->
             <div class="panel-card">
                 <div class="button-group">
-                    <button class="btn btn-primary" id="confirm-btn">确认目标</button>
+                    <button class="btn btn-primary" id="confirm-btn" data-arrow>确认目标</button>
                     <button class="btn btn-secondary" id="clear-btn">清除</button>
                     <button class="btn btn-exit" id="exit-btn">退出对局</button>
                 </div>
@@ -105,11 +107,6 @@
     <div class="modal" id="start-modal">
         <div class="modal-content">
             <h2>函数棋</h2>
-            <p>
-                一款基于函数的策略对抗游戏<br>
-                一方选择目标，另一方构造函数<br>
-                精准命中目标，避开禁止区域！
-            </p>
             
             <div class="round-select">
                 <label for="round-select">选择回合数：</label>
@@ -164,10 +161,7 @@
     <div class="modal" id="campaign-modal" style="display:none;">
         <div class="modal-content" style="max-width: 900px;">
             <h2>闯关模式</h2>
-            <p style="opacity:0.8; margin-bottom: 10px;">
-                先选难度，再选关卡。必须通关前置关卡才能解锁后续关卡。
-            </p>
-
+            
             <div id="campaign-step-difficulty">
                 <div class="campaign-difficulty-grid" id="campaign-difficulty-grid" style="margin-bottom: 10px;">
                     <button class="btn" id="campaign-diff-easy">简单（1-29）</button>
@@ -215,8 +209,8 @@
             <h2>游戏结束</h2>
             <div class="winner-text" id="winner"></div>
             <div class="final-scores" id="final-scores"></div>
-            <button class="btn btn-primary" id="view-report-btn" style="width: 100%; margin-bottom: 10px;">查看游戏报告</button>
-            <button class="btn btn-primary" id="restart-btn" style="width: 100%;">重新开始</button>
+            <button class="btn btn-primary" id="view-report-btn" data-arrow style="width: 100%; margin-bottom: 10px;">查看游戏报告</button>
+            <button class="btn btn-primary" id="restart-btn" data-arrow style="width: 100%;">重新开始</button>
         </div>
     </div>
 
@@ -226,15 +220,15 @@
             <h2>关卡胜利</h2>
             <div class="campaign-victory-text" id="campaign-victory-text">恭喜通关！</div>
             <div class="campaign-victory-actions">
-                <button class="btn btn-primary icon-btn" id="campaign-home-btn" title="返回关卡选择">
+                <button class="btn btn-primary icon-btn" id="campaign-home-btn" data-arrow title="返回关卡选择">
                     <span class="icon">⌂</span>
                     <span>关卡选择</span>
                 </button>
-                <button class="btn btn-primary icon-btn" id="campaign-retry-btn" title="再来一次">
+                <button class="btn btn-primary icon-btn" id="campaign-retry-btn" data-arrow title="再来一次">
                     <span class="icon">↻</span>
                     <span>再来一次</span>
                 </button>
-                <button class="btn btn-primary icon-btn" id="campaign-next-btn" title="下一关">
+                <button class="btn btn-primary icon-btn" id="campaign-next-btn" data-arrow title="下一关">
                     <span>下一关</span>
                     <span class="icon">→</span>
                 </button>
@@ -254,7 +248,7 @@
     <!-- Summa训练选择弹窗 -->
     <div class="modal" id="summa-train-dialog" style="display: none;">
         <div class="modal-content summa-dialog-content">
-            <div class="summa-dialog-icon">-∫-</div>
+            <img class="summa-dialog-icon" src="Summa形象处理/summa_image/happy.PNG" alt="Summa 图标">
             <h2 class="summa-dialog-title" id="summa-dialog-title">唤醒 Summa</h2>
             <p class="summa-dialog-message" id="summa-dialog-message"></p>
             
@@ -268,6 +262,10 @@
                     <button class="btn btn-secondary" id="summa-dialog-input-cancel">取消</button>
                     <button class="btn btn-primary" id="summa-dialog-input-confirm">确认</button>
                 </div>
+            </div>
+            <div class="summa-dialog-footer-actions">
+                <button class="btn summa-dialog-skip-btn" id="summa-dialog-skip-btn">跳过</button>
+                <button class="btn summa-dialog-exit-btn" id="summa-dialog-exit-btn">退出</button>
             </div>
         </div>
     </div>
@@ -345,21 +343,56 @@
         });
     </script>
 
-    <!-- <<< Shaihai 风格：涟漪点击效果 >>> -->
+    <!-- <<< 按钮交互增强：涟漪 + 磁性吸附 + 光晕跟随 + 箭头注入 >>> -->
     <script>
-        (function initRippleEffect() {
-            var buttons = document.querySelectorAll('.btn, .mode-btn, .summa-dialog-option-btn, .summa-dialog-skip-btn, .summa-dialog-exit-btn');
-            buttons.forEach(function(el) {
+        (function initButtonEnhancements() {
+            var btns = document.querySelectorAll('.btn, .btn-exit, .mode-btn, .btn-small, .summa-dialog-option-btn, .summa-dialog-skip-btn, .summa-dialog-exit-btn, .campaign-difficulty-grid .btn, .campaign-level-cell, .summa-dialog-input-buttons .btn');
+
+            // ── 箭头注入 ──
+            btns.forEach(function(el) {
+                if (el.hasAttribute('data-arrow') && !el.querySelector('.btn-arrow')) {
+                    var arrow = document.createElement('span');
+                    arrow.className = 'btn-arrow';
+                    arrow.textContent = '\u2192';
+                    el.appendChild(arrow);
+                }
+            });
+
+            btns.forEach(function(el) {
+                // ── 涟漪 ──
                 el.addEventListener('click', function(e) {
                     var rect = el.getBoundingClientRect();
                     var ripple = document.createElement('span');
-                    ripple.classList.add('ripple');
+                    ripple.className = 'ripple';
                     var size = Math.max(rect.width, rect.height);
                     ripple.style.width = ripple.style.height = size + 'px';
                     ripple.style.left = (e.clientX - rect.left - size / 2) + 'px';
                     ripple.style.top = (e.clientY - rect.top - size / 2) + 'px';
                     el.appendChild(ripple);
                     setTimeout(function() { ripple.remove(); }, 650);
+                });
+
+                // ── 磁性吸附 + 光晕跟随（仅桌面，有鼠标时） ──
+                el.addEventListener('mousemove', function(e) {
+                    if (this.disabled) return;
+                    var rect = this.getBoundingClientRect();
+                    // 光晕坐标（百分比）
+                    var gx = ((e.clientX - rect.left) / rect.width * 100).toFixed(1);
+                    var gy = ((e.clientY - rect.top) / rect.height * 100).toFixed(1);
+                    this.style.setProperty('--gx', gx + '%');
+                    this.style.setProperty('--gy', gy + '%');
+                    // 磁性偏移
+                    var mx = ((e.clientX - rect.left - rect.width / 2) / rect.width  * 6).toFixed(1);
+                    var my = ((e.clientY - rect.top  - rect.height / 2) / rect.height * 6).toFixed(1);
+                    this.style.setProperty('--mx', mx + 'px');
+                    this.style.setProperty('--my', my + 'px');
+                    // 不覆盖 CSS hover 的 translateY(-3px)，用 transform 叠加
+                });
+                el.addEventListener('mouseleave', function() {
+                    this.style.removeProperty('--gx');
+                    this.style.removeProperty('--gy');
+                    this.style.removeProperty('--mx');
+                    this.style.removeProperty('--my');
                 });
             });
         })();

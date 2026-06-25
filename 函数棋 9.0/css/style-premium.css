@@ -944,6 +944,7 @@ body::before {
     justify-content: center;
     gap: 6px;
     min-width: 110px;
+    white-space: nowrap;
 }
 
 .icon-btn .icon {

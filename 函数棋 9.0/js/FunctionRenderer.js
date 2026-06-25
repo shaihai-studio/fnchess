@@ -39,6 +39,11 @@ class FunctionRenderer {
         this.isDrawing = false;
     }
 
+    clearRenderCache() {
+        this.lastDebugSegments = [];
+        this.lastDebugReasons = [];
+    }
+
     // ========== 自适应样式（保持原版） ==========
 
     getAdaptiveGlowSize() {
@@ -150,8 +155,10 @@ class FunctionRenderer {
 
             if (diffLeft <= threshold && diffRight <= threshold) return false;
 
-            // 区间非常小时，确认连续
-            if (Math.abs(rightX - leftX) < 1e-12) return false;
+            // 区间非常小时：y 差值仍大 → 跳跃；y 差值也小 → 连续
+            if (Math.abs(rightX - leftX) < 1e-12) {
+                return Math.abs(rightY - leftY) > threshold;
+            }
 
             // 判断中点 y 是否在当前两端 y 之间
             const minY = Math.min(leftY, rightY);
@@ -891,6 +898,14 @@ class FunctionRenderer {
             this._drawSegmentsImmediate(segments, ctx);
             ctx.shadowBlur = 0;
             ctx.restore();
+        }
+
+        this.clearRenderCache();
+        if (typeof this.gridSystem.clearFunctionCache === 'function') {
+            this.gridSystem.clearFunctionCache();
+        }
+        if (typeof this.parser.clearCache === 'function') {
+            this.parser.clearCache();
         }
 
         if (this.debugEnabled) this.drawDebugOverlay();

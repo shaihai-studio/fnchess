@@ -34,7 +34,8 @@ class AudioManager {
      */
     _initWebAudio() {
         try {
-            this._audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const AudioCtx = window.AudioContext || window['webkitAudioContext'];
+            this._audioCtx = AudioCtx ? new AudioCtx() : null;
             console.log('[Audio] Web Audio API 已就绪');
         } catch (e) {
             console.log('[Audio] Web Audio API 不可用，风声合成将跳过');
@@ -86,6 +87,87 @@ class AudioManager {
     playSummaGrab() { this.playSound('elementClick', 0.45); }
     playSummaDrag() { this.playSound('tick', 0.25); }
     playSummaThrow() { this.playSound('phaseChange', 0.45); }
+
+    // Undertale 风格文本音：适合女生角色的轻柔高音 blip
+    playSummaTalkBlip(options = {}) {
+        const ctx = this._audioCtx;
+        if (!ctx) return;
+        try {
+            if (ctx.state === 'suspended') ctx.resume();
+            const now = ctx.currentTime;
+            const {
+                baseFrequency = 640,
+                intensity = 1,
+                pitchShift = 0,
+                duration = 0.045,
+                waveType = 'square'
+            } = options;
+
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            const filter = ctx.createBiquadFilter();
+
+            osc.type = waveType;
+            const startFreq = Math.max(120, baseFrequency + pitchShift + (Math.random() * 16 - 8));
+            const endFreq = Math.max(120, baseFrequency - 24 + pitchShift + (Math.random() * 12 - 6));
+            osc.frequency.setValueAtTime(startFreq, now);
+            osc.frequency.exponentialRampToValueAtTime(endFreq, now + duration);
+
+            filter.type = 'highpass';
+            filter.frequency.setValueAtTime(420, now);
+            filter.Q.value = 0.9;
+
+            gain.gain.setValueAtTime(0.0001, now);
+            gain.gain.linearRampToValueAtTime(this.masterVolume * 0.045 * intensity, now + 0.004);
+            gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+
+            osc.connect(filter);
+            filter.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(now);
+            osc.stop(now + duration + 0.005);
+        } catch (e) {
+            console.warn('[Audio] Summa talk blip 失败:', e);
+        }
+    }
+
+    playSummaTalkSequence(text = '', mood = 'neutral') {
+        const src = String(text || '');
+        if (!src) return;
+
+        const moodMap = {
+            happy: { base: 700, spread: 42, delay: 0.05, waveType: 'triangle' },
+            surprised: { base: 720, spread: 50, delay: 0.05, waveType: 'square' },
+            angry: { base: 600, spread: 30, delay: 0.05, waveType: 'sawtooth' },
+            sad: { base: 560, spread: 26, delay: 0.05, waveType: 'triangle' },
+            thinking: { base: 620, spread: 24, delay: 0.05, waveType: 'square' },
+            determined: { base: 650, spread: 22, delay: 0.05, waveType: 'square' },
+            smug: { base: 670, spread: 18, delay: 0.05, waveType: 'square' },
+            neutral: { base: 640, spread: 28, delay: 0.05, waveType: 'square' }
+        };
+        const voice = moodMap[mood] || moodMap.neutral;
+
+        const chars = [...src];
+        let delay = 0.3;
+        for (const ch of chars) {
+            if (/\s/.test(ch)) {
+                delay += 0.03;
+                continue;
+            }
+            const punctuationBoost = /[，。！？!?]/.test(ch) ? 1.35 : /[,.]/.test(ch) ? 0.88 : 1.0;
+            const pitchShift = /[，。！？!?]/.test(ch) ? -14 : /[,.]/.test(ch) ? -6 : 0;
+            setTimeout(() => {
+                this.playSummaTalkBlip({
+                    baseFrequency: voice.base + (Math.random() * voice.spread - voice.spread / 2),
+                    intensity: punctuationBoost,
+                    pitchShift,
+                    duration: /[，。！？!?]/.test(ch) ? 0.055 : 0.045,
+                    waveType: voice.waveType
+                });
+            }, delay * 1000);
+            delay += voice.delay + (/[，。！？!?]/.test(ch) ? 0.05 : 0);
+        }
+    }
     
     // 甩动：风声合成
     playSummaFling() {

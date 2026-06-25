@@ -371,6 +371,10 @@ class SummaCharacter {
         this.messageBox.textContent = line;
         this.messageBox.classList.add('visible');
 
+        if (window.audioManager && typeof window.audioManager.playSummaTalkSequence === 'function') {
+            window.audioManager.playSummaTalkSequence(line, mood);
+        }
+
         if (this.bubbleTimeout) clearTimeout(this.bubbleTimeout);
         this.bubbleTimeout = setTimeout(() => {
             this.messageBox.classList.remove('visible');
@@ -422,6 +426,10 @@ class SummaCharacter {
         this.setExpression(mood);
         this.messageBox.textContent = message;
         this.messageBox.classList.add('visible');
+
+        if (window.audioManager && typeof window.audioManager.playSummaTalkSequence === 'function') {
+            window.audioManager.playSummaTalkSequence(message, mood);
+        }
 
         if (this.bubbleTimeout) clearTimeout(this.bubbleTimeout);
         this.bubbleTimeout = setTimeout(() => {

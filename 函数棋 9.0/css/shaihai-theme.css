@@ -1,0 +1,583 @@
+/* ═══════════════════════════════════════════════════════════════
+   shaihai-theme.css — 函数棋 主题优化覆盖
+   在 style.css 之后加载，覆盖/增强原有样式
+   
+   保留 style.css 原始配色（深蓝黑底 + 绿/蓝主色）
+   增强：得意黑字体全局、毛玻璃、按钮光流、涟漪
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ================================================================
+   1. 字体定义 — SmileySans 得意黑
+   ================================================================ */
+@font-face {
+    font-family: 'SmileySans';
+    src: url('../fonts/SmileySans-Oblique.otf.woff2') format('woff2'),
+         url('../fonts/SmileySans-Oblique.ttf.woff2') format('woff2');
+    font-weight: normal;
+    font-style: normal;
+    font-display: swap;
+}
+
+/* ================================================================
+   2. 字体全局覆盖 —— 所有 UI 文字应用得意黑
+      保留等宽字体的例外见下方
+   ================================================================ */
+
+/* body 设置继承 — 默认等宽字体（用于纯数字/字母/符号） */
+body {
+    font-family: 'Courier New', 'Consolas', monospace !important;
+}
+
+/* 显式覆盖所有含汉字的 UI 文字元素（用得意黑显示中文） */
+.game-title,
+.winner-text,
+.panel-card h3,
+.score-display,
+.score-display .player,
+.phase-hint,
+.category-label,
+.campaign-level-label,
+.campaign-victory-text,
+.btn,
+.mode-btn,
+.btn-exit,
+.btn-small,
+.btn-cancel,
+.btn-confirm-exit,
+.modal-content h2,
+.modal-content p,
+.report-summary h3,
+.report-history h3,
+.difficulty-select label,
+.round-select label,
+.function-list-title,
+.summa-dialog-title,
+.summa-dialog-message,
+.summa-dialog-skip-btn,
+.summa-dialog-exit-btn {
+    font-family: 'SmileySans', 'Segoe UI', 'Microsoft YaHei', sans-serif !important;
+}
+
+/* ─── 保留等宽字体的元素 ───
+   计时器、表达式构建区、函数表达式、坐标格子、底部键盘按钮等需要等宽对齐的地方 */
+.timer-value,
+.expression-display,
+.expression-element,
+.expression-prefix,
+.cursor,
+.function-expr,
+.expr-cell,
+.coord-cell,
+.elem-cell,
+.element-btn,
+.lock-icon,
+#campaign-lrsigma-display,
+.summa-dialog-icon,
+.summa-dialog-option-btn,
+.summa-dialog-input {
+    font-family: 'Courier New', 'SmileySans Mono', monospace !important;
+}
+
+/* ================================================================
+   3. 配色不变，仅增强毛玻璃效果
+   ================================================================ */
+
+/* 面板卡片 — 毛玻璃增强 */
+.panel-card {
+    backdrop-filter: blur(24px) !important;
+    -webkit-backdrop-filter: blur(24px) !important;
+    position: relative;
+    overflow: hidden;
+}
+.panel-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.25), transparent);
+    pointer-events: none;
+    z-index: 1;
+}
+
+/* 顶部工具栏 — 毛玻璃增强 */
+.header {
+    backdrop-filter: blur(24px) !important;
+    -webkit-backdrop-filter: blur(24px) !important;
+}
+
+/* Canvas 区域 — 毛玻璃增强 */
+.canvas-section {
+    backdrop-filter: blur(24px) !important;
+    -webkit-backdrop-filter: blur(24px) !important;
+    position: relative;
+    overflow: hidden;
+}
+.canvas-section::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.15), transparent);
+    pointer-events: none;
+}
+
+/* 模态框 — 毛玻璃增强 */
+.modal-content {
+    backdrop-filter: blur(24px) !important;
+    -webkit-backdrop-filter: blur(24px) !important;
+    position: relative;
+    overflow: hidden;
+}
+.modal-content::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.25), transparent);
+    pointer-events: none;
+}
+
+/* 底部拖拽区 */
+.elements-section {
+    backdrop-filter: blur(24px) !important;
+    -webkit-backdrop-filter: blur(24px) !important;
+}
+
+/* 弹窗/开始界面 */
+.modal {
+    backdrop-filter: blur(8px) !important;
+    -webkit-backdrop-filter: blur(8px) !important;
+}
+
+/* ================================================================
+   4. 按钮新系统 — 玻璃拟态 + 光流 + 箭头 + 各变体增强
+   ================================================================ */
+
+/* ─── 所有按钮通用 ─── */
+.btn,
+.btn-exit,
+.mode-btn,
+.btn-small,
+.btn-cancel,
+.btn-confirm-exit,
+.summa-dialog-option-btn,
+.summa-dialog-skip-btn,
+.summa-dialog-exit-btn {
+    position: relative;
+    overflow: hidden;
+    transition: all 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94) !important;
+}
+
+/* 顶部高光边框 ::before */
+.btn::before,
+.btn-exit::before,
+.mode-btn::before,
+.btn-small::before,
+.btn-cancel::before,
+.btn-confirm-exit::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 12%;
+    right: 12%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.22), transparent);
+    pointer-events: none;
+    z-index: 2;
+}
+
+/* 光流扫过 ::after（不用来画箭头） */
+.btn::after,
+.btn-exit::after,
+.mode-btn::after,
+.btn-small::after,
+.summa-dialog-option-btn::after,
+.summa-dialog-skip-btn::after,
+.summa-dialog-exit-btn::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.07), transparent);
+    transition: left 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    pointer-events: none;
+    z-index: 1;
+}
+.btn:hover::after,
+.btn-exit:hover::after,
+.mode-btn:hover::after,
+.btn-small:hover::after,
+.summa-dialog-option-btn:hover::after,
+.summa-dialog-skip-btn:hover::after,
+.summa-dialog-exit-btn:hover::after {
+    left: 100%;
+}
+
+/* ─── 悬停通用：上移 3px + 磁性偏移 ─── */
+.btn:hover:not(:disabled),
+.btn-exit:hover:not(:disabled),
+.mode-btn:hover:not(:disabled),
+.btn-small:hover:not(:disabled),
+.summa-dialog-option-btn:hover:not(:disabled),
+.summa-dialog-skip-btn:hover:not(:disabled),
+.summa-dialog-exit-btn:hover:not(:disabled) {
+    transform: translateY(-3px) translate(var(--mx, 0px), var(--my, 0px)) !important;
+}
+
+/* ─── 点击缩放 ─── */
+.btn:active:not(:disabled),
+.btn-exit:active:not(:disabled),
+.mode-btn:active:not(:disabled),
+.btn-small:active:not(:disabled),
+.summa-dialog-option-btn:active:not(:disabled),
+.summa-dialog-skip-btn:active:not(:disabled),
+.summa-dialog-exit-btn:active:not(:disabled) {
+    transform: scale(0.98) translateY(0) !important;
+}
+
+/* ─── 玻璃拟态：btn-secondary / mode-btn ─── */
+.btn-secondary,
+.mode-btn {
+    background: rgba(255, 255, 255, 0.05) !important;
+    backdrop-filter: blur(16px) !important;
+    -webkit-backdrop-filter: blur(16px) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+.btn-secondary:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.12) !important;
+    border-color: rgba(59, 130, 246, 0.35) !important;
+    box-shadow: 0 6px 24px rgba(59, 130, 246, 0.25) !important;
+}
+.mode-btn:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.12) !important;
+}
+
+/* ─── btn-primary（绿色渐变）保留原渐变，增强悬停 ─── */
+.btn-primary:hover:not(:disabled) {
+    box-shadow: 0 6px 24px rgba(34, 197, 94, 0.35) !important;
+    border: 1px solid rgba(34, 197, 94, 0.25) !important;
+}
+
+/* ─── btn-exit（白色）全透明底上移 + 阴影 ─── */
+.btn-exit:hover:not(:disabled) {
+    box-shadow: 0 6px 24px rgba(255, 255, 255, 0.2) !important;
+}
+
+/* ─── btn-cancel / btn-confirm-exit（弹出气泡内） ─── */
+.btn-cancel {
+    background: rgba(255, 255, 255, 0.05) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    backdrop-filter: blur(16px);
+}
+.btn-cancel:hover {
+    background: rgba(255, 255, 255, 0.12) !important;
+}
+.btn-confirm-exit:hover:not(:disabled) {
+    filter: brightness(1.15);
+    transform: translateY(-2px);
+}
+
+/* ─── 鼠标光晕（JS 控制 CSS 变量 --gx / --gy） ─── */
+.btn:not(:disabled),
+.mode-btn:not(:disabled),
+.btn-exit:not(:disabled) {
+    background-image: radial-gradient(
+        circle 60px at var(--gx, 50%) var(--gy, 50%),
+        rgba(255,255,255,0.06),
+        transparent 70%
+    ) !important;
+}
+.btn-primary:not(:disabled) {
+    background-image: radial-gradient(
+        circle 60px at var(--gx, 50%) var(--gy, 50%),
+        rgba(255,255,255,0.15),
+        transparent 70%
+    ), linear-gradient(135deg, rgba(34,197,94,0.85), rgba(22,163,74,0.85)) !important;
+    backdrop-filter: blur(6px);
+    border: 1px solid rgba(34,197,94,0.2);
+}
+.btn-exit:not(:disabled) {
+    background-image: radial-gradient(
+        circle 60px at var(--gx, 50%) var(--gy, 50%),
+        rgba(255,255,255,0.15),
+        transparent 70%
+    ), #ffffff !important;
+}
+
+/* ─── 闯关难度按钮（有色玻璃） ─── */
+#campaign-diff-easy:not(:disabled) {
+    background-image: radial-gradient(
+        circle 60px at var(--gx, 50%) var(--gy, 50%),
+        rgba(255,255,255,0.15),
+        transparent 70%
+    ), linear-gradient(135deg, rgba(34,197,94,0.75), rgba(22,163,74,0.75)) !important;
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(34,197,94,0.35);
+}
+#campaign-diff-normal:not(:disabled) {
+    background-image: radial-gradient(
+        circle 60px at var(--gx, 50%) var(--gy, 50%),
+        rgba(255,255,255,0.15),
+        transparent 70%
+    ), linear-gradient(135deg, rgba(132,204,22,0.75), rgba(101,163,13,0.75)) !important;
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(132,204,22,0.35);
+}
+#campaign-diff-hard:not(:disabled) {
+    background-image: radial-gradient(
+        circle 60px at var(--gx, 50%) var(--gy, 50%),
+        rgba(255,255,255,0.15),
+        transparent 70%
+    ), linear-gradient(135deg, rgba(234,179,8,0.75), rgba(202,138,4,0.75)) !important;
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(234,179,8,0.35);
+}
+#campaign-diff-expert:not(:disabled) {
+    background-image: radial-gradient(
+        circle 60px at var(--gx, 50%) var(--gy, 50%),
+        rgba(255,255,255,0.15),
+        transparent 70%
+    ), linear-gradient(135deg, rgba(249,115,22,0.75), rgba(234,88,12,0.75)) !important;
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(249,115,22,0.35);
+}
+#campaign-diff-unsolvable:not(:disabled) {
+    background-image: radial-gradient(
+        circle 60px at var(--gx, 50%) var(--gy, 50%),
+        rgba(255,255,255,0.15),
+        transparent 70%
+    ), linear-gradient(135deg, rgba(239,68,68,0.75), rgba(185,28,28,0.75)) !important;
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(239,68,68,0.35);
+}
+
+/* 闯关难度按钮悬停增强 */
+#campaign-diff-easy:hover:not(:disabled),
+#campaign-diff-normal:hover:not(:disabled),
+#campaign-diff-hard:hover:not(:disabled),
+#campaign-diff-expert:hover:not(:disabled),
+#campaign-diff-unsolvable:hover:not(:disabled) {
+    filter: brightness(1.12);
+    transform: translateY(-3px);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+}
+
+/* ================================================================
+   5. 涟漪效果（CSS 动画定义）
+   JS 部分见 index.html
+   ================================================================ */
+.ripple {
+    position: absolute;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.3);
+    transform: scale(0);
+    animation: rippleAnim 0.65s ease-out forwards;
+    pointer-events: none;
+    z-index: 3;
+}
+@keyframes rippleAnim {
+    to {
+        transform: scale(4);
+        opacity: 0;
+    }
+}
+@keyframes summaFloat {
+    0%, 100% { transform: translateY(0) scale(1); }
+    50% { transform: translateY(-6px) scale(1.03); }
+}
+
+/* ================================================================
+   6. 按钮悬停/激活微增强（保持 style.css 原配色）
+   ================================================================ */
+
+/* btn-primary 绿色 hover 加强阴影（保留兼容） */
+.btn-primary:hover:not(:disabled) {
+    box-shadow: 0 4px 20px rgba(34, 197, 94, 0.35) !important;
+}
+
+/* 按钮退出 hover */
+.btn-exit:hover:not(:disabled) {
+    box-shadow: 0 4px 20px rgba(255, 255, 255, 0.25) !important;
+}
+
+/* ================================================================
+   7. 颜色微调 —— 仅增强/加回源生配色细节
+   ================================================================ */
+
+/* game-title 渐变保持 style.css 原样：绿 → 蓝 */
+.game-title {
+    background: linear-gradient(135deg, #22c55e, #3b82f6) !important;
+    -webkit-background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+    background-clip: text !important;
+}
+
+/* modal h2 保持 style.css 原样：绿 → 蓝 */
+.modal-content h2 {
+    background: linear-gradient(135deg, #22c55e, #3b82f6) !important;
+    -webkit-background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+    background-clip: text !important;
+}
+
+/* 赢家文字保持绿色 */
+.winner-text {
+    color: #22c55e !important;
+}
+
+/* Summa dialog 保持青色渐变 */
+.summa-dialog-icon {
+    display: block;
+    width: clamp(88px, 12vw, 132px);
+    height: auto;
+    margin: 0 auto 10px;
+    transform-origin: center bottom;
+    animation: summaFloat 2.8s ease-in-out infinite;
+    filter: drop-shadow(0 0 10px rgba(167, 139, 250, 0.25));
+}
+.summa-dialog-title {
+    background: linear-gradient(135deg, #a78bfa, #818cf8, #22c55e) !important;
+    -webkit-background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+    background-clip: text !important;
+}
+
+/* Summa dialog 高级界面增强（保留原有紫色系，这是 Summa 特色主题色） */
+.summa-dialog-content {
+    border-color: rgba(167, 139, 250, 0.32) !important;
+    box-shadow: 
+        0 0 0 1px rgba(167, 139, 250, 0.08) inset,
+        0 0 42px rgba(167, 139, 250, 0.16),
+        0 24px 72px rgba(0, 0, 0, 0.55) !important;
+    position: relative;
+}
+.summa-dialog-content::after {
+    content: '';
+    position: absolute;
+    inset: 14px;
+    border-radius: inherit;
+    pointer-events: none;
+    background: linear-gradient(135deg, rgba(167, 139, 250, 0.08), transparent 38%, rgba(34, 197, 94, 0.05));
+    mask: linear-gradient(#000, #000) content-box, linear-gradient(#000, #000);
+    -webkit-mask: linear-gradient(#000, #000) content-box, linear-gradient(#000, #000);
+    padding: 1px;
+    opacity: 0.75;
+}
+.summa-dialog-message {
+    border-color: rgba(167, 139, 250, 0.16) !important;
+    color: #d8b4fe !important;
+}
+.summa-dialog-input {
+    border-color: rgba(167, 139, 250, 0.32) !important;
+}
+.summa-dialog-input:focus {
+    border-color: #a78bfa !important;
+    box-shadow: 0 0 0 3px rgba(167, 139, 250, 0.22) !important;
+}
+.summa-dialog-options {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px !important;
+    align-items: stretch;
+    width: 100%;
+}
+.summa-dialog-option-btn {
+    min-height: 64px;
+    padding: 14px 16px !important;
+    border-radius: 18px !important;
+    border: 1px solid rgba(255, 255, 255, 0.16) !important;
+    background: rgba(255, 255, 255, 0.05) !important;
+    backdrop-filter: blur(16px) !important;
+    -webkit-backdrop-filter: blur(16px) !important;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
+    color: #ffffff !important;
+    font-size: 1.08rem !important;
+    font-weight: 700 !important;
+}
+.summa-dialog-option-btn:hover {
+    background: rgba(255, 255, 255, 0.12) !important;
+    border-color: rgba(34, 197, 94, 0.55) !important;
+    color: #ffffff !important;
+    box-shadow: 0 8px 22px rgba(34, 197, 94, 0.22) !important;
+}
+.summa-dialog-footer-actions {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 10px;
+    margin-top: 16px;
+    width: 100%;
+}
+.summa-dialog-skip-btn,
+.summa-dialog-exit-btn {
+    min-height: 66px;
+    border-radius: 18px !important;
+    border: 1px solid rgba(167, 139, 250, 0.68) !important;
+    background: rgba(167, 139, 250, 0.12) !important;
+    backdrop-filter: blur(16px) !important;
+    -webkit-backdrop-filter: blur(16px) !important;
+    color: #ede9fe !important;
+    box-shadow: 0 12px 28px rgba(167, 139, 250, 0.22), 0 0 0 1px rgba(167, 139, 250, 0.14) inset !important;
+    transform: translateY(0);
+}
+.summa-dialog-skip-btn {
+    min-width: 280px;
+    padding: 0 30px !important;
+}
+.summa-dialog-exit-btn {
+    min-width: 140px;
+    padding: 0 14px !important;
+}
+.summa-dialog-skip-btn:hover,
+.summa-dialog-exit-btn:hover {
+    background: rgba(167, 139, 250, 0.2) !important;
+    border-color: rgba(196, 181, 253, 0.92) !important;
+    color: #ffffff !important;
+    box-shadow: 0 16px 34px rgba(167, 139, 250, 0.3), 0 0 24px rgba(167, 139, 250, 0.18) !important;
+    transform: translateY(-2px) !important;
+}
+.summa-dialog-skip-btn:active,
+.summa-dialog-exit-btn:active {
+    transform: translateY(0) scale(0.99) !important;
+}
+.summa-dialog-exit-btn {
+    border-color: rgba(248, 113, 113, 0.4) !important;
+    background: rgba(248, 113, 113, 0.1) !important;
+    color: #fca5a5 !important;
+}
+.summa-dialog-exit-btn:hover {
+    background: rgba(248, 113, 113, 0.25) !important;
+    border-color: rgba(248, 113, 113, 0.6) !important;
+    color: #fef2f2 !important;
+    box-shadow: 0 0 20px rgba(248, 113, 113, 0.2) !important;
+}
+
+/* stars 系统保持 style.css: acc15 金色 */
+.campaign-star-bar-fill {
+    background: linear-gradient(90deg, #facc15, #fde68a, #fbbf24) !important;
+    box-shadow: 0 0 10px rgba(250, 204, 21, 0.45) !important;
+}
+.campaign-cell-stars .star.filled,
+.campaign-victory-stars .star.filled {
+    color: #facc15 !important;
+    filter: drop-shadow(0 0 3px rgba(250, 204, 21, 0.4)) !important;
+}
+.campaign-star-progress .star-count .star {
+    color: #facc15 !important;
+}
+
+/* 加回 scrollbar 微调 */
+::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2) !important;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.35) !important;
+}

@@ -109,7 +109,7 @@ class GridSystem {
         const container = this.canvas.parentElement;
         const size = Math.min(container.clientWidth, container.clientHeight);
         
-        // 设置 Canvas 实际像素大小
+        // 设置 Canvas 实际像素大小（保持 1:1 正方形）
         this.canvas.width = size;
         this.canvas.height = size;
         

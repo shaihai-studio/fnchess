@@ -181,16 +181,16 @@ class UIController {
         };
         bind('campaign-close-btn', () => this.closeCampaignUI());
         bind('campaign-close-btn2', () => this.closeCampaignUI());
-        bind('campaign-back-btn', () => this.showCampaignDifficulty());
-        bind('campaign-reset-btn', () => this.resetCampaignProgress());
-        bind('campaign-diff-easy', () => this.openCampaignLevels('easy'));
-        bind('campaign-diff-normal', () => this.openCampaignLevels('normal'));
-        bind('campaign-diff-hard', () => this.openCampaignLevels('hard'));
-        bind('campaign-diff-expert', () => this.openCampaignLevels('expert'));
-        bind('campaign-diff-unsolvable', () => this.openCampaignLevels('unsolvable'));
-        bind('campaign-home-btn', () => this.returnToCampaignLevelSelect());
-        bind('campaign-retry-btn', () => this.retryCampaignLevel());
-        bind('campaign-next-btn', () => this.goToNextCampaignLevel());
+        bind('campaign-back-btn', () => this.playUIButtonSound(() => this.showCampaignDifficulty()));
+        bind('campaign-reset-btn', () => this.playUIButtonSound(() => this.resetCampaignProgress()));
+        bind('campaign-diff-easy', () => this.playUIButtonSound(() => this.openCampaignLevels('easy')));
+        bind('campaign-diff-normal', () => this.playUIButtonSound(() => this.openCampaignLevels('normal')));
+        bind('campaign-diff-hard', () => this.playUIButtonSound(() => this.openCampaignLevels('hard')));
+        bind('campaign-diff-expert', () => this.playUIButtonSound(() => this.openCampaignLevels('expert')));
+        bind('campaign-diff-unsolvable', () => this.playUIButtonSound(() => this.openCampaignLevels('unsolvable')));
+        bind('campaign-home-btn', () => this.playUIButtonSound(() => this.returnToCampaignLevelSelect()));
+        bind('campaign-retry-btn', () => this.playUIButtonSound(() => this.retryCampaignLevel()));
+        bind('campaign-next-btn', () => this.playUIButtonSound(() => this.goToNextCampaignLevel()));
         this.refreshUnsovableDifficultyVisibility();
 
     }
@@ -647,12 +647,14 @@ class UIController {
     bindSummaDialogEvents() {
         // 输入框取消按钮
         document.getElementById('summa-dialog-input-cancel')?.addEventListener('click', () => {
+            if (window.audioManager) window.audioManager.playClick();
             this.summaDialogResolve && this.summaDialogResolve(null);
             this.hideSummaDialog();
         });
         
         // 输入框确认按钮
         document.getElementById('summa-dialog-input-confirm')?.addEventListener('click', () => {
+            if (window.audioManager) window.audioManager.playClick();
             const value = this.summaDialogInput.value;
             this.summaDialogResolve && this.summaDialogResolve(value);
             this.hideSummaDialog();
@@ -714,43 +716,36 @@ class UIController {
                 // 显示选项按钮模式
                 this.summaDialogOptions.style.display = 'grid';
                 this.summaDialogInputArea.style.display = 'none';
-                
+
                 optButtons.forEach(opt => {
                     const btn = document.createElement('button');
                     btn.className = 'summa-dialog-option-btn';
-                    btn.innerHTML = `${opt.label}${opt.desc ? `<span>${opt.desc}</span>` : ''}`;
+                    btn.textContent = opt.label;
                     btn.addEventListener('click', () => {
                         resolve(opt.value);
                         this.hideSummaDialog();
                     });
                     this.summaDialogOptions.appendChild(btn);
                 });
-                
-                if (showSkip) {
-                    // 创建跳过和退出按钮的容器
-                    const buttonContainer = document.createElement('div');
-                    buttonContainer.className = 'summa-dialog-secondary-buttons';
-                    
-                    const skipBtn = document.createElement('button');
-                    skipBtn.className = 'summa-dialog-skip-btn';
+
+                const footerActions = document.querySelector('.summa-dialog-footer-actions');
+                const skipBtn = document.getElementById('summa-dialog-skip-btn');
+                const exitBtn = document.getElementById('summa-dialog-exit-btn');
+
+                if (footerActions && skipBtn && exitBtn) {
+                    footerActions.style.display = showSkip ? 'flex' : 'none';
                     skipBtn.textContent = skipText;
-                    skipBtn.addEventListener('click', () => {
+                    skipBtn.onclick = () => {
+                        if (window.audioManager) window.audioManager.playClick();
                         resolve(null);
                         this.hideSummaDialog();
-                    });
-                    
-                    // 添加退出按钮（返回开始界面）
-                    const exitBtn = document.createElement('button');
-                    exitBtn.className = 'summa-dialog-exit-btn';
+                    };
                     exitBtn.textContent = '退出';
-                    exitBtn.addEventListener('click', () => {
+                    exitBtn.onclick = () => {
+                        if (window.audioManager) window.audioManager.playClick();
                         this.hideSummaDialog();
                         this.startModal.style.display = 'flex';
-                    });
-                    
-                    buttonContainer.appendChild(skipBtn);
-                    buttonContainer.appendChild(exitBtn);
-                    this.summaDialogOptions.appendChild(buttonContainer);
+                    };
                 }
             }
             
@@ -759,6 +754,9 @@ class UIController {
         });
     }
     
+    /**
+     * 隐藏 Summa 训练弹窗
+     */
     /**
      * 隐藏 Summa 训练弹窗
      */
@@ -2226,6 +2224,11 @@ class UIController {
             this.exitPopover.classList.add('visible');
         }
     }
+
+    playUIButtonSound(action) {
+        if (window.audioManager) window.audioManager.playClick();
+        if (typeof action === 'function') action();
+    }
     
     /**
      * 隐藏退出确认气泡框
@@ -2861,7 +2864,36 @@ class UIController {
         const range = this.getDifficultyRange(diff);
         const currentLevelId = Number(levelId ?? this.campaignCurrentLevelId ?? range.start);
         const bestRecord = this.getCampaignLevelBestRecord(currentLevelId);
-        badge.className = `campaign-level-badge ${range.cls}`;
+
+        // 根据关卡号确定颜色，而不是根据 difficulty
+        let color, bgColor, borderColor;
+        if (currentLevelId >= 82) { // 无解（82-90）
+            color = '#ef4444';
+            bgColor = 'rgba(239, 68, 68, 0.15)';
+            borderColor = 'rgba(239, 68, 68, 0.5)';
+        } else if (currentLevelId >= 70) { // 专家（70-81）
+            color = '#f97316';
+            bgColor = 'rgba(249, 115, 22, 0.15)';
+            borderColor = 'rgba(249, 115, 22, 0.5)';
+        } else if (currentLevelId >= 54) { // 困难（54-69）
+            color = '#eab308';
+            bgColor = 'rgba(234, 179, 8, 0.15)';
+            borderColor = 'rgba(234, 179, 8, 0.5)';
+        } else if (currentLevelId >= 30) { // 普通（30-53）
+            color = '#84cc16';
+            bgColor = 'rgba(132, 204, 22, 0.15)';
+            borderColor = 'rgba(132, 204, 22, 0.5)';
+        } else { // 简单（1-29）
+            color = '#22c55e';
+            bgColor = 'rgba(34, 197, 94, 0.15)';
+            borderColor = 'rgba(34, 197, 94, 0.5)';
+        }
+
+        badge.className = `campaign-level-badge`;
+        value.style.setProperty('color', color, 'important');
+        badge.style.setProperty('color', color, 'important');
+        badge.style.setProperty('border-color', borderColor, 'important');
+        badge.style.setProperty('background', bgColor, 'important');
         if (bestRecord !== null && Number.isFinite(bestRecord)) {
             value.textContent = `Lv. ${currentLevelId} (best record:${bestRecord})`;
         } else {
@@ -2919,9 +2951,10 @@ class UIController {
 
             cell.addEventListener('click', async () => {
                 if (locked) return;
+                if (window.audioManager) window.audioManager.playClick();
                 // 进入游戏界面
                 if (this.campaignModal) this.campaignModal.style.display = 'none';
-                await this.startCampaign(id);
+                this.startCampaign(id).catch(err => console.error('[Campaign] startCampaign failed:', err));
             });
             this.campaignLevelGrid.appendChild(cell);
         }
