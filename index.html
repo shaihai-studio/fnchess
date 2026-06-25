@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>函数棋 - Function Chess</title>
-    <link rel="stylesheet" href="css/style.css">
-    <link rel="stylesheet" href="css/shaihai-theme.css">
+    <link rel="stylesheet" href="files/css/style.css">
+    <link rel="stylesheet" href="files/css/shaihai-theme.css">
 </head>
 <body>
     <!-- 启动界面（仅首次加载时显示） -->
@@ -44,7 +44,7 @@
         </div>
 
         <button class="bgm-float-btn" id="bgm-open-btn" type="button" aria-label="背景音乐设置" title="背景音乐设置">
-            <img src="images/VolumeButton.png" alt="背景音乐设置" class="bgm-float-icon-img">
+            <img src="files/images/VolumeButton.png" alt="背景音乐设置" class="bgm-float-icon-img">
         </button>
     </header>
     
@@ -121,7 +121,7 @@
             <div class="start-settings-layout">
                 <!-- 左侧：标题图片 + 难度/回合选择 -->
                 <div class="start-left-column">
-                    <img class="start-modal-title-image" src="images/MainTitle.png" alt="函数棋">
+                    <img class="start-modal-title-image" src="files/images/MainTitle.png" alt="函数棋">
                     
                     <div class="start-selectors-left">
                         <div class="selector-row difficulty-select">
@@ -147,7 +147,7 @@
                 <div class="start-right-column">
                     <div class="start-top-actions">
                         <button class="bgm-float-btn start-bgm-btn" id="start-bgm-open-btn" type="button" aria-label="背景音乐设置" title="背景音乐设置">
-                            <img src="images/VolumeButton.png" alt="背景音乐设置" class="bgm-float-icon-img">
+                            <img src="files/images/VolumeButton.png" alt="背景音乐设置" class="bgm-float-icon-img">
                         </button>
                     </div>
 
@@ -163,7 +163,7 @@
 
                     <div class="start-action-area">
                         <button class="start-image-btn" id="start-btn" type="button" aria-label="开始游戏">
-                            <img src="images/StartButton.png" alt="开始游戏">
+                            <img src="files/images/StartButton.png" alt="开始游戏">
                         </button>
                     </div>
                 </div>
@@ -300,7 +300,7 @@
     <!-- Summa训练选择弹窗 -->
     <div class="modal" id="summa-train-dialog" style="display: none;">
         <div class="modal-content summa-dialog-content">
-            <img class="summa-dialog-icon" src="Summa形象处理/summa_image/happy.PNG" alt="Summa 图标">
+            <img class="summa-dialog-icon" src="files/Summa形象处理/summa_image/happy.PNG" alt="Summa 图标">
             <h2 class="summa-dialog-title" id="summa-dialog-title">唤醒 Summa</h2>
             <p class="summa-dialog-message" id="summa-dialog-message"></p>
             
@@ -324,37 +324,37 @@
     
     <!-- 加载 JavaScript 模块 -->
     <!-- 响应式布局管理器（优先加载） -->
-    <script src="js/ResponsiveLayout.js"></script>
-    <script src="js/GridSystem.js"></script>
-    <script src="js/CollisionDetector.js"></script>
-    <script src="js/函数复杂度运算/function-complexity-analyzer.js"></script>
-    <script src="js/FunctionParser.js"></script>
+    <script src="files/js/ResponsiveLayout.js"></script>
+    <script src="files/js/GridSystem.js"></script>
+    <script src="files/js/CollisionDetector.js"></script>
+    <script src="files/js/函数复杂度运算/function-complexity-analyzer.js"></script>
+    <script src="files/js/FunctionParser.js"></script>
     <!-- geogebra-lite 核心引擎（采样+裁剪） -->
-    <script src="geogebra-lite/plot/Gap.js"></script>
-    <script src="geogebra-lite/plot/PathPlotter.js"></script>
-    <script src="geogebra-lite/plot/CurveSegmentInfo.js"></script>
-    <script src="geogebra-lite/plot/SegmentParams.js"></script>
-    <script src="geogebra-lite/plot/CurvePlotterStackItem.js"></script>
-    <script src="geogebra-lite/plot/CurvePlotterStack.js"></script>
-    <script src="geogebra-lite/plot/CurvePlotterUtils.js"></script>
-    <script src="geogebra-lite/plot/TupleNeighbours.js"></script>
-    <script src="geogebra-lite/plot/LabelPositionCalculator.js"></script>
-    <script src="geogebra-lite/plot/GeneralPathClippedForCurvePlotter.js"></script>
-    <script src="geogebra-lite/plot/CurveSegmentPlotter.js"></script>
-    <script src="geogebra-lite/plot/CurvePlotter.js"></script>
-    <script src="js/FunctionRenderer.js"></script>
+    <script src="files/geogebra-lite/plot/Gap.js"></script>
+    <script src="files/geogebra-lite/plot/PathPlotter.js"></script>
+    <script src="files/geogebra-lite/plot/CurveSegmentInfo.js"></script>
+    <script src="files/geogebra-lite/plot/SegmentParams.js"></script>
+    <script src="files/geogebra-lite/plot/CurvePlotterStackItem.js"></script>
+    <script src="files/geogebra-lite/plot/CurvePlotterStack.js"></script>
+    <script src="files/geogebra-lite/plot/CurvePlotterUtils.js"></script>
+    <script src="files/geogebra-lite/plot/TupleNeighbours.js"></script>
+    <script src="files/geogebra-lite/plot/LabelPositionCalculator.js"></script>
+    <script src="files/geogebra-lite/plot/GeneralPathClippedForCurvePlotter.js"></script>
+    <script src="files/geogebra-lite/plot/CurveSegmentPlotter.js"></script>
+    <script src="files/geogebra-lite/plot/CurvePlotter.js"></script>
+    <script src="files/js/FunctionRenderer.js"></script>
     <!-- 全局音频管理器和角色管理器 -->
-    <script src="js/AudioManager.js"></script>
+    <script src="files/js/AudioManager.js"></script>
     <!-- SummaAnimator 必须在 SummaCharacter 之前加载 -->
-    <script src="Summa形象处理/SummaAnimator.js"></script>
-    <script src="Summa形象处理/SummaCharacter.js"></script>
+    <script src="files/Summa形象处理/SummaAnimator.js"></script>
+    <script src="files/Summa形象处理/SummaCharacter.js"></script>
     
     <!-- Ai和控制器 -->
-    <script src="js/AIController.js"></script>
-    <script src="js/GameController.js"></script>
-    <script src="js/campaignLevels.js"></script>
-    <script src="js/UIController.js"></script>
-    <script src="js/SummaTrainer.js"></script>
+    <script src="files/js/AIController.js"></script>
+    <script src="files/js/GameController.js"></script>
+    <script src="files/js/campaignLevels.js"></script>
+    <script src="files/js/UIController.js"></script>
+    <script src="files/js/SummaTrainer.js"></script>
     
     <script>
         // 初始化游戏

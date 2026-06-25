@@ -127,7 +127,6 @@ class UIController {
         this.modeTestBtn = document.getElementById('mode-test');
         this.modeHint = document.getElementById('mode-hint');
         this.selectedMode = 'local'; // 默认本地对战
-        this.developerMode = false;
 
         // 闯关面板
         this.campaignPanel = document.getElementById('campaign-panel');
@@ -191,16 +190,6 @@ class UIController {
                 if (window.summaTrainer) window.summaTrainer.showPanel();
             });
         }
-
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Tab') {
-                this.developerMode = true;
-                this.refreshUnsovableDifficultyVisibility();
-                if (this.campaignLevelGrid) {
-                    this.renderCampaignLevelGrid();
-                }
-            }
-        });
 
         // 闯关UI按钮
         const bind = (id, fn) => {
@@ -3416,7 +3405,7 @@ class UIController {
         if (!this.campaignGlobalProgress) return;
         const cleared = this.getCampaignClearedMax();
         const total = this.campaignPack && Array.isArray(this.campaignPack.levels) ? this.campaignPack.levels.length : 0;
-        const visibleTotal = this.developerMode || cleared >= 81 ? total : Math.min(total, 81);
+        const visibleTotal = cleared >= 81 ? total : Math.min(total, 81);
         const starCount = stars === null ? this.getCampaignCollectedStars() : stars;
         this.campaignGlobalProgress.textContent = total > 0
             ? `已通关 ${cleared}/${visibleTotal}`
@@ -3526,7 +3515,7 @@ class UIController {
         const btn = document.getElementById('campaign-diff-unsolvable');
         if (!grid || !btn) return;
         const cleared = this.getCampaignClearedMax();
-        const shouldShow = this.developerMode || cleared >= 81;
+        const shouldShow = cleared >= 81;
         btn.style.display = shouldShow ? '' : 'none';
         grid.style.gridTemplateColumns = shouldShow ? 'repeat(5, minmax(0, 1fr))' : 'repeat(4, minmax(0, 1fr))';
     }
@@ -3590,17 +3579,15 @@ class UIController {
 
         const cleared = this.getCampaignClearedMax();
         const total = this.campaignPack && Array.isArray(this.campaignPack.levels) ? this.campaignPack.levels.length : 0;
-        const unlockedMax = this.developerMode ? range.end : Math.min(total, cleared + 1);
-        this.campaignLevelProgress.textContent = this.developerMode
-            ? `开发者模式：可直接进入 ${range.start}-${range.end} 关`
-            : `已通关 ${cleared}/${total}，当前可进入 ≤ ${unlockedMax}`;
+        const unlockedMax = Math.min(total, cleared + 1);
+        this.campaignLevelProgress.textContent = `已通关 ${cleared}/${total}，当前可进入 ≤ ${unlockedMax}`;
 
         this.campaignLevelGrid.innerHTML = '';
         for (let id = range.start; id <= range.end; id++) {
             const cell = document.createElement('div');
             cell.className = `campaign-level-cell ${range.cls}`;
 
-            const locked = !this.developerMode && id > unlockedMax;
+            const locked = id > unlockedMax;
             if (locked) cell.classList.add('locked');
             if (id <= cleared) cell.classList.add('cleared');
 

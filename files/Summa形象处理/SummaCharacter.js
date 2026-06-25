@@ -5,15 +5,15 @@ class SummaCharacter {
 
         // 情绪 → 立绘图片映射
         this.imageMap = {
-            neutral: 'Summa形象处理/summa_image/neutral.PNG',
-            thinking: 'Summa形象处理/summa_image/thinking.PNG',
-            smug: 'Summa形象处理/summa_image/smug.PNG',
-            happy: 'Summa形象处理/summa_image/happy.PNG',
-            surprised: 'Summa形象处理/summa_image/surprised.PNG',
-            sad: 'Summa形象处理/summa_image/sad.PNG',
-            angry: 'Summa形象处理/summa_image/angry.PNG',
-            determined: 'Summa形象处理/summa_image/determined.PNG',
-            exhausted: 'Summa形象处理/summa_image/exhausted.PNG'
+            neutral: 'files/Summa形象处理/summa_image/neutral.PNG',
+            thinking: 'files/Summa形象处理/summa_image/thinking.PNG',
+            smug: 'files/Summa形象处理/summa_image/smug.PNG',
+            happy: 'files/Summa形象处理/summa_image/happy.PNG',
+            surprised: 'files/Summa形象处理/summa_image/surprised.PNG',
+            sad: 'files/Summa形象处理/summa_image/sad.PNG',
+            angry: 'files/Summa形象处理/summa_image/angry.PNG',
+            determined: 'files/Summa形象处理/summa_image/determined.PNG',
+            exhausted: 'files/Summa形象处理/summa_image/exhausted.PNG'
         };
 
         // 温和、鼓励、带点数学趣味的对话库

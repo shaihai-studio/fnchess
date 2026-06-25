@@ -8,8 +8,8 @@ class AudioManager {
         this.bgmEnabled = true;
         
         // 本地音效文件目录
-        this.localBaseUrl = "sounds/";
-        this.bgmBaseUrl = "bgm/";
+        this.localBaseUrl = "files/sounds/";
+        this.bgmBaseUrl = "files/bgm/";
         
         // 映射所有的动作音效
         this.sounds = {
