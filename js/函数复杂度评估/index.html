@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>函数复杂度评估器</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Menlo', 'Consolas', monospace; background: #1a1a2e; color: #e0e0e0; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+  .container { width: 520px; padding: 32px; background: #16213e; border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,.4); }
+  h1 { text-align: center; font-size: 20px; margin-bottom: 24px; color: #00d4ff; }
+  label { font-size: 13px; color: #8899aa; }
+  input { width: 100%; padding: 10px 14px; margin: 8px 0 16px; border: 1px solid #2a3a5c; border-radius: 6px; background: #0f3460; color: #fff; font-size: 15px; font-family: inherit; outline: none; }
+  input:focus { border-color: #00d4ff; }
+  button { width: 100%; padding: 10px; background: #00d4ff; color: #1a1a2e; font-weight: bold; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; }
+  button:hover { background: #00b8d9; }
+  #result { margin-top: 20px; padding: 16px; background: #0f3460; border-radius: 8px; white-space: pre; font-size: 14px; line-height: 1.8; min-height: 40px; display: none; }
+  .err { color: #ff6b6b; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>📐 函数复杂度评估器</h1>
+  <label>输入函数表达式 f(x)：</label>
+  <input id="expr" placeholder="例: sin(x^2) * exp(x) / log(x)" autofocus />
+  <button onclick="run()">评估</button>
+  <div id="result"></div>
+</div>
+
+<script src="evaluator.js"></script>
+<script>
+// ====== UI ======
+function run() {
+  const input = document.getElementById('expr').value.trim();
+  const el = document.getElementById('result');
+  el.style.display = 'block';
+  if (!input) { el.innerHTML = '<span class="err">请输入函数表达式</span>'; return; }
+  try {
+    const r = evaluate(input);
+    el.innerHTML =
+      `simplified_f(x) = ${r.simplified}\n` +
+      `C_structure      = ${r.C_structure}\n` +
+      `C_diversity      = ${r.C_diversity}\n` +
+      `C_penalty        = ${r.C_penalty}\n` +
+      `C_final          = ${r.C_final}\n` +
+      `Score            = ${r.Score}`;
+    el.className = '';
+  } catch (e) {
+    el.innerHTML = `<span class="err">错误: ${e.message}</span>`;
+  }
+}
+
+document.getElementById('expr').addEventListener('keydown', e => { if (e.key === 'Enter') run(); });
+</script>
+</body>
+</html>

@@ -22,10 +22,8 @@ class FunctionParser {
             functions: ['sin', 'cos', 'tan', 'abs', 'exp', 'ln', 'log']
         };
         
-        // 初始化函数复杂度分析器
-        if (typeof FunctionComplexityAnalyzer !== 'undefined') {
-            this.complexityAnalyzer = new FunctionComplexityAnalyzer();
-        }
+        // 检查函数复杂度评估器是否已加载
+        this.hasEvaluator = (typeof evaluate === 'function');
     }
     
     /**
@@ -752,30 +750,78 @@ class FunctionParser {
      * @param {string} expression - 函数表达式
      * @returns {Object} {type: string, score: number}
      */
-    analyzeFunctionType(expression) {
-        const cleanExpr = expression.toLowerCase().replace(/\s/g, '');
+    /**
+     * 为复杂度评估器预处理表达式：补全隐式乘号，转换符号
+     * 保持数学表示法（^而非**），输出评估器可解析的格式
+     */
+    prepareForEvaluator(expression) {
+        let expr = expression;
         
-        // 使用新的函数复杂度分析器
-        if (this.complexityAnalyzer) {
-            const complexity = this.complexityAnalyzer.analyze(expression);
-            
-            // 根据复杂度值映射函数类型
-            let type;
-            if (complexity <= 1) {
-                type = 'degree_1';
-            } else if (complexity === 2) {
-                type = 'degree_2';
-            } else if (complexity === 3) {
-                type = 'degree_3';
-            } else {
-                type = 'high_degree';
+        // 符号替换：用括号包裹确保隔离
+        expr = expr.replace(/π/g, '(pi)');
+        expr = this.convertFactorial(expr);
+        
+        // 已知函数名（长的排前，避免正则部分匹配）
+        const funcNames = 'sinh|cosh|tanh|asin|acos|atan|sqrt|sin|cos|tan|abs|exp|log|sec|csc|cot|ln';
+        
+        // 1. 数字/字母/) 后跟函数名: 2sin( -> 2*sin(, xsin( -> x*sin(, )sin( -> )*sin(
+        expr = expr.replace(new RegExp(`([0-9a-zA-Z\\)])(?=${funcNames})`, 'gi'), '$1*');
+        
+        // 2. 数字后跟字母: 2x -> 2*x, 2pi -> 2*pi
+        expr = expr.replace(/(\d)([a-zA-Z])/g, '$1*$2');
+        
+        // 3. 数字后跟(: 2( -> 2*(
+        expr = expr.replace(/(\d)(\()/g, '$1*$2');
+        
+        // 4. )后跟(: )( -> )*(
+        expr = expr.replace(/(\))(\()/g, '$1*$2');
+        
+        // 5. )后跟字母或数字: )x -> )*x, )2 -> )*2
+        expr = expr.replace(/(\))([a-zA-Z0-9])/g, '$1*$2');
+        
+        // 6. 变量/pi后跟(（但不是函数调用）: x( -> x*(, pi( -> pi*(
+        const protectedParts = [];
+        let temp = expr.replace(new RegExp(`(${funcNames}|factorial)\\(`, 'gi'), (match) => {
+            const idx = protectedParts.length;
+            protectedParts.push(match);
+            return `\x00F${idx}\x00`;
+        });
+        temp = temp.replace(/([a-zA-Z])(\()/g, '$1*$2');
+        temp = temp.replace(/\x00F(\d+)\x00/g, (_, idx) => protectedParts[parseInt(idx)]);
+        expr = temp;
+        
+        return expr;
+    }
+    
+    analyzeFunctionType(expression) {
+        // 使用新的函数复杂度评估器 (evaluator.js)
+        if (this.hasEvaluator) {
+            try {
+                const prepared = this.prepareForEvaluator(expression);
+                const result = evaluate(prepared);
+                // result: { simplified, C_structure, C_diversity, C_penalty, C_final, Score }
+                // Score 范围 [1, 7]
+                const score = result.Score;
+                
+                let type;
+                if (score <= 1) {
+                    type = 'degree_1';
+                } else if (score <= 2) {
+                    type = 'degree_2';
+                } else if (score <= 3) {
+                    type = 'degree_3';
+                } else {
+                    type = 'high_degree';
+                }
+                
+                return { type, score };
+            } catch (e) {
+                console.warn('[WARN] 复杂度评估失败:', e.message);
             }
-            
-            return { type, score: complexity };
         }
         
-        // 降级方案：如果分析器未加载，使用临时方案
-        console.warn('[WARN] FunctionComplexityAnalyzer 未加载，使用临时方案');
+        // 降级方案：如果评估器未加载或评估失败
+        console.warn('[WARN] 函数复杂度评估器未加载，使用临时方案');
         return { type: 'degree_1', score: 1 };
     }
     
