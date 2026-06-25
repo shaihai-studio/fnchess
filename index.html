@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>函数棋 - Function Chess</title>
     <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/shaihai-theme.css">
 </head>
 <body>
     <div id="summa-container"></div>
@@ -342,6 +343,26 @@
             console.log('4. 加载数据: summaTrainer.loadTrainingData()');
             console.log('========================\n');
         });
+    </script>
+
+    <!-- <<< Shaihai 风格：涟漪点击效果 >>> -->
+    <script>
+        (function initRippleEffect() {
+            var buttons = document.querySelectorAll('.btn, .mode-btn, .summa-dialog-option-btn, .summa-dialog-skip-btn, .summa-dialog-exit-btn');
+            buttons.forEach(function(el) {
+                el.addEventListener('click', function(e) {
+                    var rect = el.getBoundingClientRect();
+                    var ripple = document.createElement('span');
+                    ripple.classList.add('ripple');
+                    var size = Math.max(rect.width, rect.height);
+                    ripple.style.width = ripple.style.height = size + 'px';
+                    ripple.style.left = (e.clientX - rect.left - size / 2) + 'px';
+                    ripple.style.top = (e.clientY - rect.top - size / 2) + 'px';
+                    el.appendChild(ripple);
+                    setTimeout(function() { ripple.remove(); }, 650);
+                });
+            });
+        })();
     </script>
 </body>
 </html>

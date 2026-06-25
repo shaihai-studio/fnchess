@@ -63,6 +63,7 @@ class UIController {
         this.confirmBtn = document.getElementById('confirm-btn');
         this.clearBtn = document.getElementById('clear-btn');
         this.exitBtn = document.getElementById('exit-btn');
+        this.debugBtn = null;
         
         // 退出气泡框元素
         this.exitPopover = document.getElementById('exit-confirm-popover');
@@ -779,6 +780,7 @@ class UIController {
         this.confirmBtn.addEventListener('click', () => this.handleConfirm());
         this.clearBtn.addEventListener('click', () => this.handleClear());
         this.exitBtn.addEventListener('click', () => this.handleExitClick());
+        this.setupDebugToggle();
         this.restartBtn.addEventListener('click', () => this.handleRestart());
         this.startBtn.addEventListener('click', () => this.handleStart());
         if (this.viewReportBtn) {
@@ -1939,10 +1941,10 @@ class UIController {
             return;
         }
         this.isRenderingTestFunction = true;
-        
+
         // 锁定缩放按钮
         this.lockZoomButtons();
-        
+
         try {
             // 检查是否已存在相同的函数
             const existingFunctions = this.gameController.getTestModeFunctions();
@@ -1952,21 +1954,26 @@ class UIController {
                 this.unlockZoomButtons();
                 return;
             }
-            
+
+            await this.prepareRenderCanvas();
+
             // 绘制函数（使用不同颜色，测试模式无光晕）
             const color = this.getTestModeColor();
             const points = await this.renderer.drawFunction(expression, true, color, true);
-            
+
             if (points && points.length > 0) {
                 // 保存函数
                 this.gameController.addTestModeFunction(expression, color);
-                
+
                 // 清空当前表达式
                 this.clearExpression();
-                
+
                 // 更新函数列表
                 this.updateFunctionList();
-                
+
+                // 渲染后再刷新一次，确保调试层/曲线层都稳定显示
+                await this.postRenderRefresh();
+
                 this.showMessage(`函数已绘制: ${expression}`, 'success');
             } else {
                 this.showMessage('函数绘制失败，请检查表达式', 'error');
@@ -1992,9 +1999,35 @@ class UIController {
     /**
      * 绘制函数并评估结果
      */
+    async prepareRenderCanvas() {
+        // 只清理浏览器内存中的临时引用，不删除本地存档/AI模型/关卡数据等持久化数据
+        this._renderTempState = null;
+        if (this.renderer) {
+            this.renderer.lastDebugSegments = [];
+            this.renderer.lastDebugReasons = [];
+        }
+        // 只重绘当前棋盘显示，不能清掉 target / forbidden / usedCells
+        if (this.gridSystem && typeof this.gridSystem.draw === 'function') {
+            this.gridSystem.draw();
+        }
+    }
+
+    async postRenderRefresh() {
+        if (!this.gridSystem) return;
+        await new Promise(resolve => requestAnimationFrame(() => {
+            // 仅等待下一帧，让浏览器完成本次绘制提交；不要再次清空画布，否则会把函数擦掉
+            resolve();
+        }));
+    }
+
     async renderAndEvaluate(expression) {
+        await this.prepareRenderCanvas();
+
         // 1. 渲染用采样（标准精度）- 等待绘制完成
         await this.renderer.drawFunction(expression, true);
+
+        // 渲染后再刷新一次画布显示，避免首次绘图时调试层/函数层未稳定
+        await this.postRenderRefresh();
         
         // 2. 碰撞检测用采样（高精度）
         const range = this.gridSystem.getRange();
@@ -2943,6 +2976,8 @@ class UIController {
         
         // 添加缩放按钮
         this.addZoomButtons();
+
+
         
         // 添加鼠标滚轮缩放功能
         this.addWheelZoomSupport();
@@ -3070,6 +3105,8 @@ class UIController {
             display.textContent = `±${range}`;
         }
     }
+
+    
     
     /**
      * 锁定缩放按钮
@@ -3222,19 +3259,21 @@ class UIController {
     /**
      * 重新绘制所有测试模式函数
      */
-    redrawAllTestFunctions() {
+    async redrawAllTestFunctions() {
         // 取消任何正在进行的绘制
         this.renderer.cancelDrawing();
-        
-        this.gridSystem.clearAll();
+
+        await this.prepareRenderCanvas();
         const functions = this.gameController.getTestModeFunctions();
-        
+
         // 使用 requestAnimationFrame 批量绘制，避免阻塞UI（测试模式无光晕）
-        requestAnimationFrame(() => {
+        await new Promise(resolve => requestAnimationFrame(async () => {
             for (const func of functions) {
-                this.renderer.drawFunction(func.expression, false, func.color, true);
+                await this.renderer.drawFunction(func.expression, false, func.color, true);
             }
-        });
+            await this.postRenderRefresh();
+            resolve();
+        }));
     }
     
     /**
@@ -3256,6 +3295,38 @@ class UIController {
         
         // 插入到确认按钮之前
         this.confirmBtn.parentElement.insertBefore(btn, this.confirmBtn);
+    }
+
+    setupDebugToggle() {
+        if (this.debugBtn) return;
+        const host = this.confirmBtn?.parentElement;
+        if (!host) return;
+        const btn = document.createElement('button');
+        btn.id = 'debug-toggle-btn';
+        btn.className = 'zoom-btn';
+        btn.textContent = '调试';
+        btn.title = '显示采样点和断点调试信息';
+        btn.style.background = '#3b82f6';
+        btn.style.color = '#fff';
+        btn.style.minWidth = '54px';
+        btn.style.height = '34px';
+        btn.style.borderRadius = '999px';
+        btn.style.fontSize = '12px';
+        btn.addEventListener('click', () => {
+            const next = !(this.renderer.debugEnabled);
+            this.renderer.debugEnabled = next;
+            btn.textContent = next ? '调试✓' : '调试';
+            btn.title = next ? '关闭采样点和断点调试信息' : '显示采样点和断点调试信息';
+            this.showMessage(next ? '已开启调试可视化' : '已关闭调试可视化');
+            if (this.gameController.isTestMode()) {
+                this.redrawAllTestFunctions();
+            } else {
+                this.gridSystem.draw();
+            }
+        });
+        host.appendChild(btn);
+        this.debugBtn = btn;
+        this.renderer.debugEnabled = false;
     }
     
     /**

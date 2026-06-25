@@ -1,0 +1,350 @@
+/* ═══════════════════════════════════════════════════════════════
+   shaihai-theme.css — 函数棋 主题优化覆盖
+   在 style.css 之后加载，覆盖/增强原有样式
+   
+   保留 style.css 原始配色（深蓝黑底 + 绿/蓝主色）
+   增强：得意黑字体全局、毛玻璃、按钮光流、涟漪
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ================================================================
+   1. 字体定义 — SmileySans 得意黑
+   ================================================================ */
+@font-face {
+    font-family: 'SmileySans';
+    src: url('../fonts/SmileySans-Oblique.otf.woff2') format('woff2'),
+         url('../fonts/SmileySans-Oblique.ttf.woff2') format('woff2');
+    font-weight: normal;
+    font-style: normal;
+    font-display: swap;
+}
+
+/* ================================================================
+   2. 字体全局覆盖 —— 所有 UI 文字应用得意黑
+      保留等宽字体的例外见下方
+   ================================================================ */
+
+/* body 设置继承 */
+body {
+    font-family: 'SmileySans', 'Segoe UI', 'Microsoft YaHei', sans-serif !important;
+}
+
+/* 显式覆盖所有 UI 文字元素（那些在 style.css 中没设 font-family 继承不了的）
+   注意：底部键盘按钮、输入区等保留原字体，不在此列 */
+.game-title,
+.winner-text,
+.panel-card h3,
+.score-display,
+.score-display .player,
+.score-display .score,
+.round-info,
+.round-info .current,
+.phase-hint,
+.category-label,
+.campaign-level-cell,
+.campaign-cell-number,
+.campaign-level-label,
+.campaign-level-badge,
+.campaign-victory-text,
+.btn,
+.mode-btn,
+.btn-exit,
+.btn-small,
+.btn-cancel,
+.btn-confirm-exit,
+.modal-content h2,
+.modal-content p,
+.report-summary h3,
+.report-history h3,
+.report-table th,
+.report-table td,
+.summa-dialog-title,
+.summa-dialog-message,
+.summa-dialog-skip-btn,
+.summa-dialog-exit-btn,
+#difficulty-hint,
+.difficulty-select select,
+.round-select select,
+.difficulty-select label,
+.round-select label,
+.function-list-title,
+.function-item,
+.function-actions button,
+.zoom-range,
+#campaign-lrsigma-display .lrsigma-label,
+#campaign-lrsigma-display .lrsigma-int {
+    font-family: 'SmileySans', 'Segoe UI', 'Microsoft YaHei', sans-serif !important;
+}
+
+/* ─── 保留等宽字体的元素 ───
+   计时器、表达式构建区、函数表达式、坐标格子、底部键盘按钮等需要等宽对齐的地方 */
+.timer-value,
+.expression-display,
+.expression-element,
+.expression-prefix,
+.cursor,
+.function-expr,
+.expr-cell,
+.coord-cell,
+.elem-cell,
+.element-btn,
+.lock-icon,
+#campaign-lrsigma-display,
+.summa-dialog-icon,
+.summa-dialog-option-btn,
+.summa-dialog-input {
+    font-family: 'Courier New', 'SmileySans Mono', monospace !important;
+}
+
+/* ================================================================
+   3. 配色不变，仅增强毛玻璃效果
+   ================================================================ */
+
+/* 面板卡片 — 毛玻璃增强 */
+.panel-card {
+    backdrop-filter: blur(24px) !important;
+    -webkit-backdrop-filter: blur(24px) !important;
+    position: relative;
+    overflow: hidden;
+}
+.panel-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.25), transparent);
+    pointer-events: none;
+    z-index: 1;
+}
+
+/* 顶部工具栏 — 毛玻璃增强 */
+.header {
+    backdrop-filter: blur(24px) !important;
+    -webkit-backdrop-filter: blur(24px) !important;
+}
+
+/* Canvas 区域 — 毛玻璃增强 */
+.canvas-section {
+    backdrop-filter: blur(24px) !important;
+    -webkit-backdrop-filter: blur(24px) !important;
+    position: relative;
+    overflow: hidden;
+}
+.canvas-section::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.15), transparent);
+    pointer-events: none;
+}
+
+/* 模态框 — 毛玻璃增强 */
+.modal-content {
+    backdrop-filter: blur(24px) !important;
+    -webkit-backdrop-filter: blur(24px) !important;
+    position: relative;
+    overflow: hidden;
+}
+.modal-content::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.25), transparent);
+    pointer-events: none;
+}
+
+/* 底部拖拽区 */
+.elements-section {
+    backdrop-filter: blur(24px) !important;
+    -webkit-backdrop-filter: blur(24px) !important;
+}
+
+/* 弹窗/开始界面 */
+.modal {
+    backdrop-filter: blur(8px) !important;
+    -webkit-backdrop-filter: blur(8px) !important;
+}
+
+/* ================================================================
+   4. 按钮光流扫过效果 (light sweep)
+   ================================================================ */
+.btn,
+.btn-exit,
+.mode-btn {
+    position: relative;
+    overflow: hidden;
+}
+
+.btn::after,
+.mode-btn::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+    transition: left 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    pointer-events: none;
+    z-index: 1;
+}
+.btn:hover::after,
+.mode-btn:hover::after {
+    left: 100%;
+}
+
+.btn-small {
+    position: relative;
+    overflow: hidden;
+}
+
+/* ================================================================
+   5. 涟漪效果（CSS 动画定义）
+   JS 部分见 index.html 底部 script
+   ================================================================ */
+.ripple {
+    position: absolute;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.28);
+    transform: scale(0);
+    animation: rippleAnim 0.65s ease-out forwards;
+    pointer-events: none;
+    z-index: 2;
+}
+@keyframes rippleAnim {
+    to {
+        transform: scale(4);
+        opacity: 0;
+    }
+}
+
+/* ================================================================
+   6. 按钮悬停/激活微增强（保持 style.css 原配色）
+   ================================================================ */
+
+/* btn-primary 绿色 hover 加强阴影 */
+.btn-primary:hover:not(:disabled) {
+    box-shadow: 0 4px 20px rgba(34, 197, 94, 0.35) !important;
+}
+
+/* 按钮退出 hover */
+.btn-exit:hover:not(:disabled) {
+    box-shadow: 0 4px 20px rgba(255, 255, 255, 0.25) !important;
+}
+
+/* ================================================================
+   7. 颜色微调 —— 仅增强/加回源生配色细节
+   ================================================================ */
+
+/* game-title 渐变保持 style.css 原样：绿 → 蓝 */
+.game-title {
+    background: linear-gradient(135deg, #22c55e, #3b82f6) !important;
+    -webkit-background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+    background-clip: text !important;
+}
+
+/* modal h2 保持 style.css 原样：绿 → 蓝 */
+.modal-content h2 {
+    background: linear-gradient(135deg, #22c55e, #3b82f6) !important;
+    -webkit-background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+    background-clip: text !important;
+}
+
+/* 赢家文字保持绿色 */
+.winner-text {
+    color: #22c55e !important;
+}
+
+/* Summa dialog 保持青色渐变 */
+.summa-dialog-icon {
+    background: linear-gradient(135deg, #a78bfa, #22c55e) !important;
+    -webkit-background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+    background-clip: text !important;
+}
+.summa-dialog-title {
+    background: linear-gradient(135deg, #a78bfa, #818cf8, #22c55e) !important;
+    -webkit-background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+    background-clip: text !important;
+}
+
+/* Summa dialog 跳过按钮（保留原有紫色系，这是 Summa 特色主题色） */
+.summa-dialog-content {
+    border-color: rgba(167, 139, 250, 0.3) !important;
+    box-shadow: 
+        0 0 40px rgba(167, 139, 250, 0.15),
+        0 20px 60px rgba(0, 0, 0, 0.5) !important;
+}
+.summa-dialog-message {
+    border-color: rgba(167, 139, 250, 0.15) !important;
+    color: #c4b5fd !important;
+}
+.summa-dialog-input {
+    border-color: rgba(167, 139, 250, 0.3) !important;
+}
+.summa-dialog-input:focus {
+    border-color: #a78bfa !important;
+    box-shadow: 0 0 0 3px rgba(167, 139, 250, 0.2) !important;
+}
+.summa-dialog-option-btn {
+    border-color: rgba(255, 255, 255, 0.15) !important;
+}
+.summa-dialog-option-btn:hover {
+    background: rgba(34, 197, 94, 0.15) !important;
+    border-color: rgba(34, 197, 94, 0.5) !important;
+    color: #86efac !important;
+    box-shadow: 0 4px 15px rgba(34, 197, 94, 0.2) !important;
+}
+.summa-dialog-skip-btn {
+    border-color: rgba(167, 139, 250, 0.4) !important;
+    background: rgba(167, 139, 250, 0.1) !important;
+    color: #c4b5fd !important;
+}
+.summa-dialog-skip-btn:hover {
+    background: rgba(167, 139, 250, 0.25) !important;
+    border-color: rgba(167, 139, 250, 0.6) !important;
+    box-shadow: 0 0 20px rgba(167, 139, 250, 0.2) !important;
+}
+.summa-dialog-exit-btn {
+    border-color: rgba(248, 113, 113, 0.4) !important;
+    background: rgba(248, 113, 113, 0.1) !important;
+    color: #fca5a5 !important;
+}
+.summa-dialog-exit-btn:hover {
+    background: rgba(248, 113, 113, 0.25) !important;
+    border-color: rgba(248, 113, 113, 0.6) !important;
+    color: #fef2f2 !important;
+    box-shadow: 0 0 20px rgba(248, 113, 113, 0.2) !important;
+}
+
+/* stars 系统保持 style.css: acc15 金色 */
+.campaign-star-bar-fill {
+    background: linear-gradient(90deg, #facc15, #fde68a, #fbbf24) !important;
+    box-shadow: 0 0 10px rgba(250, 204, 21, 0.45) !important;
+}
+.campaign-cell-stars .star.filled,
+.campaign-victory-stars .star.filled {
+    color: #facc15 !important;
+    filter: drop-shadow(0 0 3px rgba(250, 204, 21, 0.4)) !important;
+}
+.campaign-star-progress .star-count .star {
+    color: #facc15 !important;
+}
+
+/* 加回 scrollbar 微调 */
+::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2) !important;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.35) !important;
+}

@@ -2,6 +2,7 @@ const canvas = document.getElementById('canvas');
 const input = document.getElementById('expr');
 const drawBtn = document.getElementById('drawBtn');
 const clearBtn = document.getElementById('clearBtn');
+const debugBtn = document.getElementById('debugBtn');
 const statusEl = document.getElementById('status');
 const plotter = new Plotter(canvas);
 
@@ -121,6 +122,11 @@ plotter.resizeToDisplay();
 render();
 window.addEventListener('resize', () => { plotter.resizeToDisplay(); render(); });
 drawBtn.addEventListener('click', render);
+debugBtn.addEventListener('click', () => {
+  plotter.debug.enabled = !plotter.debug.enabled;
+  debugBtn.textContent = `调试：${plotter.debug.enabled ? '开' : '关'}`;
+  render();
+});
 clearBtn.addEventListener('click', () => { input.value = ''; input.placeholder = 'sin(x)'; plotter.drawGrid(); setStatus(''); });
 input.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) {

@@ -52,8 +52,13 @@ class GeneralPathClippedForCurvePlotter extends PathPlotter {
     const ctx = this.ctx;
     if (point == null) { this.moveTo(x, y); return; }
     const isLine = lineTo !== 'MOVE_TO';
-    const distant = Math.abs(x - point.x) > 0.5 || Math.abs(y - point.y) > 0.5 || !isLine;
-    if (!distant && isLine === this.lineDrawn) return;
+
+    // 只忽略真正重复的点，避免在某些缩放比例下把短但有效的线段误判为重复段
+    const dx = x - point.x;
+    const dy = y - point.y;
+    const samePoint = Math.abs(dx) < 1e-9 && Math.abs(dy) < 1e-9;
+    if (samePoint && isLine === this.lineDrawn) return;
+
     const clipped = this.clipToView(point.x, point.y, x, y);
     this.currentPoint = { x, y };
     this.lineDrawn = isLine;

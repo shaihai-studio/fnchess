@@ -67,7 +67,12 @@ class FunctionParser {
     cFactorial(a) {
         a = this.toComplex(a);
         if (a.im !== 0) return { re: NaN, im: NaN };
-        return this.toComplex(this.gamma(a.re + 1));
+        const n = a.re + 1; // gamma 参数 = x + 1
+        // 负整数处的 gamma 是极点 → 返回 NaN
+        if (n <= 0 && Math.abs(n - Math.round(n)) < 1e-10) return { re: NaN, im: NaN };
+        // 距离负整数非常近（<0.005）→ 也是极点，值极大且视觉无用
+        if (n <= 0 && Math.abs(n - Math.round(n)) < 0.005) return { re: NaN, im: NaN };
+        return this.toComplex(this.gamma(n));
     }
 
     // ========== 伽马函数（与 geogebra-lite 同步） ==========
@@ -91,7 +96,10 @@ class FunctionParser {
     complexToNumber(v) {
         const c = this.toComplex(v);
         if (!Number.isFinite(c.re) || !Number.isFinite(c.im)) return null;
-        return Math.abs(c.im) < 1e-10 ? c.re : c;
+        // 虚部足够小 → 视为实数（处理 (-x)^n 整数幂的浮点精度问题）
+        const imTolerance = Math.max(1e-10, Math.abs(c.re) * 1e-10);
+        if (Math.abs(c.im) < imTolerance) return c.re;
+        return null; // 有显著虚部 → 实数范围内无定义，返回 null
     }
 
     // ========== Tokenizer（与 geogebra-lite 同步） ==========
@@ -278,6 +286,16 @@ class FunctionParser {
     evaluate(expression, x) {
         try {
             const v = this.evalAst(this.parse(expression), x);
+            return this.complexToNumber(v);
+        } catch {
+            return null;
+        }
+    }
+
+    /** 直接用预解析的 AST 求值，避免重复 parse 开销 */
+    evaluateAst(ast, x) {
+        try {
+            const v = this.evalAst(ast, x);
             return this.complexToNumber(v);
         } catch {
             return null;

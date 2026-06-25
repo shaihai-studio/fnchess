@@ -73,7 +73,10 @@ class FunctionParser {
   cFactorial(a) {
     a = this.toComplex(a);
     if (a.im !== 0) return { re: NaN, im: NaN };
-    return this.toComplex(this.gamma(a.re + 1));
+    const n = a.re + 1;
+    if (n <= 0 && Math.abs(n - Math.round(n)) < 1e-10) return { re: NaN, im: NaN };
+    if (n <= 0 && Math.abs(n - Math.round(n)) < 0.005) return { re: NaN, im: NaN };
+    return this.toComplex(this.gamma(n));
   }
 
   parse(expr) {
@@ -185,7 +188,10 @@ class FunctionParser {
   complexToNumber(v) {
     const c = this.toComplex(v);
     if (!Number.isFinite(c.re) || !Number.isFinite(c.im)) return null;
-    return Math.abs(c.im) < 1e-10 ? c.re : c;
+    // 虚部足够小 → 视为实数（处理 (-x)^n 整数幂的浮点精度问题）
+    const imTolerance = Math.max(1e-10, Math.abs(c.re) * 1e-10);
+    if (Math.abs(c.im) < imTolerance) return c.re;
+    return null; // 有显著虚部 → 实数范围内无定义
   }
 
   evalAst(node, x) {

@@ -24,6 +24,11 @@ class FunctionRenderer {
         // 动画绘制控制
         this.animationFrameId = null;
         this.isDrawing = false;
+
+        // 调试绘制
+        this.debugEnabled = false;
+        this.lastDebugSegments = [];
+        this.lastDebugReasons = [];
     }
 
     cancelDrawing() {
@@ -113,16 +118,109 @@ class FunctionRenderer {
      * 构造 curve adapter，供 CurveSegmentPlotter.evaluateCurve() 使用
      * geogebra-lite 的 curve 接口要求：evaluateCurve(x, out) → out[0]=x, out[1]=y
      */
+    /**
+     * 判断两点之间是否为跳跃间断点（而非连续的陡峭函数）
+     * 算法：二分取中点验证法（自适应迭代次数）
+     * - 取中点 a = (x1+x2)/2，求 f(a)
+     * - 如果差值 <= threshold → 连续，返回 false
+     * - 如果中点 y 在两端 y 之间 → 函数平滑过渡，继续迭代（最多 32 次）
+     * - 如果中点 y 不在两端 y 之间 → 间断特征，6 次后停止，返回 true
+     * - 32 次仍差值 >= threshold → 不连线，返回 true
+     * @param {object} ast 预解析的 AST
+     * @param {number} threshold 跳跃量阈值（= range/100）
+     * @returns {boolean} true = 跳跃间断点（不连线）
+     */
+    _isJumpDiscontinuity(ast, x1, y1, x2, y2, threshold) {
+        const dy = Math.abs(y2 - y1);
+        if (dy <= threshold) return false;
+
+        let leftX = x1, leftY = y1;
+        let rightX = x2, rightY = y2;
+        const MAX_ITER = 32;
+        const QUICK_STOP = 6;
+
+        for (let i = 0; i < MAX_ITER; i++) {
+            const midX = (leftX + rightX) / 2;
+            const midY = this.parser.evaluateAst(ast, midX);
+
+            if (midY === null || !Number.isFinite(midY)) return true;
+
+            const diffLeft = Math.abs(midY - leftY);
+            const diffRight = Math.abs(midY - rightY);
+
+            if (diffLeft <= threshold && diffRight <= threshold) return false;
+
+            // 区间非常小时，确认连续
+            if (Math.abs(rightX - leftX) < 1e-12) return false;
+
+            // 判断中点 y 是否在当前两端 y 之间
+            const minY = Math.min(leftY, rightY);
+            const maxY = Math.max(leftY, rightY);
+            const midBetween = midY >= minY && midY <= maxY;
+
+            // 中点不在两端之间 → 间断特征，6 次后停止判定为跳跃
+            if (!midBetween && i >= QUICK_STOP) return true;
+
+            // 向差值更大的方向收缩
+            if (diffLeft > diffRight) {
+                rightX = midX;
+                rightY = midY;
+            } else {
+                leftX = midX;
+                leftY = midY;
+            }
+        }
+
+        // 32 次迭代仍未收敛 → 不连线
+        return true;
+    }
+
     _buildAdapter(expr) {
         const parser = this.parser;
+        const gs = this.gridSystem;
+        // 预解析 AST，避免 evaluateCurve 和 _isJumpDiscontinuity 中重复 parse
+        const ast = parser.parse(expr);
+        const jumpThresh = Math.max(gs.range / 100, 0.01);
+        const isJumpFn = (x1, y1, x2, y2) => this._isJumpDiscontinuity(ast, x1, y1, x2, y2, jumpThresh);
+        // 跳跃间断点检测：上次有效求值点，用于判断 Y 跳变
+        let lastValidX = null;
+        let lastValidY = null;
+
         return {
             expr,
             newDoubleArray() { return [0, 0]; },
             isFunctionInX() { return true; },
             getMinDistX() { return 1e-4; },
+            /** 无副作用求值：不修改 lastValidX/Y 追踪状态，供间断检测使用 */
+            evaluateRaw(x) { return parser.evaluateAst(ast, x); },
             evaluateCurve(x, out) {
                 out[0] = x;
-                out[1] = parser.evaluate(expr, x);
+                const y = parser.evaluateAst(ast, x);
+
+                // 求值失败 → 标记 undefined，重置追踪
+                if (y === null || !Number.isFinite(y)) {
+                    out[1] = NaN;
+                    lastValidX = null;
+                    lastValidY = null;
+                    return;
+                }
+
+                // 跳跃间断点检测：与上一个有效点比较 Y 跳变
+                if (lastValidX !== null && lastValidY !== null) {
+                    const dx = Math.abs(x - lastValidX);
+                    // 只在 x 间距较小时才检测跳变（避免跨区间误判）
+                    if (dx > 1e-12 && dx < gs.range * 0.1) {
+                        if (isJumpFn(lastValidX, lastValidY, x, y)) {
+                            out[1] = NaN;
+                            // 不更新 lastValid，下次将从新位置重新开始追踪
+                            return;
+                        }
+                    }
+                }
+
+                out[1] = y;
+                lastValidX = x;
+                lastValidY = y;
             },
             updateExpandedFunctions() {},
             distanceMax(a, b) { return Math.max(Math.abs(a[0] - b[0]), Math.abs(a[1] - b[1])); }
@@ -198,21 +296,46 @@ class FunctionRenderer {
         const cleanExpr = expr.toLowerCase().replace(/\s/g, '');
 
         if (/(?:^|[^a-z])ln\s*(?:\(|x|X)/i.test(expr)) {
-            return this._buildLnSegments(expr, xMin, xMax);
+            const lnSeg = this._buildLnSegments(expr, xMin, xMax);
+            this.lastDebugSegments = lnSeg;
+            this.lastDebugReasons = [];
+            return lnSeg;
         }
 
-        const adapter = this._buildAdapter(expr);
-        const view = this._buildView();
-        const cp = this._createCapturingPath(view);
+        const segments = this._denseResampleSegments(expr, xMin, xMax);
+        const reasons = [];
+        const debugAst = this.parser.parse(expr);
 
-        try {
-            CurvePlotter.plotCurve(adapter, xMin, xMax, view, cp, false, Gap.MOVE_TO);
-        } catch (e) {
-            console.warn('[FunctionRenderer] geogebra-lite 采样异常，回退到等步长:', e);
-            return this._fallbackSegments(expr, xMin, xMax);
+        if (segments.length <= 1) {
+            reasons.push({ x: xMin, y: null, reason: '连续性判断失败' });
         }
 
-        return cp._getSegments();
+        for (let i = 1; i < segments.length; i++) {
+            const prev = segments[i - 1];
+            const next = segments[i];
+            const a = prev[prev.length - 1];
+            const b = next[0];
+            if (!a || !b) continue;
+            const dx = Math.abs(b.x - a.x);
+            const ya = this.parser.evaluateAst(debugAst, a.x);
+            const yb = this.parser.evaluateAst(debugAst, b.x);
+            const midX = (a.x + b.x) / 2;
+            const ym = this.parser.evaluateAst(debugAst, midX);
+            let reason = '连续性判断失败';
+            if (!Number.isFinite(ya) || !Number.isFinite(yb)) reason = '视口外';
+            else if (!Number.isFinite(ym)) reason = '二次采样未命中';
+            else if (Math.abs((yb - ya) / Math.max(dx, 1e-12)) > 240) reason = '变化过大';
+            reasons.push({ x: midX, y: Number.isFinite(ym) ? ym : null, reason });
+        }
+
+        this.lastDebugSegments = segments;
+        this.lastDebugReasons = reasons;
+        return segments;
+    }
+
+    _shouldForceDenseResample(expr) {
+        const s = String(expr || '').toLowerCase().replace(/\s+/g, '');
+        return s.includes('!') || s.includes('/cos(') || s.includes('/x') || s.includes('tan(') || s.includes('cot(') || s.includes('sec(') || s.includes('csc(') || s.includes('x^');
     }
 
     /**
@@ -251,6 +374,9 @@ class FunctionRenderer {
         const baseStep = Math.max((xMax - xMin) / Math.max(7000, width * 30), (xMax - xMin) / 60000);
         const points = [];
         let lastValid = false;
+        const ast = this.parser.parse(expr);
+        // 画布可视范围
+        const viewRange = Math.max(this.gridSystem.range, (xMax - xMin) / 2);
 
         const stepFor = (x, y) => {
             const ax = Math.abs(x);
@@ -267,12 +393,83 @@ class FunctionRenderer {
             return Math.max(step, baseStep / 30);
         };
 
+        let lastInvalidX = xMin; // 记录最近一次离开画布/无效的 x 位置
+
         for (let x = xMin; x <= xMax;) {
-            const y = this.parser.evaluate(expr, x);
+            const y = this.parser.evaluateAst(ast, x);
             if (y !== null && isFinite(y)) {
-                if (lastValid && points.length && !points[points.length - 1].break) {
+                const offCanvas = Math.abs(y) > viewRange;
+
+                // 超画布的点：二分搜索精确边界穿越点，再断开
+                if (offCanvas) {
+                    // 找到最后一个画布内的点，做二分搜索
+                    let lastPt = null;
+                    for (let k = points.length - 1; k >= 0; k--) {
+                        if (!points[k].break && points[k].y !== undefined) { lastPt = points[k]; break; }
+                    }
+                    if (lastPt) {
+                        let lo = lastPt.x, hi = x;
+                        for (let iter = 0; iter < 6; iter++) {
+                            const mid = (lo + hi) / 2;
+                            const midY = this.parser.evaluateAst(ast, mid);
+                            if (midY !== null && isFinite(midY) && Math.abs(midY) <= viewRange) {
+                                lo = mid; // mid 在画布内，推高 lo
+                            } else {
+                                hi = mid; // mid 在画布外，拉低 hi
+                            }
+                        }
+                        const finalY = this.parser.evaluateAst(ast, lo);
+                        if (finalY !== null && isFinite(finalY) && Math.abs(finalY) <= viewRange && lo > lastPt.x) {
+                            points.push({ x: lo, y: finalY });
+                        }
+                    }
+                    if (points.length && !points[points.length - 1].break) points.push({ break: true });
+                    lastInvalidX = x;
+                    lastValid = false;
+                    x += baseStep;
+                    continue;
+                }
+
+                // 跳跃间断点检测：与上一个有效点比较
+                let isJump = false;
+                if (lastValid && points.length) {
+                    let lastPt = null;
+                    for (let k = points.length - 1; k >= 0; k--) {
+                        if (!points[k].break && points[k].y !== undefined) { lastPt = points[k]; break; }
+                    }
+                    if (lastPt) {
+                        const dy = Math.abs(y - lastPt.y);
+                        const jumpThresh = Math.max(this.gridSystem.range / 100, 0.01);
+                        if (dy > jumpThresh && this._isJumpDiscontinuity(ast, lastPt.x, lastPt.y, x, y, jumpThresh)) {
+                            isJump = true;
+                        }
+                    }
+                }
+
+                if (isJump) {
+                    points.push({ break: true });
+                    points.push({ x, y });
+                } else if (lastValid && points.length && !points[points.length - 1].break) {
                     points.push({ x, y });
                 } else {
+                    // 从无效区域回到画布内 → 二分搜索找精确入口
+                    if (!lastValid && lastInvalidX < x) {
+                        let lo = lastInvalidX, hi = x;
+                        for (let iter = 0; iter < 6; iter++) {
+                            const mid = (lo + hi) / 2;
+                            const midY = this.parser.evaluateAst(ast, mid);
+                            if (midY !== null && isFinite(midY) && Math.abs(midY) <= viewRange) {
+                                hi = mid; // mid 在画布内，拉低 hi
+                            } else {
+                                lo = mid; // mid 在画布外/无效，推高 lo
+                            }
+                        }
+                        const finalY = this.parser.evaluateAst(ast, hi);
+                        if (finalY !== null && isFinite(finalY) && Math.abs(finalY) <= viewRange && hi < x) {
+                            points.push({ break: true });
+                            points.push({ x: hi, y: finalY });
+                        }
+                    }
                     points.push({ break: true });
                     points.push({ x, y });
                 }
@@ -280,6 +477,7 @@ class FunctionRenderer {
                 x += stepFor(x, y);
             } else {
                 if (points.length && !points[points.length - 1].break) points.push({ break: true });
+                lastInvalidX = x;
                 lastValid = false;
                 x += baseStep;
             }
@@ -294,10 +492,30 @@ class FunctionRenderer {
         const segments = [];
         let currentSegment = [];
         const step = 0.001;
+        const ast = this.parser.parse(expr);
+        const viewRange = Math.max(this.gridSystem.range, (xMax - xMin) / 2);
 
         for (let x = xMin; x <= xMax; x += step) {
-            const y = this.parser.evaluate(expr, x);
+            const y = this.parser.evaluateAst(ast, x);
             if (y !== null && isFinite(y)) {
+                // 超画布的点：断开当前段，不加入
+                if (Math.abs(y) > viewRange) {
+                    if (currentSegment.length > 0) {
+                        segments.push(currentSegment);
+                        currentSegment = [];
+                    }
+                    continue;
+                }
+                // 跳跃间断点检测：与当前段最后一个点比较
+                if (currentSegment.length > 0) {
+                    const last = currentSegment[currentSegment.length - 1];
+                    const dy = Math.abs(y - last.y);
+                    const jumpThresh = Math.max(this.gridSystem.range / 100, 0.01);
+                    if (dy > jumpThresh && this._isJumpDiscontinuity(ast, last.x, last.y, x, y, jumpThresh)) {
+                        segments.push(currentSegment);
+                        currentSegment = [];
+                    }
+                }
                 currentSegment.push({ x, y });
             } else {
                 if (currentSegment.length > 0) {
@@ -312,6 +530,118 @@ class FunctionRenderer {
         return segments;
     }
 
+    _denseResampleSegments(expr, xMin, xMax) {
+        const width = Math.max(1, this.gridSystem.canvas.width || 800);
+        const span = xMax - xMin;
+        const targetPixelGap = 12;
+        const dyThreshold = 8;
+        const maxRounds = 6;
+        const maxStep = Math.max(span / Math.max(3200, width * 18), span / 120000, 0.0005);
+        const minStep = Math.max(span / Math.max(50000, width * 140), span / 500000, 0.00008);
+        const ast = this.parser.parse(expr);
+        // 画布可视范围：超出此范围的点标记 isOffCanvas，不参与连线/调试描点
+        const viewRange = Math.max(this.gridSystem.range, span / 2);
+
+        let points = [];
+        for (let x = xMin; x <= xMax;) {
+            const y = this.parser.evaluateAst(ast, x);
+            if (y !== null && isFinite(y)) {
+                points.push({ x, y, isOffCanvas: Math.abs(y) > viewRange });
+                const slope = this._estimateLocalSlope(ast, x, span);
+                const slopeFactor = Math.sqrt(1 + slope * slope);
+                const step = Math.min(maxStep, Math.max(minStep, targetPixelGap / Math.max(slopeFactor, 1)));
+                x += step;
+            } else {
+                points.push({ x, y: null, isBreak: true });
+                x += maxStep;
+            }
+        }
+
+        for (let round = 0; round < maxRounds; round++) {
+            const refined = [];
+            let changed = false;
+
+            for (let i = 0; i < points.length; i++) {
+                const cur = points[i];
+                refined.push(cur);
+                const next = points[i + 1];
+                if (!next || cur.isBreak || next.isBreak || cur.y == null || next.y == null) continue;
+
+                // 两个点都在画布外 → 跳过迭代，不插入中点
+                if (cur.isOffCanvas && next.isOffCanvas) continue;
+
+                const dy = Math.abs(next.y - cur.y);
+                // 一点在画布内、一点在画布外 → 强制插入中点（边界细化）
+                const isBoundaryPair = cur.isOffCanvas !== next.isOffCanvas;
+                if (!isBoundaryPair && dy <= dyThreshold) continue;
+
+                // 跳跃间断点检测：y 变化 > jumpThresh → 用二分中点验证法
+                const jumpThresh = Math.max(this.gridSystem.range / 100, 0.01);
+                if (dy > jumpThresh && this._isJumpDiscontinuity(ast, cur.x, cur.y, next.x, next.y, jumpThresh)) {
+                    refined.push({ x: (cur.x + next.x) / 2, y: null, isBreak: true });
+                    changed = true;
+                    continue;
+                }
+
+                const midX = (cur.x + next.x) / 2;
+                if (midX === cur.x || midX === next.x) continue;
+                const midY = this.parser.evaluateAst(ast, midX);
+                if (midY === null || !isFinite(midY)) {
+                    refined.push({ x: midX, y: null, isBreak: true });
+                } else {
+                    refined.push({ x: midX, y: midY, isOffCanvas: Math.abs(midY) > viewRange });
+                }
+                changed = true;
+            }
+
+            points = refined;
+            if (!changed) break;
+        }
+
+        // 构建 segments：超画布的点完全不加入（不连线、不描点）
+        const segments = [];
+        let currentSegment = [];
+        for (let i = 0; i < points.length; i++) {
+            const p = points[i];
+            if (p.isBreak || p.y === null) {
+                if (currentSegment.length > 0) {
+                    segments.push(currentSegment);
+                    currentSegment = [];
+                }
+                continue;
+            }
+            // 超画布的点：断开当前段，不加入
+            if (p.isOffCanvas) {
+                if (currentSegment.length > 0) {
+                    segments.push(currentSegment);
+                    currentSegment = [];
+                }
+                continue;
+            }
+            if (currentSegment.length > 0) {
+                const last = currentSegment[currentSegment.length - 1];
+                const segDy = Math.abs(p.y - last.y);
+                // 跳跃间断点检测
+                const jumpThresh = Math.max(this.gridSystem.range / 100, 0.01);
+                if (segDy > dyThreshold || (segDy > jumpThresh && this._isJumpDiscontinuity(ast, last.x, last.y, p.x, p.y, jumpThresh))) {
+                    segments.push(currentSegment);
+                    currentSegment = [];
+                }
+            }
+            currentSegment.push({ x: p.x, y: p.y });
+        }
+        if (currentSegment.length > 0) segments.push(currentSegment);
+        return segments;
+    }
+
+    _estimateLocalSlope(ast, x, span) {
+        const eps = Math.max(span / 4000, 0.0001);
+        const y1 = this.parser.evaluateAst(ast, x - eps);
+        const y2 = this.parser.evaluateAst(ast, x + eps);
+        if (!Number.isFinite(y1) || !Number.isFinite(y2)) return 0;
+        return Math.abs((y2 - y1) / Math.max(2 * eps, 1e-12));
+    }
+
     // ========== 直接绘制（无动画，geogebra-lite 引擎即时绘制） ==========
 
     /**
@@ -321,6 +651,11 @@ class FunctionRenderer {
     _drawViaGeoGebra(expr, color) {
         const ctx = this.gridSystem.ctx;
         const view = this._buildView();
+        this.debugEnabled = !!this.debugEnabled;
+        if (this.debugEnabled) {
+            this.lastDebugSegments = [];
+            this.lastDebugReasons = [];
+        }
 
         // 设置绘制样式
         ctx.strokeStyle = color || this.colors.function;
@@ -537,20 +872,29 @@ class FunctionRenderer {
      */
     async drawFunction(expression, animate = true, color = null) {
         const range = this.gridSystem.getRange();
+        const segments = this._sampleToSegments(expression, range.min, range.max);
 
+        // 统一使用同一份采样结果来绘制和调试，避免“图像”和“蓝点”不对应
         if (animate) {
-            // 采样 segments → 动画绘制
-            const segments = this._sampleToSegments(expression, range.min, range.max);
             await this._animateDrawFromSegments(segments, color);
-            // 返回原格式 points
-            return this._segmentsToPoints(segments);
         } else {
-            // 直接通过 geogebra-lite 引擎绘制
-            this._drawViaGeoGebra(expression, color);
-            // 同时采样用于返回
-            const segments = this._sampleToSegments(expression, range.min, range.max);
-            return this._segmentsToPoints(segments);
+            const ctx = this.gridSystem.ctx;
+            ctx.save();
+            ctx.strokeStyle = color || this.colors.function;
+            ctx.lineWidth = this.getAdaptiveLineWidth();
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            if (!color) {
+                ctx.shadowColor = this.getAdaptiveGlowColor(color);
+                ctx.shadowBlur = this.getAdaptiveGlowSize();
+            }
+            this._drawSegmentsImmediate(segments, ctx);
+            ctx.shadowBlur = 0;
+            ctx.restore();
         }
+
+        if (this.debugEnabled) this.drawDebugOverlay();
+        return this._segmentsToPoints(segments);
     }
 
     /**
@@ -655,6 +999,96 @@ class FunctionRenderer {
             ctx.lineTo(p.x, p.y);
         }
         ctx.stroke();
+    }
+
+    drawDebugOverlay() {
+        if (!this.debugEnabled) return;
+        const ctx = this.gridSystem.ctx;
+        const segments = this.lastDebugSegments || [];
+        const reasons = this.lastDebugReasons || [];
+        ctx.save();
+        for (const seg of segments) {
+            for (const p of seg) {
+                const c = this.gridSystem.mathToCanvas(p.x, p.y);
+                ctx.fillStyle = 'rgba(96, 165, 250, 1)';
+                ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+                ctx.lineWidth = 1.8;
+                ctx.beginPath();
+                ctx.arc(c.x, c.y, 5, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+            }
+        }
+        for (const item of reasons) {
+            if (!item) continue;
+            const p = item.y === null ? this.gridSystem.mathToCanvas(item.x, 0) : this.gridSystem.mathToCanvas(item.x, item.y);
+            ctx.fillStyle = 'rgba(248, 113, 113, 1)';
+            ctx.strokeStyle = 'rgba(255,255,255,1)';
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, 10, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+            ctx.fillStyle = 'rgba(15,23,42,0.95)';
+            ctx.font = 'bold 12px system-ui, sans-serif';
+            const label = (item.reason || '断点').slice(0, 8);
+            const textW = ctx.measureText(label).width;
+            const labelH = 18;
+            ctx.fillRect(p.x + 12, p.y - labelH - 4, textW + 10, labelH);
+            ctx.fillStyle = '#fff';
+            ctx.fillText(label, p.x + 16, p.y + 2);
+        }
+        this.drawDebugPanel(ctx, segments, reasons);
+        ctx.restore();
+    }
+
+    drawDebugPanel(ctx, segments, reasons) {
+        const rows = [
+            `主采样段: ${segments.length}`,
+            `断点原因数: ${reasons.length}`,
+        ];
+        const reasonMap = new Map();
+        for (const r of reasons) reasonMap.set(r.reason, (reasonMap.get(r.reason) || 0) + 1);
+        for (const [k, v] of reasonMap) rows.push(`${k}: ${v}`);
+        rows.push(`调试开关: ${this.debugEnabled ? '开启' : '关闭'}`);
+
+        const padX = 18, padY = 12;
+        const lineHeight = 20;
+        const titleH = 28;
+        // 测量最长行的宽度
+        ctx.font = '12px system-ui, sans-serif';
+        let maxW = ctx.measureText('调试面板').width;
+        for (const r of rows) maxW = Math.max(maxW, ctx.measureText(r).width);
+        const boxW = maxW + padX * 2 + 8;
+        const boxH = padY * 2 + titleH + rows.length * lineHeight;
+
+        ctx.save();
+        ctx.fillStyle = 'rgba(2, 6, 23, 0.9)';
+        ctx.strokeStyle = 'rgba(96,165,250,0.85)';
+        ctx.lineWidth = 1.5;
+        if (typeof ctx.roundRect === 'function') {
+            ctx.beginPath();
+            ctx.roundRect(10, 10, boxW, boxH, 8);
+            ctx.fill();
+            ctx.stroke();
+        } else {
+            ctx.beginPath();
+            ctx.rect(10, 10, boxW, boxH);
+            ctx.fill();
+            ctx.stroke();
+        }
+        let y = 10 + padY + 16;
+        ctx.fillStyle = '#e2e8f0';
+        ctx.font = 'bold 13px system-ui, sans-serif';
+        ctx.fillText('调试面板', 10 + padX, y);
+        y += lineHeight + 2;
+        ctx.font = '12px system-ui, sans-serif';
+        for (let i = 0; i < rows.length; i++) {
+            ctx.fillStyle = i < 2 ? '#93c5fd' : (i === rows.length - 1 ? '#94a3b8' : '#cbd5e1');
+            ctx.fillText(rows[i], 10 + padX, y);
+            y += lineHeight;
+        }
+        ctx.restore();
     }
 
     isPointVisible(point, size) {

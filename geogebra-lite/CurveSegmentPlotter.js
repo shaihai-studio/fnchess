@@ -23,6 +23,7 @@ class CurveSegmentPlotter {
     this.zeroStack = [];
     this.zeroRefinePoints = [];
     this.debug = false;
+    this._isJump = false;
 
     this.MAX_DEFINED_BISECTIONS = 16;
     this.MAX_PROBLEM_BISECTIONS = 8;
@@ -136,7 +137,21 @@ class CurveSegmentPlotter {
         this.params.progress();
         this.curve.evaluateCurve(this.params.t, this.eval);
         this.onScreen = this.isOnView(this.eval);
-        if (this.isUndefinedVec(this.eval)) { if (this.hasNoSingularity(this.params.t, this.divisors[this.divisors.length - 1])) { const b = this.findBoundary(this.evalLeft[0], this.params.t); if (b) this.gp.lineTo(b); return true; } } else if (!this.isPointOnScreen(this.eval)) { const b = this.findBoundary(this.evalLeft[0], this.params.t); if (b) this.gp.lineTo(b); this.move = [...this.eval]; this.nextLineToNeedsMoveToFirst = true; return true; }
+        if (this.isUndefinedVec(this.eval)) { 
+          return true; 
+        } else if (!this.isPointOnScreen(this.eval)) {
+          // 检查是否因跳跃间断点（极点）导致离屏，防止画竖线
+          if (this.evalLeft && !this.isUndefinedVec(this.evalLeft)) {
+            const yL = this.evalLeft[1], yR = this.eval[1];
+            if (Number.isFinite(yL) && Number.isFinite(yR)) {
+              const dy = Math.abs(yR - yL);
+              if (dy > 0.2 && this._isJumpDiscontinuityViaCurve(this.curve, this.evalLeft[0], yL, this.eval[0], yR)) {
+                // 跳跃间断点导致离屏 → 不画边界线
+                return true;
+              }
+            }
+          }
+          const b = this.findBoundary(this.evalLeft[0], this.params.t); if (b) this.gp.lineTo(b); this.move = [...this.eval]; this.nextLineToNeedsMoveToFirst = true; return true; }
         this.evalRight = [...this.eval];
         this.params.updateDiff(this.evalLeft, this.evalRight);
         this.params.countDiffZeros = this.isDiffZero(this.params.diff) ? this.params.countDiffZeros + 1 : 0;
@@ -161,9 +176,34 @@ class CurveSegmentPlotter {
 
   hasNoSingularity(t, interval) { return !this.isContinuousAround(this.curve, t, interval, this.view, this.eval); }
   isCurveUndefinedAt(x) { this.curve.evaluateCurve(x, this.eval); return this.isUndefinedVec(this.eval); }
-  drawSegment(t, left, info) { if (this.isLineTo(t, left, info)) { if (this.nextLineToNeedsMoveToFirst) { this.gp.moveTo(this.move); this.nextLineToNeedsMoveToFirst = false; } this.gp.lineTo(this.evalRight); } else { if (this.evalRight && !this.isPointOnScreen(this.evalRight)) { const b = this.findBoundary(this.evalLeft[0], t); if (b) this.gp.lineTo(b); } this.move = [...this.evalRight]; this.nextLineToNeedsMoveToFirst = true; } }
+  drawSegment(t, left, info) { if (this.isLineTo(t, left, info)) { if (this.nextLineToNeedsMoveToFirst) { this.gp.moveTo(this.move); this.nextLineToNeedsMoveToFirst = false; } this.gp.lineTo(this.evalRight); } else { // 跳跃间断点：不画边界线（否则会画出竖线） if (!this._isJump && this.evalRight && !this.isPointOnScreen(this.evalRight)) { const b = this.findBoundary(this.evalLeft[0], t); if (b) this.gp.lineTo(b); } this.move = [...this.evalRight]; this.nextLineToNeedsMoveToFirst = true; } this._isJump = false; }
   calculateLabelPosition() { this.labelPoint = this.evalRight ? [this.evalRight[0], this.evalRight[1]] : null; this.needLabelPos = false; }
-  isLineTo(t, left, info) { if (this.moveToAllowed === Gap.MOVE_TO) { if (info.isOffScreen()) return false; if (info.isDistanceOrAngleInvalid()) return this.isContinuous(this.curve, left, t, this.MAX_CONTINUITY_BISECTIONS); } else if (this.moveToAllowed === Gap.CORNER) { this.gp.corner(this.evalRight); } return true; }
+  isLineTo(t, left, info) {
+    this._isJump = false;
+    if (this.moveToAllowed === Gap.MOVE_TO) {
+      // 跳跃间断点检测：放在 isOffScreen 之前，防止极点处的离屏值误画竖线
+      if (this.evalLeft && this.evalRight) {
+        const yL = this.evalLeft[1], yR = this.evalRight[1];
+        if (Number.isFinite(yL) && Number.isFinite(yR)) {
+          const dy = Math.abs(yR - yL);
+          if (dy > 0.2 && this._isJumpDiscontinuityViaCurve(this.curve, this.evalLeft[0], yL, this.evalRight[0], yR)) {
+            this._isJump = true;
+            return false;
+          }
+        } else {
+          // 任一端为非有限值 → 必须断开
+          this._isJump = true;
+          return false;
+        }
+      }
+      if (info.isOffScreen()) return false;
+      if (info.isDistanceOrAngleInvalid())
+        return this.isContinuous(this.curve, left, t, this.MAX_CONTINUITY_BISECTIONS);
+    } else if (this.moveToAllowed === Gap.CORNER) {
+      this.gp.corner(this.evalRight);
+    }
+    return true;
+  }
   isDiffZero(diff) { return Math.abs(diff[0]) < 1e-12 && Math.abs(diff[1]) < 1e-12; }
   createDivisorsArray(tMin, tMax) { const divisors = new Array(this.MAX_DEFINED_BISECTIONS + 1); divisors[0] = tMax - tMin; for (let i = 1; i < divisors.length; i++) divisors[i] = divisors[i - 1] / 2; return divisors; }
   isUndefined(x) { return x == null || !Number.isFinite(x); }
@@ -185,7 +225,73 @@ class CurveSegmentPlotter {
     if (Math.abs(rightBorders[1] - rightBorders[0]) > this.maxParamStep && rightDepth <= this.MAX_PROBLEM_BISECTIONS) { const rightPlotter = new CurveSegmentPlotter(this.curve, rightBorders[0], rightBorders[1], rightDepth, this.maxParamStep, this.view, this.gp, calcLabel && this.labelPoint == null, this.moveToAllowed); if (!this.labelPoint && rightPlotter.getLabelPoint()) this.labelPoint = rightPlotter.getLabelPoint(); }
     return this.labelPoint;
   }
-  isContinuousAround(curve, t, eps, view, evalT) { if (eps <= 0 || !Number.isFinite(eps)) return false; const sample = curve.newDoubleArray(); curve.evaluateCurve(t + eps, sample); const oldy = sample[1]; if (this.isUndefinedVec(sample)) return false; curve.evaluateCurve(t - eps, sample); if (this.isUndefinedVec(sample)) return false; if (curve.isFunctionInX && curve.isFunctionInX() && Math.abs(oldy - sample[1]) * (view?.getYscale?.() || 1) < this.MAX_JUMP) { evalT[1] = (oldy + sample[1]) * 0.5; return true; } return !curve.isFunctionInX || !curve.isFunctionInX(); }
+  /**
+   * 二分取中点验证法判断是否为跳跃间断点
+   * 算法：取中点求值，如果差值>0.2则向该侧继续二分，6次后仍有差值→间断
+   * 使用 evaluateRaw 避免修改 evaluateCurve 的追踪状态
+   */
+  _isJumpDiscontinuityViaCurve(curve, x1, y1, x2, y2) {
+    const dy = Math.abs(y2 - y1);
+    if (dy <= 0.2) return false;
+
+    const evalFn = curve.evaluateRaw
+      ? (x) => curve.evaluateRaw(x)
+      : (x) => { const s = curve.newDoubleArray(); curve.evaluateCurve(x, s); return this.isUndefinedVec(s) ? null : s[1]; };
+
+    let leftX = x1, leftY = y1;
+    let rightX = x2, rightY = y2;
+    const THRESHOLD = 0.2;
+    const MAX_ITER = 12;
+
+    for (let i = 0; i < MAX_ITER; i++) {
+      const midX = (leftX + rightX) / 2;
+      const midY = evalFn(midX);
+      if (midY === null || !Number.isFinite(midY)) return true;
+
+      const diffLeft = Math.abs(midY - leftY);
+      const diffRight = Math.abs(midY - rightY);
+
+      if (diffLeft <= THRESHOLD && diffRight <= THRESHOLD) return false;
+
+      // 区间非常小时，确认连续
+      if (Math.abs(rightX - leftX) < 1e-12) return false;
+
+      // 向差值更大的方向收缩
+      if (diffLeft > diffRight) {
+        rightX = midX;
+        rightY = midY;
+      } else {
+        leftX = midX;
+        leftY = midY;
+      }
+    }
+    return true;
+  }
+
+  isContinuousAround(curve, t, eps, view, evalT) {
+    if (eps <= 0 || !Number.isFinite(eps)) return false;
+    const sample = curve.newDoubleArray();
+    curve.evaluateCurve(t + eps, sample);
+    const yRight = sample[1];
+    if (this.isUndefinedVec(sample)) return false;
+    const xRight = sample[0];
+    curve.evaluateCurve(t - eps, sample);
+    if (this.isUndefinedVec(sample)) return false;
+    const yLeft = sample[1];
+    const xLeft = sample[0];
+    const dy = Math.abs(yRight - yLeft);
+    if (curve.isFunctionInX && curve.isFunctionInX()) {
+      // 跳跃间断点检测：y变化>0.2时用二分中点验证法
+      if (dy > 0.2 && this._isJumpDiscontinuityViaCurve(curve, xLeft, yLeft, xRight, yRight)) {
+        return false;
+      }
+      if (dy * (view?.getYscale?.() || 1) < this.MAX_JUMP) {
+        evalT[1] = (yRight + yLeft) * 0.5;
+        return true;
+      }
+    }
+    return !curve.isFunctionInX || !curve.isFunctionInX();
+  }
   isPointOnScreen(eval) {
     if (this.isUndefinedVec(eval)) return false;
     const sx = this.view.toScreenCoordXd(eval[0]);
