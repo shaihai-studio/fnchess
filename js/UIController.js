@@ -118,7 +118,7 @@ class UIController {
         const difficulty = this.difficultySelect.value;
         const hints = {
             'easy': '简单模式：1个目标格，四则运算无法被锁定，每回合+20秒',
-            'normal': '普通模式：1个目标格，标准规则',
+            'normal': '普通模式：2个目标格，标准规则',
             'hard': '困难模式：2个目标格',
             'expert': '专家模式：3个目标格',
             'test': '测试模式：自由绘图，无目标格，函数持续显示'
@@ -342,6 +342,35 @@ class UIController {
                     color: '#00d4ff', // 默认颜色
                     sampledRange: this.gridSystem.range  // 记录采样时的 range，用于 range 扩大后的重采样判断
                 });
+            }
+
+            // ── 挑衅反转学习钉子 ────────────────────────────────────────────────
+            // 当 AI 模式下玩家 A 正在解答 Summa 的挑衅题目，需要让 Summa 学习或反馈
+            if (this.gameController.gameMode === 'ai'
+                && this.gameController.currentPlayer === 'A'
+                && this.aiController.pendingRevengePuzzle !== null) {
+                if (data.hitTarget && !data.hitForbidden) {
+                    // 玩家成功解题：Summa 学习该解法
+                    this.aiController.learnFromPlayer(data.expression);
+                } else {
+                    // 玩家也失败：Summa 得意
+                    this.aiController.notifyPlayerFailedRevenge();
+                }
+            }
+
+            // ── 玩家解析式深度训练 ─────────────────────────────────────────────────
+            // AI 模式下，仅当玩家成功命中目标时，基于其表达式进行参数变形训练
+            if (this.gameController.gameMode === 'ai'
+                && this.gameController.currentPlayer === 'A'
+                && data.expression
+                && data.hitTarget && !data.hitForbidden) {
+                const trainState = this.gameController.getGameState();
+                // 静默后台训练，不阻塞游戏流程
+                this.aiController.trainOnPlayerExpression(
+                    data.expression,
+                    trainState.roundState.targetCells,
+                    trainState.roundState.forbiddenCells
+                );
             }
         });
         
@@ -965,6 +994,13 @@ class UIController {
         // 测试模式不触发AI
         if (this.gameController.isTestMode()) return;
         
+        // 只处理AI可以操作的阶段，忽略evaluate/switch_player等中间阶段
+        const aiActionablePhases = ['select_target', 'set_forbidden', 'set_locks', 'input_function'];
+        if (!aiActionablePhases.includes(phase)) {
+            console.log(`[UI] 阶段 ${phase} 无需AI操作，跳过`);
+            return;
+        }
+        
         // 检查当前是否是AI的回合
         const state = this.gameController.getGameState();
         if (state.currentPlayer !== 'B') {
@@ -999,9 +1035,10 @@ class UIController {
         while (this.aiTriggerQueue.length > 0) {
             const phase = this.aiTriggerQueue.shift();
             
-            // 如果AI正在思考，等待
+            // 如果AI正在思考，将阶段放回队首并等待，避免phase丢失
             if (this.aiController.isThinking) {
                 console.log('[UI] AI正在思考，等待完成');
+                this.aiTriggerQueue.unshift(phase); // 放回队首，不丢弃
                 await new Promise(resolve => setTimeout(resolve, 100));
                 continue;
             }

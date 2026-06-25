@@ -160,8 +160,8 @@ class SummaCharacter {
                 </div>
             </div>
             
-            <!-- 物理参数调试面板 -->
-            <div id="summa-debug-panel" style="position:fixed; top:20px; left:20px; background:rgba(0,0,0,0.85); color:#00ffcc; font-family:monospace; padding:15px; border-radius:10px; z-index:10000; display:flex; flex-direction:column; gap:8px; border:1px solid #00ffcc; box-shadow:0 4px 15px rgba(0,255,204,0.4); font-size:12px;">
+            <!-- 物理参数调试面板 (默认隐藏，按 Shift 切换) -->
+            <div id="summa-debug-panel" style="position:fixed; top:20px; left:20px; background:rgba(0,0,0,0.85); color:#00ffcc; font-family:monospace; padding:15px; border-radius:10px; z-index:10000; display:none; flex-direction:column; gap:8px; border:1px solid #00ffcc; box-shadow:0 4px 15px rgba(0,255,204,0.4); font-size:12px;">
                 <h3 style="margin:0 0 10px 0; font-size:16px; border-bottom:1px solid #00ffcc; padding-bottom:5px;"> Summa Physics Debug </h3>
                 <label style="display:flex; justify-content:space-between; align-items:center;">链长弹性(CHAIN_K)<input type="number" id="dbg-chainK" step="0.01" style="width:70px; background:#111; color:#00ffcc; border:1px solid #00ffcc; padding:2px;"></label>
                 <label style="display:flex; justify-content:space-between; align-items:center;">回拉弹性(ANCHOR_K)<input type="number" id="dbg-anchorK" step="0.01" style="width:70px; background:#111; color:#00ffcc; border:1px solid #00ffcc; padding:2px;"></label>
@@ -278,6 +278,20 @@ class SummaCharacter {
                 updateInputs();
             });
         }
+
+        // ── Q 键切换 debug 面板显示/隐藏 ────────────────────────────────────
+        this._debugPanelVisible = false;
+        this._handleDebugToggleKey = (e) => {
+            if (e.key === 'q' || e.key === 'Q') {
+                e.preventDefault();
+                this._debugPanelVisible = !this._debugPanelVisible;
+                const panel = document.getElementById('summa-debug-panel');
+                if (panel) {
+                    panel.style.display = this._debugPanelVisible ? 'flex' : 'none';
+                }
+            }
+        };
+        document.addEventListener('keydown', this._handleDebugToggleKey);
     }
 
     show(mode) {
@@ -383,6 +397,24 @@ class SummaCharacter {
     reactPlayerError()   { this.speak('playerError', 'smug'); }
     reactWin()           { this.speak('win', 'happy'); }
     reactLose()          { this.speak('lose', 'sad'); }
+
+    /**
+     * 显示自定义消息（非预设对话）
+     * @param {string} message - 要显示的消息
+     * @param {string} mood - 情绪（影响立绘）
+     */
+    say(message, mood = 'neutral') {
+        if (!this.messageBox) return;
+        
+        this.setExpression(mood);
+        this.messageBox.textContent = message;
+        this.messageBox.classList.add('visible');
+
+        if (this.bubbleTimeout) clearTimeout(this.bubbleTimeout);
+        this.bubbleTimeout = setTimeout(() => {
+            this.messageBox.classList.remove('visible');
+        }, 5000);
+    }
 }
 
 window.SummaCharacter = SummaCharacter;

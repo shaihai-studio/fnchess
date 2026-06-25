@@ -9,7 +9,19 @@ class AIController {
         this.parser = new FunctionParser();
         this.name = "Summa";
         this.isThinking = false;
-        
+
+        // ── 挑衅反转学习系统 ────────────────────────────────────────────
+        this.failedPuzzle = null;         // Summa 无法破解的局面快照
+        this.revengeMode = false;          // 下次选题时出同类题
+        this.pendingRevengePuzzle = null;  // 当前回合反出给玩家的局面
+        this.learnedSolutions = [];        // 精确解法库 [{targetCells, forbiddenCells, expression}]
+        this.learnedTemplates = [];        // 算法模板库 [{core, original}]（计入生成算法）
+        this.failedStructures = [];        // 失败结构记忆库 [{signature, cores}]
+                                           // signature: 结构指纹(目标格相对位置), cores: 成功的模板core列表
+
+        // ── 加载持久化的学习数据 ─────────────────────────────────────────
+        this._loadLearnedData();
+
         // AI策略配置
         this.strategies = {
             easy: {
@@ -64,11 +76,35 @@ class AIController {
         try {
             if (phase === 'select_target') {
                 console.log('[AI] >> 选择目标格');
-                this.selectTargets();
+                await this.selectTargets();
                 await this.think(500);
+                
+                // 检查目标格数量
+                const currentCount = this.gameController.roundState.targetCells.length;
+                const requiredCount = this.gameController.targetCount;
+                console.log(`[AI] 目标格选择完成: ${currentCount}/${requiredCount}`);
+                
                 console.log('[AI] 确认目标格选择');
-                this.gameController.confirmTargetSelection();
-                // 等待阶段切换完成
+                const confirmResult = this.gameController.confirmTargetSelection();
+                console.log(`[AI] 确认结果: ${confirmResult}`);
+                
+                if (!confirmResult) {
+                    // 如果确认失败（格子不够），补齐缺少的格子再次尝试
+                    console.warn('[AI] 确认目标格失败，尝试补齐缺少格子');
+                    const half = this.gridSystem.gridSize / 2;
+                    const targetCount = this.gameController.targetCount;
+                    while (this.gameController.roundState.targetCells.length < targetCount) {
+                        const cell = this._findFallbackCell(half, this.gameController.roundState.targetCells);
+                        if (cell) {
+                            this.gameController.selectTargetCell(cell);
+                        } else break;
+                    }
+                    const retryResult = this.gameController.confirmTargetSelection();
+                    console.log(`[AI] 重试确认结果: ${retryResult}`);
+                    if (!retryResult) {
+                        console.error('[AI] ❌ 重试确认仍然失败，游戏可能卡住');
+                    }
+                }
                 await this.think(200);
             } else if (phase === 'set_forbidden') {
                 console.log('[AI] >> 设置禁区');
@@ -88,7 +124,7 @@ class AIController {
                 await this.think(200);
             } else if (phase === 'input_function') {
                 console.log('[AI] >> 构造函数');
-                const expression = this.generateExpression();
+                const expression = await this.generateExpression();
                 await this.submitExpression(expression);
             } else {
                 console.log('[AI] 未知阶段:', phase);
@@ -112,56 +148,95 @@ class AIController {
     /**
      * 选择目标点
      */
-    selectTargets() {
+    async selectTargets() {
+        this.pendingRevengePuzzle = null;
+
         const state = this.gameController.getGameState();
         const count = state.targetCount;
         const gridSize = this.gridSystem.gridSize;
+        const half = gridSize / 2;
         const strategy = this.strategies[this.gameController.difficulty] || this.strategies.normal;
-        
-        for (let i = 0; i < count; i++) {
-            let x, y;
+
+        console.log(`[AI] selectTargets 开始: 需要 ${count} 个目标格, 当前阶段: ${state.currentPhase}`);
+
+        // 检查当前阶段是否正确
+        if (state.currentPhase !== 'select_target') {
+            console.error(`[AI] ❌ 当前阶段不是 select_target，而是 ${state.currentPhase}，无法选择目标格`);
+            return;
+        }
+
+        // ── 挑衅反转模式：直接出题，等玩家成功后再训练 ───────────────────────────
+        if (this.revengeMode && this.failedPuzzle) {
+            console.log('[AI] 进入复仇模式，直接选择目标格');
+            const revengeSuccess = this._tryRevengeTargetSelection(half, count);
+            this.revengeMode = false;
+            if (!revengeSuccess) {
+                // 找不到可平移位置，放弃复仇，继续普通选题
+                this.failedPuzzle = null;
+                console.log('[AI] 挑衅反转：棋盘无空位，放弃');
+            } else {
+                // 复仇成功，清空 failedPuzzle 避免下次重复触发
+                this.failedPuzzle = null;
+                const placedCount = this.gameController.roundState.targetCells.length;
+                console.log(`[AI] 复仇模式完成，已放置 ${placedCount}/${count} 个目标格`);
+                // 如果复仇模式已经放置了足够的目标格，直接返回
+                if (placedCount >= count) {
+                    console.log(`[AI] 复仇模式已放置足够目标格，跳过普通选题`);
+                    return;
+                }
+            }
+            // 复仇目标格不足时，继续向下执行普通选题循环补齐
+        }
+
+        // ── 普通选题：while 循环确保准确计数，避免 for 循环 bestCell=null 时少选 ──────
+        let placed = this.gameController.roundState.targetCells.length; // 直接读 live 数组长度
+        let safetyLimit = count * 3 + 10; // 防无限循环
+
+        console.log(`[AI] 普通选题开始: 已有 ${placed}/${count} 个目标格`);
+
+        while (placed < count && safetyLimit-- > 0) {
             let bestScore = -Infinity;
             let bestCell = null;
-            
-            // Generate multiple candidates and score them
-            for (let c = 0; c < 20; c++) {
-                let cx = Math.floor(Math.random() * gridSize) - gridSize / 2;
-                let cy = Math.floor(Math.random() * gridSize) - gridSize / 2;
-                
+
+            // 采样 40 个候选，降低全部被占用的概率
+            for (let c = 0; c < 40; c++) {
+                let cx = Math.floor(Math.random() * gridSize) - half;
+                let cy = Math.floor(Math.random() * gridSize) - half;
+
                 if (this.isOccupied(cx, cy)) continue;
-                
-                // Smart placement score
-                let score = 0;
-                
-                // Penalize if too close to center
-                score += Math.abs(cx) + Math.abs(cy);
-                
-                // Penalize if linear alignment with existing targets
-                for(let t of state.roundState.targetCells) {
-                    let dx = Math.abs(cx - t.x);
-                    let dy = Math.abs(cy - t.y);
-                    if (dx === 0 || dy === 0 || dx === dy) {
-                        score -= 5;
-                    } else {
-                        score += dx + dy; // reward dispersion
-                    }
+
+                let score = Math.abs(cx) + Math.abs(cy);
+                for (const t of this.gameController.roundState.targetCells) {
+                    const dx = Math.abs(cx - t.x), dy = Math.abs(cy - t.y);
+                    if (dx === 0 || dy === 0 || dx === dy) score -= 5;
+                    else score += dx + dy;
                 }
-                
-                // Random variation based on difficulty
-                if (Math.random() > strategy.targetAccuracy) {
-                    score = Math.random() * 10;
-                }
-                
-                if (score > bestScore) {
-                    bestScore = score;
-                    bestCell = {x: cx, y: cy};
-                }
+                if (Math.random() > strategy.targetAccuracy) score = Math.random() * 10;
+
+                if (score > bestScore) { bestScore = score; bestCell = {x: cx, y: cy}; }
             }
-            
+
+            // 底安：随机采样全部失败时穷举找最佳空位
+            if (!bestCell) {
+                bestCell = this._findFallbackCell(half, this.gameController.roundState.targetCells);
+            }
+
             if (bestCell) {
-                this.gameController.selectTargetCell(bestCell);
+                const ok = this.gameController.selectTargetCell(bestCell);
+                if (ok !== false) {
+                    placed++; // 放置成功才计数
+                    console.log(`[AI] 普通选题放置成功: ${placed}/${count}`);
+                } else {
+                    console.warn('[AI] selectTargetCell 返回 false，阶段可能已变更，中止选题');
+                    break;
+                }
+            } else {
+                console.warn('[AI] 无法找到候选格子，棋盘可能已满');
+                break;
             }
         }
+        
+        console.log(`[AI] 普通选题结束: 最终 ${placed}/${count} 个目标格`);
     }
     
     /**
@@ -187,65 +262,65 @@ class AIController {
         const state = this.gameController.getGameState();
         const maxForbidden = state.maxForbidden;
         const gridSize = this.gridSystem.gridSize;
-        
+
         console.log(`[AI] 设置禁区: maxForbidden=${maxForbidden}`);
-        
+
         if (maxForbidden === 0) return;
 
         let placedCount = 0;
-        
+
+        // ── 挑衅反转模式：优先放置平移后的复仇禁区 ────────────────────────
+        if (this.pendingRevengePuzzle && this.pendingRevengePuzzle.forbiddenCells.length > 0) {
+            for (const cell of this.pendingRevengePuzzle.forbiddenCells) {
+                if (placedCount >= maxForbidden) break;
+                if (this.isValidForbiddenPosition(cell.x, cell.y)) {
+                    this.gameController.addForbiddenCell({...cell});
+                    placedCount++;
+                }
+            }
+            if (placedCount >= maxForbidden) {
+                console.log(`[AI] 复仇禁区放置完毕，共 ${placedCount} 个`);
+                return;
+            }
+            // 复仇禁区部分不可用，用普通逻辑补准
+        }
+
+        // ── 普通禁区放置：靠近目标格路径 + 随机底安 ──────────────────────
         while (placedCount < maxForbidden) {
-            let bestX = 0, bestY = 0, minDistance = Infinity;
+            let bestX = 0, bestY = 0;
             let found = false;
-            
-            // AI tries to block natural paths between origin and targets
+
             if (state.roundState.targetCells.length > 0) {
-                let target = state.roundState.targetCells[placedCount % state.roundState.targetCells.length];
-                
-                // Let's sample points between origin (or other targets) and this target
-                for(let i=0; i<30; i++) {
-                    let tx = Math.floor(target.x * Math.random());
-                    let ty = Math.floor(target.y * Math.random());
-                    
-                    // Add noise
-                    tx += Math.floor(Math.random()*3 - 1);
-                    ty += Math.floor(Math.random()*3 - 1);
-                    
-                    // Don't place out of bounds
-                    if(tx < -gridSize/2 || tx >= gridSize/2) continue;
-                    if(ty < -gridSize/2 || ty >= gridSize/2) continue;
-                    
+                const target = state.roundState.targetCells[placedCount % state.roundState.targetCells.length];
+                for (let i = 0; i < 30; i++) {
+                    let tx = Math.floor(target.x * Math.random()) + Math.floor(Math.random() * 3 - 1);
+                    let ty = Math.floor(target.y * Math.random()) + Math.floor(Math.random() * 3 - 1);
+                    if (tx < -gridSize/2 || tx >= gridSize/2) continue;
+                    if (ty < -gridSize/2 || ty >= gridSize/2) continue;
                     if (this.isValidForbiddenPosition(tx, ty)) {
-                        bestX = tx;
-                        bestY = ty;
-                        found = true;
-                        break;
+                        bestX = tx; bestY = ty; found = true; break;
                     }
                 }
             }
-            
-            // Random block if smart block failed
+
             if (!found) {
-                for(let attempt = 0; attempt < 100; attempt++) {
+                for (let attempt = 0; attempt < 150; attempt++) {
                     let rx = Math.floor(Math.random() * gridSize) - gridSize / 2;
                     let ry = Math.floor(Math.random() * gridSize) - gridSize / 2;
                     if (this.isValidForbiddenPosition(rx, ry)) {
-                        bestX = rx;
-                        bestY = ry;
-                        found = true;
-                        break;
+                        bestX = rx; bestY = ry; found = true; break;
                     }
                 }
             }
-            
+
             if (found) {
                 this.gameController.addForbiddenCell({x: bestX, y: bestY});
                 placedCount++;
             } else {
-                break; // Board might be too full
+                break; // 棋盘已满，无法继续
             }
         }
-        
+
         console.log(`[AI] 禁区设置完成，共设置 ${placedCount} 个禁区`);
     }
     
@@ -254,15 +329,14 @@ class AIController {
      */
     isValidForbiddenPosition(x, y) {
         const state = this.gameController.getGameState();
-        
+
         // 不能是目标格
-        const isTarget = state.roundState.targetCells.some(c => c.x === x && c.y === y);
-        if (isTarget) return false;
-        
-        // 不能是已有的禁区
-        const isForbidden = state.roundState.forbiddenCells.some(c => c.x === x && c.y === y);
-        if (isForbidden) return false;
-        
+        if (state.roundState.targetCells.some(c => c.x === x && c.y === y)) return false;
+        // 不能是已有禁区
+        if (state.roundState.forbiddenCells.some(c => c.x === x && c.y === y)) return false;
+        // 不能是历史使用过的格子（规避灰色历史格）
+        if (state.usedCells && state.usedCells.some(c => c.x === x && c.y === y)) return false;
+
         return true;
     }
 
@@ -272,69 +346,171 @@ class AIController {
     setLocks() {
         const state = this.gameController.getGameState();
         const maxLocks = state.maxLocks;
+        if (maxLocks === 0) return;
+
         const count = this.getDifficultyBasedCount(maxLocks);
         const strategy = this.strategies[this.gameController.difficulty] || this.strategies.normal;
-        
-        // 根据难度选择不同的锁定策略
+
+        // 根据难度选择策略元素池
         let elements;
         if (strategy.functionComplexity <= 2) {
-            // 低难度：锁定基本运算符
             elements = ['+', '-', '*', '/', '^', 'sin', 'cos', 'abs'];
         } else {
-            // 高难度：锁定高级函数
-            elements = ['+', '-', '*', '/', '^', 'sin', 'cos', 'tan', 'abs', 'exp', 'ln', 'log'];
+            elements = ['+', '-', '*', '/', '^', 'sin', 'cos', 'tan', 'abs', 'ln', 'sqrt'];
         }
-        
-        // 简单模式下不锁定四则运算
+
+        // 简单模式不锁定四则运算
         if (state.difficulty === 'easy') {
             elements = elements.filter(e => !['+', '-', '*', '/'].includes(e));
         }
 
-        const shuffled = elements.sort(() => 0.5 - Math.random());
-        for (let i = 0; i < Math.min(count, shuffled.length); i++) {
-            this.gameController.addLockedElement(shuffled[i]);
+        // ── 关键修复：过滤掉已被锁定2次（达到上限）的元素 ─────────────────
+        elements = elements.filter(e => this.gameController.canLockElement(e));
+        if (elements.length === 0) return;
+
+        // 洗牌后循环锁定，保证选满 count 个
+        const shuffled = [...elements].sort(() => 0.5 - Math.random());
+        let locked = 0, idx = 0;
+        while (locked < count && shuffled.length > 0) {
+            if (idx >= shuffled.length) idx = 0;
+            this.gameController.addLockedElement(shuffled[idx]);
+            locked++;
+            idx++;
         }
     }
 
     /**
      * 生成数学表达式
      */
-    generateExpression() {
+    async generateExpression() {
         const difficulty = this.gameController.difficulty;
         const state = this.gameController.getGameState();
         const strategy = this.strategies[difficulty] || this.strategies.normal;
         const targetCells = state.roundState.targetCells;
         const forbiddenCells = state.roundState.forbiddenCells;
         const lockedElements = state.roundState.lockedElements;
-        
+
         let bestExpr = 'x';
         this.lastThinkCount = 0;
-                
-        // 外层尝试次数增加到 500，内层 20，总计 10000 次
+
+        // ── 优先尝试精确匹配的已学习解法 ──────────────────────────────────────
+        if (this.learnedSolutions.length > 0 && this.uiController && this.uiController.renderer) {
+            for (const solution of this.learnedSolutions) {
+                if (this.solutionMatchesPuzzle(solution, targetCells)) {
+                    const range = this.gridSystem.getRange();
+                    const poly = this.uiController.renderer.sampleFunction(solution.expression, range.min, range.max);
+                    if (poly && poly.length > 0) {
+                        let fail = false;
+                        let hits = 0;
+                        for (const t of targetCells) {
+                            if (this.uiController.detector.checkHitTarget(poly, t, this.gridSystem)) hits++;
+                        }
+                        if (hits < targetCells.length) fail = true;
+                        if (!fail && this.uiController.detector.checkHitForbidden(poly, forbiddenCells, this.gridSystem)) fail = true;
+                        if (!fail) {
+                            // 检查是否包含被锁定的元素
+                            if (!this.isValidExpression(solution.expression, lockedElements)) {
+                                console.log('[AI] 精确学习解法包含被锁定元素，跳过:', solution.expression);
+                                continue;
+                            }
+                            console.log('[AI] 精确学习解法通过验证！直接使用:', solution.expression);
+                            return solution.expression;
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── 检测当前局面是否匹配已知失败结构，优先使用关联模板 ────────────────
+        if (this.failedStructures.length > 0 && targetCells.length > 0) {
+            const currentSig = this._computeStructureSignature(targetCells);
+            if (currentSig) {
+                const matchedFS = this.failedStructures.find(fs => fs.signature === currentSig && fs.cores.length > 0);
+                if (matchedFS) {
+                    console.log(`[AI] 检测到已知失败结构 ${currentSig}，优先使用关联模板 [${matchedFS.cores.join(', ')}]`);
+                    // 尝试用关联的成功模板自适应当前目标格
+                    for (const core of matchedFS.cores) {
+                        if (!this.isValidExpression(core, lockedElements)) continue;
+                        const adapted = this._adaptCoreToTargets(core, targetCells);
+                        if (!adapted) continue;
+                        if (!this.isValidExpression(adapted, lockedElements)) continue;
+                        // 物理验证
+                        if (this.uiController && this.uiController.renderer) {
+                            const range = this.gridSystem.getRange();
+                            const poly = this.uiController.renderer.sampleFunction(adapted, range.min, range.max);
+                            if (poly && poly.length > 0) {
+                                let hits = 0;
+                                for (const t of targetCells) {
+                                    if (this.uiController.detector.checkHitTarget(poly, t, this.gridSystem)) hits++;
+                                }
+                                if (hits >= targetCells.length &&
+                                    !this.uiController.detector.checkHitForbidden(poly, forbiddenCells, this.gridSystem)) {
+                                    console.log(`[AI] 失败结构关联模板命中！使用: ${adapted}`);
+                                    return adapted;
+                                }
+                            }
+                        } else if (this._verifyExpressionPure(adapted, targetCells, forbiddenCells)) {
+                            console.log(`[AI] 失败结构关联模板命中（纯数学验证）！使用: ${adapted}`);
+                            return adapted;
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── 时间切片：每批计算超过 8ms 则通过 requestAnimationFrame 让出主线程 ──
+        const SLICE_MS = 8;
+        let sliceStart = performance.now();
+
         for (let attempt = 0; attempt < 500; attempt++) {
+            const now = performance.now();
+            if (now - sliceStart >= SLICE_MS) {
+                await new Promise(resolve => requestAnimationFrame(resolve));
+                sliceStart = performance.now();
+            }
+
             let expression = null;
-            if (targetCells.length > 0) {
+
+            // ── 每轮都尝试模板自适应（已内置锁定检查） ─────────────────────
+            if (this.learnedTemplates.length > 0 && targetCells.length > 0) {
+                // 只从不含锁定元素的模板中选取
+                const validTemplates = this.learnedTemplates.filter(t => this.isValidExpression(t.core, lockedElements));
+                if (validTemplates.length > 0) {
+                    const tmpl = validTemplates[Math.floor(Math.random() * validTemplates.length)];
+                    expression = this.adaptTemplateToTargets(tmpl, targetCells, lockedElements);
+                }
+            }
+
+            if (!expression && targetCells.length > 0) {
                 expression = this.constructFunctionForTargets(targetCells, forbiddenCells, lockedElements, strategy);
             }
-            
-            // 如果没找到或目标为空，降级为模板
+
             if (!expression) {
-                const templates = this.getTemplatesByDifficulty(difficulty);
-                const template = templates[Math.floor(Math.random() * templates.length)];
-                expression = template.replace(/\{n\}/g, () => Math.floor(Math.random() * 5) + 1)
-                                           .replace(/\{c\}/g, () => Math.floor(Math.random() * 10) - 5);
+                // 从难度模板中过滤掉含锁定元素的模板
+                const allTemplates = this.getTemplatesByDifficulty(difficulty);
+                const safeTemplates = allTemplates.filter(t => {
+                    const expanded = t.replace(/\{n\}/g, '1').replace(/\{c\}/g, '1');
+                    return this.isValidExpression(expanded, lockedElements);
+                });
+                if (safeTemplates.length > 0) {
+                    const template = safeTemplates[Math.floor(Math.random() * safeTemplates.length)];
+                    expression = template.replace(/\{n\}/g, () => Math.floor(Math.random() * 5) + 1)
+                                         .replace(/\{c\}/g, () => Math.floor(Math.random() * 10) - 5);
+                }
             }
-            
+
+            // 如果本轮没有生成有效表达式，直接进入下一轮
+            if (!expression) continue;
+
             bestExpr = expression;
-            
-            // 严厉的终极审查：使用真实世界(游戏内)的视觉判定引擎！
+
             let fail = false;
             let hitCount = 0;
-            
+
             if (this.uiController && this.uiController.renderer) {
                 const range = this.gridSystem.getRange();
                 const polyline = this.uiController.renderer.sampleFunction(expression, range.min, range.max);
-                
+
                 if (!polyline || polyline.length === 0) {
                     fail = true;
                 } else {
@@ -343,37 +519,51 @@ class AIController {
                             hitCount++;
                         }
                     }
-                    if (hitCount < targetCells.length) {
-                        fail = true; // 目标没全打中
-                    }
+                    if (hitCount < targetCells.length) fail = true;
                     if (!fail && this.uiController.detector.checkHitForbidden(polyline, forbiddenCells, this.gridSystem)) {
-                        fail = true; // 撞禁区了
+                        fail = true;
                     }
                 }
             } else {
-                // 回退到数学判定
                 hitCount = this.countTargetHits(expression, targetCells, forbiddenCells);
                 if (hitCount < targetCells.length) fail = true;
                 for (const forbidden of forbiddenCells) {
                     const fx = forbidden.x + 0.5;
                     const fy = this.evaluateFunction(expression, fx);
                     if (fy !== Infinity && Math.abs(fy - (forbidden.y + 0.5)) < 0.5) {
-                        fail = true; 
-                        break;
+                        fail = true; break;
                     }
                 }
             }
-            
+
             if (!fail) {
-                console.log(`[AI] 第 ${attempt + 1} 次生成尝试即通过真实物理检查引擎！准备递交:`, expression);
+                console.log(`[AI] 第 ${attempt + 1} 次尝试通过真实物理检查！准备递交:`, expression);
                 return expression;
             } else {
                 console.log(`[AI] 第 ${attempt + 1} 次尝试假命中或碰禁区，废除并重新生成...`);
             }
         }
-        
+
+        // ── 500 次全败：记录无法破解的局面，下回合反出给玩家 ───────────────
+        if (targetCells.length > 0) {
+            this.failedPuzzle = {
+                targetCells: targetCells.map(c => ({...c})),
+                forbiddenCells: forbiddenCells.map(c => ({...c}))
+            };
+            this.revengeMode = true;
+
+            // 记录失败结构指纹（如果尚未记录）
+            const sig = this._computeStructureSignature(targetCells);
+            if (sig && !this.failedStructures.some(fs => fs.signature === sig)) {
+                this.failedStructures.push({ signature: sig, cores: [] });
+                console.log('[AI] 记录新的失败结构指纹:', sig);
+            }
+
+            console.log('[AI] 局面记录完毕，下回合将反出给玩家');
+        }
+
         console.log('[AI] 连续 500 大轮搜寻全部失败，强制递交次优突变解:', bestExpr);
-        return bestExpr;
+        return bestExpr || 'x';
     }
     
     /**
@@ -1359,6 +1549,11 @@ class AIController {
         // 将表达式拆分为元素
         const tokens = this.tokenizeExpression(expression);
         
+        // 先清空输入框，防止上一回合残留内容
+        this.uiController.expressionElements = [];
+        this.uiController.cursorIndex = 0;
+        this.uiController.updateExpressionDisplay();
+        
         // 在 UI 测试泡泡上显示调试信息（推演了多少次）
         if (window.summaCharacter && this.lastThinkCount) {
             window.summaCharacter.messageBox.textContent = `[深度演算了 ${this.lastThinkCount} 次]`;
@@ -1427,6 +1622,413 @@ class AIController {
     /**
      * 辅助：检查位置是否已被占用（目标或禁区）
      */
+    // ═══════════════════════════════════════════════════════════════
+    //  挑衅反转学习系统——辅助方法
+    // ═══════════════════════════════════════════════════════════════
+
+    /**
+     * 挑衅反转：尝试将失败局面平移到合法位置
+     * 从原位置 (0,0) 出发，螺旋向外逐层搜索
+     * @param {number} half - 棋盘半径
+     * @returns {boolean} 是否成功放置
+     */
+    _tryRevengeTargetSelection(half, targetCount) {
+        // 构建螺旋平移列表（从 0 向外逻层扩展）
+        const offsets = [{dx: 0, dy: 0}];
+        for (let r = 1; r <= 4; r++) {
+            for (let dx = -r; dx <= r; dx++) {
+                for (let dy = -r; dy <= r; dy++) {
+                    if (Math.abs(dx) === r || Math.abs(dy) === r) {
+                        offsets.push({dx, dy});
+                    }
+                }
+            }
+        }
+
+        for (const {dx, dy} of offsets) {
+            const transTargets  = this.failedPuzzle.targetCells.map(c => ({x: c.x + dx, y: c.y + dy}));
+            const transForbidden = this.failedPuzzle.forbiddenCells.map(c => ({x: c.x + dx, y: c.y + dy}));
+
+            // 所有目标格必须在棋盘内且未被占用
+            const allValid = transTargets.every(c =>
+                c.x >= -half && c.x < half &&
+                c.y >= -half && c.y < half &&
+                !this.isOccupied(c.x, c.y)
+            );
+            if (!allValid) continue;
+
+            // 找到合法平移！
+            // 根据当前 targetCount 截取或补齐目标格数量
+            let finalTargets = transTargets.slice(0, targetCount);
+            // 如果复仇局面目标格少于当前需要，后面会由普通选题补齐
+            this.pendingRevengePuzzle = {targetCells: finalTargets, forbiddenCells: transForbidden};
+            
+            console.log(`[AI] 复仇模式: 准备放置 ${finalTargets.length} 个目标格`);
+            let placedCount = 0;
+            for (const cell of finalTargets) {
+                const ok = this.gameController.selectTargetCell({...cell});
+                if (ok) {
+                    placedCount++;
+                } else {
+                    console.warn(`[AI] 复仇模式: 放置目标格 (${cell.x}, ${cell.y}) 失败`);
+                }
+            }
+            console.log(`[AI] 复仇模式: 成功放置 ${placedCount}/${finalTargets.length} 个目标格`);
+
+            if (window.summaCharacter) {
+                const msg = (dx === 0 && dy === 0)
+                    ? '这个局面让我很困惑……那就请你来试试？'
+                    : '换个方向，同样的难题……你能解出来吗？';
+                window.summaCharacter.say(msg, 'smug');
+            }
+            console.log(`[AI] 挑衅反转成功，平移 (${dx}, ${dy})，放置 ${finalTargets.length}/${targetCount} 个目标格`);
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * 计算目标格的结构指纹（基于相对位置，平移无关）
+     * 将所有目标格相对于第一个目标格的偏移量排序后拼接为字符串
+     * 例：两个目标格 (1,2) (3,5) → "0,0|2,3"
+     * @param {Array} targetCells - 目标格数组
+     * @returns {string|null} 结构指纹
+     */
+    _computeStructureSignature(targetCells) {
+        if (!targetCells || targetCells.length === 0) return null;
+        const anchor = targetCells[0];
+        const deltas = targetCells.map(t => ({ dx: t.x - anchor.x, dy: t.y - anchor.y }));
+        deltas.sort((a, b) => a.dx - b.dx || a.dy - b.dy);
+        return deltas.map(d => `${d.dx},${d.dy}`).join('|');
+    }
+
+    /**
+     * 底安选择：随机采样全部被占用时穷举找最佳空位
+     * @param {number} half - 棋盘半径
+     * @param {Array} alreadyChosen - 本回合已选目标格
+     * @returns {{x,y}|null}
+     */
+    _findFallbackCell(half, alreadyChosen) {
+        const candidates = [];
+        for (let gx = -half; gx < half; gx++) {
+            for (let gy = -half; gy < half; gy++) {
+                if (this.isOccupied(gx, gy)) continue;
+                let score = Math.abs(gx) + Math.abs(gy);
+                for (const t of alreadyChosen) {
+                    const ddx = Math.abs(gx - t.x), ddy = Math.abs(gy - t.y);
+                    if (ddx === 0 || ddy === 0 || ddx === ddy) score -= 5;
+                    else score += ddx + ddy;
+                }
+                candidates.push({x: gx, y: gy, score});
+            }
+        }
+        if (candidates.length === 0) return null;
+        candidates.sort((a, b) => b.score - a.score);
+        // 从最优的前 5 个中随机选一个，增加变化性
+        return candidates[Math.floor(Math.random() * Math.min(5, candidates.length))];
+    }
+
+    /**
+     * 检查已学习解法是否与当前目标格完全匹配
+     */
+    solutionMatchesPuzzle(solution, targetCells) {
+        if (solution.targetCells.length !== targetCells.length) return false;
+        return solution.targetCells.every(sc =>
+            targetCells.some(tc => tc.x === sc.x && tc.y === sc.y)
+        );
+    }
+
+    /**
+     * 从玩家解法中学习
+     * — 存入精确解法库（完全相同局面时直接使用）
+     * — 提取函数结构模板计入生成算法（类似局面自动适配常数）
+     */
+    learnFromPlayer(expression) {
+        if (!this.pendingRevengePuzzle) return;
+
+        const puzzleTargets = this.pendingRevengePuzzle.targetCells.map(c => ({...c}));
+        const puzzleForbidden = this.pendingRevengePuzzle.forbiddenCells.map(c => ({...c}));
+
+        // 存入精确解法
+        this.learnedSolutions.push({
+            targetCells: puzzleTargets,
+            forbiddenCells: puzzleForbidden,
+            expression
+        });
+
+        // 提取结构模板并计入算法
+        const template = this._extractTemplate(expression);
+        if (template) {
+            const alreadyHave = this.learnedTemplates.some(t => t.core === template.core);
+            if (!alreadyHave) {
+                this.learnedTemplates.push(template);
+                console.log('[AI] 学习到新算法模板:', template.core);
+            }
+
+            // 将成功的 core 关联到对应的失败结构指纹
+            const sig = this._computeStructureSignature(puzzleTargets);
+            if (sig) {
+                const fs = this.failedStructures.find(f => f.signature === sig);
+                if (fs && !fs.cores.includes(template.core)) {
+                    fs.cores.push(template.core);
+                    console.log(`[AI] 将模板 "${template.core}" 关联到失败结构 ${sig}`);
+                }
+            }
+        }
+
+        // 保存到 localStorage
+        this._saveLearnedData();
+
+        this.failedPuzzle = null;
+        this.pendingRevengePuzzle = null;
+
+        if (window.summaCharacter) {
+            window.summaCharacter.say(`"${expression}"……已记录。下次不会再让你得逢了。`, 'determined');
+        }
+
+        // 玩家成功后，基于该表达式的结构进行10000局参数变形训练（后台静默）
+        console.log('[AI] 玩家成功解出复仇题，开始参数变形训练...');
+        this.trainOnPlayerExpression(expression, puzzleTargets, puzzleForbidden);
+    }
+    
+    /**
+     * 玩家也未能解出复仇局面
+     */
+    notifyPlayerFailedRevenge() {
+        this.pendingRevengePuzzle = null;
+        if (window.summaCharacter) {
+            window.summaCharacter.say('连你也解不出来？果然是个困难的局面……', 'smug');
+        }
+    }
+
+    /**
+     * 提取表达式的结构模板（去除末尾常数项）
+     * 示例："2*x+3" → {core:"2*x"}, "sin(x)-1.5" → {core:"sin(x)"}
+     */
+    _extractTemplate(expression) {
+        // 匹配末尾 +/- 整数或小数
+        const match = expression.match(/^(.+?)([+-]\d+\.?\d*)$/);
+        if (match && match[1] && match[1].includes('x')) {
+            return {core: match[1], original: expression};
+        }
+        // 表达式本身就是核心
+        if (expression.includes('x')) {
+            return {core: expression, original: expression};
+        }
+        return null;
+    }
+
+    // ────────────────────────────────────────────────────────────
+    // ──  玩家解析式深度训练系统（10000局类似局面无声模拟）  ──────────────────
+    // ────────────────────────────────────────────────────────────
+
+    /**
+     * 玩家成功解题后，基于玩家表达式的结构进行参数变形训练
+     * ─ 保持函数结构（core）不变，仅尝试调整常数偏移 C
+     * ─ 在大量随机偏移局面上尝试自适应求解
+     * ─ 成功的解法存入精确解法库
+     * ─ 使用时间切片（8ms）不阻塞 UI
+     *
+     * @param {string} expression - 玩家提交的解析式
+     * @param {Array} currentTargets - 当前目标格
+     * @param {Array} currentForbidden - 当前禁止区
+     */
+    async trainOnPlayerExpression(expression, currentTargets, currentForbidden) {
+        if (!expression || !expression.includes('x') || currentTargets.length === 0) return;
+
+        const TOTAL_SIMS = 10000;
+        const SLICE_MS = 8;
+        let sliceStart = performance.now();
+
+        // 提取玩家表达式的核心结构（去除末尾常数）
+        const playerTemplate = this._extractTemplate(expression);
+        if (!playerTemplate) return;
+
+        // 将玩家模板加入库（去重）
+        if (!this.learnedTemplates.some(t => t.core === playerTemplate.core)) {
+            this.learnedTemplates.push(playerTemplate);
+        }
+
+        // 训练仅使用该表达式的 core 结构，不做缩放/翻转等变形
+        const core = playerTemplate.core;
+
+        const gridSize = this.gridSystem.gridSize;
+        const half = gridSize / 2;
+        let newSolutions = 0;
+
+        console.log(`[AI-Train] 开始参数变形训练: 结构 "${core}"，基于 ${TOTAL_SIMS} 局模拟`);
+
+        for (let sim = 0; sim < TOTAL_SIMS; sim++) {
+            // 时间切片：每 8ms 让出主线程
+            if (performance.now() - sliceStart >= SLICE_MS) {
+                await new Promise(resolve => requestAnimationFrame(resolve));
+                sliceStart = performance.now();
+            }
+
+            // 生成随机偏移的类似局面（±4 范围）
+            const simTargets = currentTargets.map(t => ({
+                x: t.x + Math.floor(Math.random() * 9) - 4,
+                y: t.y + Math.floor(Math.random() * 9) - 4
+            })).filter(t =>
+                t.x >= -half && t.x < half && t.y >= -half && t.y < half
+            );
+            if (simTargets.length !== currentTargets.length) continue;
+
+            // 随机生成 0~3 个禁止区
+            const simForbidden = [];
+            const forbiddenCount = Math.floor(Math.random() * 4);
+            for (let f = 0; f < forbiddenCount; f++) {
+                const fx = Math.floor(Math.random() * gridSize) - half;
+                const fy = Math.floor(Math.random() * gridSize) - half;
+                const isTarget = simTargets.some(t => t.x === fx && t.y === fy);
+                if (!isTarget) simForbidden.push({ x: fx, y: fy });
+            }
+
+            // 仅调整常数 C，保持结构不变
+            const adapted = this._adaptCoreToTargets(core, simTargets);
+            if (!adapted) continue;
+
+            // 纯数学验证：检查是否穿过所有目标格且避开禁止区
+            if (this._verifyExpressionPure(adapted, simTargets, simForbidden)) {
+                // 存入精确解法库（去重）
+                const exists = this.learnedSolutions.some(s =>
+                    this.solutionMatchesPuzzle(s, simTargets) && s.expression === adapted
+                );
+                if (!exists) {
+                    this.learnedSolutions.push({
+                        targetCells: simTargets.map(c => ({...c})),
+                        forbiddenCells: simForbidden.map(c => ({...c})),
+                        expression: adapted
+                    });
+                    newSolutions++;
+                }
+            }
+        }
+
+        // 限制解法库大小，避免内存膨胀
+        if (this.learnedSolutions.length > 500) {
+            this.learnedSolutions = this.learnedSolutions.slice(-500);
+        }
+        if (this.learnedTemplates.length > 100) {
+            this.learnedTemplates = this.learnedTemplates.slice(-100);
+        }
+
+        // 保存到 localStorage
+        this._saveLearnedData();
+
+        console.log(`[AI-Train] 参数变形训练完成: 新增 ${newSolutions} 个解法。解法库总计: ${this.learnedSolutions.length}，模板库总计: ${this.learnedTemplates.length}`);
+    }
+
+    /**
+     * 基于核心模板生成变形集（缩放、翻转、复合）
+     * @param {string} core - 原始核心表达式
+     * @returns {string[]} 变形模板数组
+     */
+    _generateTemplateVariants(core) {
+        const variants = [core];
+        // 缩放变形
+        for (const a of [0.5, 2, -1, -0.5, 3, 0.25]) {
+            if (core === 'x') {
+                variants.push(`${a}*x`);
+            } else {
+                variants.push(`${a}*(${core})`);
+            }
+        }
+        // 翻转变形
+        if (core === 'x') {
+            variants.push('-x');
+        } else {
+            variants.push(`-(${core})`);
+        }
+        // 平移变形 (x → x±1, x±2)
+        for (const shift of [1, -1, 2, -2]) {
+            const shiftStr = shift > 0 ? `x-${shift}` : `x+${-shift}`;
+            if (core === 'x') {
+                variants.push(`(${shiftStr})`);
+            } else {
+                variants.push(core.replace(/x/g, `(${shiftStr})`));
+            }
+        }
+        return variants;
+    }
+
+    /**
+     * 将核心模板自适应到目标格（求常数偏移 C）
+     * @param {string} core - 核心表达式
+     * @param {Array} targets - 目标格数组
+     * @returns {string|null} 自适应后的完整表达式
+     */
+    _adaptCoreToTargets(core, targets) {
+        if (!targets || targets.length === 0) return null;
+        try {
+            const t = targets[0];
+            const tx = t.x + 0.5, ty = t.y + 0.5;
+            const coreVal = this.evaluateFunction(core, tx);
+            if (!isFinite(coreVal) || isNaN(coreVal)) return null;
+            const c = ty - coreVal;
+            if (Math.abs(c) > 50) return null;
+            const cR = Math.round(c * 2) / 2; // 精确到 0.5
+            if (cR === 0) return core;
+            const sign = cR > 0 ? '+' : '';
+            return `${core}${sign}${cR}`;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    /**
+     * 纯数学验证：检查表达式是否穿过所有目标格且避开禁止区
+     * @param {string} expr - 要验证的表达式
+     * @param {Array} targets - 目标格
+     * @param {Array} forbidden - 禁止区
+     * @returns {boolean}
+     */
+    _verifyExpressionPure(expr, targets, forbidden) {
+        // 检查是否穿过所有目标格
+        for (const t of targets) {
+            const tx = t.x + 0.5, ty = t.y + 0.5;
+            const y = this.evaluateFunction(expr, tx);
+            if (!isFinite(y) || Math.abs(y - ty) >= 0.5) return false;
+        }
+        // 检查是否碰禁止区
+        for (const f of forbidden) {
+            const fx = f.x + 0.5, fy = f.y + 0.5;
+            const y = this.evaluateFunction(expr, fx);
+            if (isFinite(y) && Math.abs(y - fy) < 0.5) return false;
+        }
+        return true;
+    }
+
+    /**
+     * 将已学模板适配到当前目标格（计入算法）
+     * 原理：求 C 使得 core(tx) + C = ty，然后返回 core+C
+     * @param {Object} template - 模板对象 {core, original}
+     * @param {Array} targetCells - 目标格数组
+     * @param {Array} lockedElements - 被锁定的元素（可选）
+     */
+    adaptTemplateToTargets(template, targetCells, lockedElements = []) {
+        if (!targetCells || targetCells.length === 0) return null;
+        // 前置检查：模板 core 本身含锁定元素则直接跳过
+        if (!this.isValidExpression(template.core, lockedElements)) return null;
+        try {
+            const target = targetCells[0];
+            const tx = target.x + 0.5, ty = target.y + 0.5;
+            const coreVal = this.evaluateFunction(template.core, tx);
+            if (!isFinite(coreVal) || isNaN(coreVal)) return null;
+            const c = ty - coreVal;
+            if (Math.abs(c) > 50) return null;
+
+            // 如果小数点被锁定，常数取整；否则精确到0.5
+            const canFloat = !lockedElements.includes('.');
+            const cRounded = canFloat ? Math.round(c * 2) / 2 : Math.round(c);
+            const sign = cRounded >= 0 ? '+' : '';
+            const cStr = cRounded === 0 ? '' : `${sign}${cRounded}`;
+            return `${template.core}${cStr}`;
+        } catch(e) {
+            return null;
+        }
+    }
+
     isOccupied(x, y) {
         const state = this.gameController.getGameState();
         const isTarget = state.roundState.targetCells.some(c => c.x === x && c.y === y);
@@ -1476,6 +2078,52 @@ class AIController {
                 return ['x^3-{n}*x', 'sin(x)*cos(x)', 'exp(-x^2)+{c}', 'ln(abs(x)+1)*{n}'];
             default:
                 return ['x'];
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    //  持久化与复仇训练系统
+    // ═══════════════════════════════════════════════════════════════════════════════
+
+    /**
+     * 从 localStorage 加载已学习的数据
+     */
+    _loadLearnedData() {
+        try {
+            const saved = localStorage.getItem('summa_learned_data_v1');
+            if (saved) {
+                const data = JSON.parse(saved);
+                if (data.learnedSolutions && Array.isArray(data.learnedSolutions)) {
+                    this.learnedSolutions = data.learnedSolutions;
+                }
+                if (data.learnedTemplates && Array.isArray(data.learnedTemplates)) {
+                    this.learnedTemplates = data.learnedTemplates;
+                }
+                if (data.failedStructures && Array.isArray(data.failedStructures)) {
+                    this.failedStructures = data.failedStructures;
+                }
+                console.log(`[AI-Persist] 加载学习数据: ${this.learnedSolutions.length} 个解法, ${this.learnedTemplates.length} 个模板, ${this.failedStructures.length} 个失败结构`);
+            }
+        } catch (e) {
+            console.warn('[AI-Persist] 加载学习数据失败:', e);
+        }
+    }
+
+    /**
+     * 保存学习数据到 localStorage
+     */
+    _saveLearnedData() {
+        try {
+            const data = {
+                learnedSolutions: this.learnedSolutions,
+                learnedTemplates: this.learnedTemplates,
+                failedStructures: this.failedStructures,
+                savedAt: new Date().toISOString()
+            };
+            localStorage.setItem('summa_learned_data_v1', JSON.stringify(data));
+            console.log(`[AI-Persist] 保存学习数据: ${this.learnedSolutions.length} 个解法, ${this.learnedTemplates.length} 个模板, ${this.failedStructures.length} 个失败结构`);
+        } catch (e) {
+            console.warn('[AI-Persist] 保存学习数据失败:', e);
         }
     }
 }
