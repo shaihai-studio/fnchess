@@ -8,8 +8,16 @@ class UIController {
         this.gridSystem = gridSystem;
         this.gameController = gameController;
         this.parser = new FunctionParser();
-        this.detector = new CollisionDetector();
+        this.detector = new CollisionDetector(gridSystem); // 传入gridSystem以支持自适应容差
         this.renderer = new FunctionRenderer(gridSystem);
+        
+        // 初始化AI控制器
+        this.aiController = new AIController(gameController, gridSystem);
+        this.aiController.uiController = this; // 设置UIController引用
+        
+        // AI触发队列
+        this.aiTriggerQueue = [];
+        this.isProcessingAITrigger = false;
         
         // 当前表达式
         this.currentExpression = '';
@@ -78,11 +86,23 @@ class UIController {
         this.difficultyHint = document.getElementById('difficulty-hint');
         this.header = document.getElementById('header');
         
+        // 游戏模式切换按钮
+        this.modeLocalBtn = document.getElementById('mode-local');
+        this.modeAiBtn = document.getElementById('mode-ai');
+        this.modeHint = document.getElementById('mode-hint');
+        this.selectedMode = 'local'; // 默认本地对战
+        
         // 绑定难度选择提示更新
         if (this.difficultySelect && this.difficultyHint) {
             this.difficultySelect.addEventListener('change', () => {
                 this.updateDifficultyHint();
             });
+        }
+        
+        // 绑定模式切换按钮
+        if (this.modeLocalBtn && this.modeAiBtn) {
+            this.modeLocalBtn.addEventListener('click', () => this.selectMode('local'));
+            this.modeAiBtn.addEventListener('click', () => this.selectMode('ai'));
         }
     }
     
@@ -99,6 +119,46 @@ class UIController {
             'test': '测试模式：自由绘图，无目标格，函数持续显示'
         };
         this.difficultyHint.textContent = hints[difficulty] || hints['normal'];
+        
+        // 测试模式不支持AI对战
+        if (this.modeAiBtn && this.modeLocalBtn) {
+            if (difficulty === 'test') {
+                // 禁用AI按钮
+                this.modeAiBtn.disabled = true;
+                this.modeAiBtn.style.opacity = '0.5';
+                this.modeAiBtn.style.cursor = 'not-allowed';
+                this.modeAiBtn.title = '测试模式不支持AI对战';
+                
+                // 如果当前是AI模式，切换到本地模式
+                if (this.selectedMode === 'ai') {
+                    this.selectMode('local');
+                }
+            } else {
+                // 启用AI按钮
+                this.modeAiBtn.disabled = false;
+                this.modeAiBtn.style.opacity = '1';
+                this.modeAiBtn.style.cursor = 'pointer';
+                this.modeAiBtn.title = '';
+            }
+        }
+    }
+    
+    /**
+     * 选择游戏模式
+     */
+    selectMode(mode) {
+        this.selectedMode = mode;
+        
+        // 更新按钮状态
+        if (mode === 'local') {
+            this.modeLocalBtn.classList.add('active');
+            this.modeAiBtn.classList.remove('active');
+            this.modeHint.textContent = '本地对战：两位玩家轮流操作';
+        } else {
+            this.modeAiBtn.classList.add('active');
+            this.modeLocalBtn.classList.remove('active');
+            this.modeHint.textContent = '人机对战：你将对抗AI Summa';
+        }
     }
     
     /**
@@ -124,6 +184,24 @@ class UIController {
         
         this.gameController.on('phaseChange', (data) => {
             this.updatePhaseUI(data.phase);
+            
+            // 同步历史使用过的格子到 GridSystem（不启动动画）
+            const state = this.gameController.getGameState();
+            if (state.usedCells) {
+                this.gridSystem.usedCells = state.usedCells;
+                // 只更新数据，不重绘（等待函数绘制完成后再绘制和播放动画）
+            }
+            
+            // 同步历史函数和当前回合数（确保在updateRange后能正确显示）
+            if (state.functionHistory) {
+                this.gridSystem.functionHistory = state.functionHistory;
+                this.gridSystem.currentRound = state.currentRound;
+            }
+            
+            // 如果是人机模式且当前是AI的回合，触发AI行动
+            if (this.gameController.gameMode === 'ai' && data.currentPlayer === 'B') {
+                this.triggerAITurn(data.phase);
+            }
         });
         
         this.gameController.on('timerUpdate', (data) => {
@@ -182,17 +260,61 @@ class UIController {
         
         this.gameController.on('evaluationComplete', (data) => {
             this.showEvaluationResult(data);
+            
+            // 保存函数到历史记录（用于淡化显示）
+            if (data.expression && data.round) {
+                // 确保functionHistory存在
+                if (!this.gameController.functionHistory) {
+                    this.gameController.functionHistory = [];
+                }
+                
+                // 获取当前函数的采样点
+                const range = this.gridSystem.getRange();
+                const points = this.renderer.sampleFunction(data.expression, range.min, range.max);
+                
+                // 直接添加到GameController的functionHistory
+                this.gameController.functionHistory.push({
+                    expression: data.expression,
+                    round: data.round,
+                    points: points,
+                    color: '#00d4ff' // 默认颜色
+                });
+            }
         });
         
+        // 回合结束时的处理
         this.gameController.on('roundComplete', (data) => {
-            this.updateScoreboard();
-            this.roundElement.textContent = data.currentRound;
-            this.gridSystem.clearAll();
-            this.clearExpression();
-            this.showMessage(`第 ${data.currentRound - 1} 回合结束`);
-            
-            // 确保在回合切换时重新初始化元素视图，以清除上一回合的锁定符号
-            this.initDraggableElements();
+            try {
+                // 1. 更新UI
+                this.updateScoreboard();
+                this.roundElement.textContent = data.currentRound;
+                
+                // 2. 清空当前回合的目标格和禁区（但保留usedCells）
+                this.gridSystem.clearAll();
+                this.clearExpression();
+                
+                // 3. 显示消息
+                this.showMessage(`第 ${data.currentRound - 1} 回合结束`);
+                
+                // 4. 重新初始化元素视图
+                this.initDraggableElements();
+                
+                // 5. 更新usedCells并重绘
+                const state = this.gameController.getGameState();
+                if (state.usedCells && state.usedCells.length > 0) {
+                    this.gridSystem.usedCells = state.usedCells;
+                }
+                
+                // 6. 更新历史函数
+                if (state.functionHistory && state.functionHistory.length > 0) {
+                    this.gridSystem.functionHistory = state.functionHistory;
+                    this.gridSystem.currentRound = data.currentRound;
+                }
+                
+                this.gridSystem.draw();
+            } catch (error) {
+                console.error('[UI] roundComplete 错误:', error);
+            }
         });
         
         this.gameController.on('gameEnd', (data) => {
@@ -207,6 +329,7 @@ class UIController {
         // Canvas 点击事件
         this.gridSystem.canvas.addEventListener('click', (e) => this.handleCanvasClick(e));
         this.gridSystem.canvas.addEventListener('mousemove', (e) => this.handleCanvasHover(e));
+        this.gridSystem.canvas.addEventListener('mousemove', (e) => this.checkHistoryFunctionHover(e));
         
         // 按钮事件
         this.confirmBtn.addEventListener('click', () => this.handleConfirm());
@@ -451,12 +574,12 @@ class UIController {
         const itemsDiv = document.createElement('div');
         itemsDiv.className = 'element-items';
         
-        // 收集所有可锁定的元素（除了x, π, e, i）
+        // 收集所有可锁定的元素（除了x和括号）
         // 注意：简单难度下四则运算也会显示，但处于保护状态
         const allElements = [
-            ...elements.numbers.filter(e => e.value !== 'π' && e.value !== 'e' && e.value !== 'i').map(e => e.value),
+            ...elements.numbers.map(e => e.value),  // 包含 π, e, i
             ...elements.basicOperators.map(e => e.value),
-            ...elements.operators.filter(e => e.value !== 'x').map(e => e.value),
+            ...elements.operators.filter(e => e.value !== 'x' && e.value !== '(' && e.value !== ')').map(e => e.value),
             ...elements.functions.map(e => e.value)
         ];
         
@@ -474,11 +597,31 @@ class UIController {
             btn.textContent = lockFuncDisplayNames[element] || this.getDisplaySymbol(element);
             btn.dataset.value = element;
             
+            // 获取该元素的锁定次数
+            const lockCount = state.getElementLockCount ? state.getElementLockCount(element) : 0;
+            const isMaxLocked = lockCount >= 2;
+            
             // 检查是否已被本回合锁定
             if (alreadyLocked.includes(element)) {
                 btn.classList.add('selected');
                 btn.style.background = 'rgba(239, 68, 68, 0.5)';
             }
+            
+            // 如果已经达到最大锁定次数，半透明化并禁用
+            if (isMaxLocked) {
+                btn.style.opacity = '0.4';
+                btn.disabled = true;
+                btn.style.cursor = 'not-allowed';
+                btn.title = `${this.getDisplaySymbol(element)} 已达到最大锁定次数 (2/2)`;
+            }
+            
+            // 添加鼠标悬停事件显示气泡框
+            btn.addEventListener('mouseenter', (e) => {
+                this.showLockCountTooltip(e, element, lockCount);
+            });
+            btn.addEventListener('mouseleave', () => {
+                this.hideLockCountTooltip();
+            });
             
             // 检查是否为简单难度的受保护元素（四则运算）
             const isProtectedInEasyMode = state.difficulty === 'easy' && 
@@ -516,6 +659,16 @@ class UIController {
             btn.classList.remove('selected');
             btn.style.background = '';
         } else {
+            // x 和括号不能被锁定
+            if (element === 'x') {
+                this.showMessage('变量 x 不能被锁定', 'warning');
+                return;
+            }
+            if (element === '(' || element === ')') {
+                this.showMessage('括号不能被锁定', 'warning');
+                return;
+            }
+            
             // 添加锁定
             if (this.gameController.addLockedElement(element)) {
                 btn.classList.add('selected');
@@ -525,6 +678,170 @@ class UIController {
         
         // 更新标签
         this.initLockElementsView();
+    }
+    
+    /**
+     * 显示锁定次数气泡框
+     */
+    showLockCountTooltip(event, element, count) {
+        // 移除旧的气泡框
+        this.hideLockCountTooltip();
+        
+        const btn = event.target;
+        const displaySymbol = this.getDisplaySymbol(element);
+        
+        // 创建气泡框
+        const tooltip = document.createElement('div');
+        tooltip.id = 'lock-count-tooltip';
+        tooltip.className = 'lock-count-tooltip';
+        tooltip.textContent = `(${count}/2)`;
+        
+        // 定位气泡框
+        const rect = btn.getBoundingClientRect();
+        tooltip.style.position = 'fixed';
+        tooltip.style.left = `${rect.right + 8}px`;
+        tooltip.style.top = `${rect.top + rect.height / 2 - 15}px`;
+        tooltip.style.zIndex = '10000';
+        tooltip.style.background = 'rgba(0, 0, 0, 0.8)';
+        tooltip.style.color = '#fff';
+        tooltip.style.padding = '4px 8px';
+        tooltip.style.borderRadius = '4px';
+        tooltip.style.fontSize = '12px';
+        tooltip.style.pointerEvents = 'none';
+        
+        document.body.appendChild(tooltip);
+    }
+    
+    /**
+     * 隐藏锁定次数气泡框
+     */
+    hideLockCountTooltip() {
+        const tooltip = document.getElementById('lock-count-tooltip');
+        if (tooltip) {
+            tooltip.remove();
+        }
+    }
+    
+    /**
+     * 检查鼠标是否悬停在历史函数上
+     */
+    checkHistoryFunctionHover(event) {
+        const canvas = this.gridSystem.canvas;
+        const rect = canvas.getBoundingClientRect();
+        
+        // 考虑CSS缩放
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        
+        const mouseX = (event.clientX - rect.left) * scaleX;
+        const mouseY = (event.clientY - rect.top) * scaleY;
+        
+        // 隐藏旧的气泡框
+        this.hideHistoryFunctionTooltip();
+        
+        const state = this.gameController.getGameState();
+        if (!state.functionHistory || state.functionHistory.length === 0) return;
+        
+        const currentRound = state.currentRound;
+        
+        // 检查每个历史函数
+        for (const func of state.functionHistory) {
+            const roundDiff = currentRound - func.round;
+            
+            // 只检查上2回合的函数
+            if (roundDiff < 1 || roundDiff > 2) continue;
+            
+            // 检查鼠标是否距离函数15px以内（更宽松的检测）
+            if (this.isMouseNearFunction(mouseX, mouseY, func.points, 15)) {
+                this.showHistoryFunctionTooltip(event, func.expression, func.round);
+                return;
+            }
+        }
+    }
+    
+    /**
+     * 检查鼠标是否距离函数指定像素内
+     */
+    isMouseNearFunction(mouseX, mouseY, points, thresholdPx) {
+        const validPoints = points.filter(p => p.y !== null);
+        
+        for (let i = 0; i < validPoints.length - 1; i++) {
+            const p1 = this.gridSystem.mathToCanvas(validPoints[i].x, validPoints[i].y);
+            const p2 = this.gridSystem.mathToCanvas(validPoints[i + 1].x, validPoints[i + 1].y);
+            
+            // 计算点到线段的距离
+            const distance = this.pointToLineDistance(mouseX, mouseY, p1.x, p1.y, p2.x, p2.y);
+            if (distance <= thresholdPx) {
+                return true;
+            }
+        }
+        
+        return false;
+    }
+    
+    /**
+     * 计算点到线段的距离
+     */
+    pointToLineDistance(px, py, x1, y1, x2, y2) {
+        const A = px - x1;
+        const B = py - y1;
+        const C = x2 - x1;
+        const D = y2 - y1;
+        
+        const dot = A * C + B * D;
+        const lenSq = C * C + D * D;
+        
+        if (lenSq === 0) {
+            return Math.sqrt(A * A + B * B);
+        }
+        
+        let param = dot / lenSq;
+        param = Math.max(0, Math.min(1, param));
+        
+        const xx = x1 + param * C;
+        const yy = y1 + param * D;
+        
+        const dx = px - xx;
+        const dy = py - yy;
+        
+        return Math.sqrt(dx * dx + dy * dy);
+    }
+    
+    /**
+     * 显示历史函数气泡框
+     */
+    showHistoryFunctionTooltip(event, expression, round) {
+        this.hideHistoryFunctionTooltip();
+        
+        const tooltip = document.createElement('div');
+        tooltip.id = 'history-function-tooltip';
+        tooltip.className = 'history-function-tooltip';
+        tooltip.innerHTML = `<div style="font-weight: bold;">第 ${round} 回合</div><div style="margin-top: 4px;">${expression}</div>`;
+        
+        tooltip.style.position = 'fixed';
+        tooltip.style.left = `${event.clientX + 15}px`;
+        tooltip.style.top = `${event.clientY - 10}px`;
+        tooltip.style.zIndex = '10000';
+        tooltip.style.background = 'rgba(0, 0, 0, 0.85)';
+        tooltip.style.color = '#fff';
+        tooltip.style.padding = '8px 12px';
+        tooltip.style.borderRadius = '6px';
+        tooltip.style.fontSize = '13px';
+        tooltip.style.pointerEvents = 'none';
+        tooltip.style.maxWidth = '300px';
+        tooltip.style.boxShadow = '0 2px 8px rgba(0,0,0,0.3)';
+        
+        document.body.appendChild(tooltip);
+    }
+    
+    /**
+     * 隐藏历史函数气泡框
+     */
+    hideHistoryFunctionTooltip() {
+        const tooltip = document.getElementById('history-function-tooltip');
+        if (tooltip) {
+            tooltip.remove();
+        }
     }
     
     /**
@@ -567,17 +884,103 @@ class UIController {
     }
     
     /**
+     * 触发 AI 回合
+     */
+    async triggerAITurn(phase) {
+        // 测试模式不触发AI
+        if (this.gameController.isTestMode()) return;
+        
+        // 检查当前是否是AI的回合
+        const state = this.gameController.getGameState();
+        if (state.currentPlayer !== 'B') {
+            console.log('[UI] 当前不是AI的回合，跳过');
+            return;
+        }
+        
+        // 添加到队列
+        this.aiTriggerQueue.push(phase);
+        console.log(`[UI] AI触发请求入队: ${phase}, 队列长度: ${this.aiTriggerQueue.length}`);
+        
+        // 如果正在处理，直接返回
+        if (this.isProcessingAITrigger) {
+            console.log('[UI] 正在处理AI触发，等待');
+            return;
+        }
+        
+        // 处理队列
+        await this.processAITriggerQueue();
+    }
+    
+    /**
+     * 处理AI触发队列
+     */
+    async processAITriggerQueue() {
+        if (this.aiTriggerQueue.length === 0 || this.isProcessingAITrigger) {
+            return;
+        }
+        
+        this.isProcessingAITrigger = true;
+        
+        while (this.aiTriggerQueue.length > 0) {
+            const phase = this.aiTriggerQueue.shift();
+            
+            // 如果AI正在思考，等待
+            if (this.aiController.isThinking) {
+                console.log('[UI] AI正在思考，等待完成');
+                await new Promise(resolve => setTimeout(resolve, 100));
+                continue;
+            }
+            
+            console.log(`[UI] 处理AI触发，阶段: ${phase}`);
+            this.showMessage(`Summa 正在思考...`, 'info');
+            
+            try {
+                await this.aiController.playTurn(phase);
+                console.log('[UI] AI阶段完成');
+            } catch (error) {
+                console.error('[UI] AI阶段出错:', error);
+            }
+            
+            // 等待一小段时间，让phaseChange事件有机会触发
+            await new Promise(resolve => setTimeout(resolve, 300));
+        }
+        
+        this.isProcessingAITrigger = false;
+        console.log('[UI] AI触发队列处理完毕');
+    }
+    
+    /**
      * 处理 Canvas 点击
      */
     handleCanvasClick(e) {
-        const rect = this.gridSystem.canvas.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
+        const canvas = this.gridSystem.canvas;
+        const rect = canvas.getBoundingClientRect();
+        
+        // 考虑CSS缩放
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        
+        const x = (e.clientX - rect.left) * scaleX;
+        const y = (e.clientY - rect.top) * scaleY;
         
         const cell = this.gridSystem.getCellFromCanvas(x, y);
         if (!cell) return;
         
         const phase = this.gameController.currentPhase;
+        const state = this.gameController.getGameState();
+        
+        // 人机模式下，如果当前是AI的回合，阻止玩家操作
+        if (this.gameController.gameMode === 'ai' && state.currentPlayer === 'B') {
+            console.log('[UI] AI回合中，阻止玩家点击');
+            return;
+        }
+        
+        // 检查是否是历史使用过的格子
+        const isUsedCell = state.usedCells && state.usedCells.some(c => c.x === cell.x && c.y === cell.y);
+        if (isUsedCell) {
+            this.showMessage('此格子已在之前的回合中使用过，无法再次选择', 'warning');
+            return;
+        }
         
         if (phase === 'select_target') {
             this.gameController.selectTargetCell(cell);
@@ -590,11 +993,25 @@ class UIController {
      * 处理 Canvas 悬停
      */
     handleCanvasHover(e) {
-        const rect = this.gridSystem.canvas.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
+        const canvas = this.gridSystem.canvas;
+        const rect = canvas.getBoundingClientRect();
+        
+        // 考虑CSS缩放
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        
+        const x = (e.clientX - rect.left) * scaleX;
+        const y = (e.clientY - rect.top) * scaleY;
         
         const cell = this.gridSystem.getCellFromCanvas(x, y);
+        const state = this.gameController.getGameState();
+        
+        // 人机模式下，如果当前是AI的回合，禁用悬停效果
+        if (this.gameController.gameMode === 'ai' && state.currentPlayer === 'B') {
+            this.gridSystem.canvas.style.cursor = 'not-allowed';
+            this.gridSystem.canvas.title = 'Summa 正在操作中...';
+            return;
+        }
         
         if (cell) {
             this.gridSystem.canvas.style.cursor = 'pointer';
@@ -615,16 +1032,32 @@ class UIController {
             return;
         }
         
-        // 检查元素是否被锁定
+        // 人机模式下，如果当前是AI的回合，禁止玩家操作
         const state = this.gameController.getGameState();
+        if (this.gameController.gameMode === 'ai' && state.currentPlayer === 'B') {
+            this.showMessage('Summa 正在思考中...', 'info');
+            return;
+        }
+        
+        // 检查元素是否被锁定
         if (state.roundState.lockedElements.includes(element)) {
             this.showMessage(`元素 "${element}" 已被锁定，无法使用`, 'error');
             return;
         }
         
-        // 在光标位置插入元素
-        this.expressionElements.splice(this.cursorIndex, 0, element);
-        this.cursorIndex++;
+        // 函数类元素自动添加括号
+        const functionElements = ['sin', 'cos', 'tan', 'abs', 'exp', 'ln', 'log'];
+        if (functionElements.includes(element)) {
+            // 插入函数名和括号：[sin, (, )]
+            this.expressionElements.splice(this.cursorIndex, 0, element, '(', ')');
+            // 光标定位到括号中间（函数名和左括号后面，即+2位置）
+            this.cursorIndex += 2;
+        } else {
+            // 其他元素正常插入
+            this.expressionElements.splice(this.cursorIndex, 0, element);
+            this.cursorIndex++;
+        }
+        
         this.updateExpressionDisplay();
     }
     
@@ -747,13 +1180,13 @@ class UIController {
     handleConfirm() {
         const phase = this.gameController.currentPhase;
         const state = this.gameController.getGameState();
-        
-        // 人机模式下，如果是 AI 的回合，禁止玩家操作
+            
+        // 人机模式下，如果是AI的回合，禁止玩家操作
         if (this.gameController.gameMode === 'ai' && state.currentPlayer === 'B') {
-            this.showMessage('AI 正在思考中...', 'info');
+            this.showMessage('Summa 正在思考中...', 'info');
             return;
         }
-        
+            
         if (phase === 'select_target') {
             this.gameController.confirmTargetSelection();
         } else if (phase === 'set_forbidden') {
@@ -866,8 +1299,8 @@ class UIController {
      * 绘制函数并评估结果
      */
     async renderAndEvaluate(expression) {
-        // 1. 渲染用采样（标准精度）
-        const renderPoints = await this.renderer.drawFunction(expression, true);
+        // 1. 渲染用采样（标准精度）- 等待绘制完成
+        await this.renderer.drawFunction(expression, true);
         
         // 2. 碰撞检测用采样（高精度）
         const range = this.gridSystem.getRange();
@@ -879,19 +1312,18 @@ class UIController {
         const targetCells = state.roundState.targetCells;
         const forbiddenCells = state.roundState.forbiddenCells;
         
-        // 碰撞检测 - 检测所有目标格
+        // 碰撞检测 - 检测所有目标格（视觉检测）
         const hitTargets = [];
         for (const targetCell of targetCells) {
-            const targetRect = this.gridSystem.getCellRect(targetCell);
-            if (this.detector.polylineIntersectsRect(polyline, targetRect)) {
+            if (this.detector.checkHitTarget(polyline, targetCell, this.gridSystem)) {
                 hitTargets.push(targetCell);
             }
         }
         
-        // 检测禁止区
+        // 检测禁止区（视觉检测）
         let hitForbidden = false;
         if (forbiddenCells.length > 0) {
-            hitForbidden = this.detector.checkHitForbidden(polyline, forbiddenCells);
+            hitForbidden = this.detector.checkHitForbidden(polyline, forbiddenCells, this.gridSystem);
         }
         
         // 分析函数类型
@@ -907,29 +1339,35 @@ class UIController {
     showEvaluationResult(data) {
         // 获取当前构建函数的玩家
         const state = this.gameController.getGameState();
-        const constructorPlayer = state.currentPlayer;
+        let constructorPlayer = state.currentPlayer;
+        
+        // 人机模式：玩家B显示为Summa
+        let playerDisplay = `玩家${constructorPlayer}`;
+        if (state.gameMode === 'ai' && constructorPlayer === 'B') {
+            playerDisplay = 'Summa';
+        }
         
         let message = '';
         
         if (data.hitForbidden) {
-            message = `❌ 玩家${constructorPlayer}的函数进入禁止区！扣1分`;
+            message = `❌ ${playerDisplay}的函数进入禁止区！扣1分`;
             this.flashGrid('forbidden');
             this.showScorePopup(constructorPlayer, -1);
         } else if (data.hitTarget) {
             // 多个目标格的情况
             if (data.targetCount > 1) {
-                message = `✅ 玩家${constructorPlayer}命中全部 ${data.targetCount} 个目标！函数类型: ${data.functionType.type}，得分: ${data.score}`;
+                message = `✅ ${playerDisplay}命中全部 ${data.targetCount} 个目标！函数类型: ${data.functionType.type}，得分: ${data.score}`;
             } else {
-                message = `✅ 玩家${constructorPlayer}命中目标！函数类型: ${data.functionType.type}，得分: ${data.score}`;
+                message = `✅ ${playerDisplay}命中目标！函数类型: ${data.functionType.type}，得分: ${data.score}`;
             }
             this.flashGrid('target');
             this.showScorePopup(constructorPlayer, data.score);
         } else {
             // 多个目标格但未全部命中的情况
             if (data.targetCount > 1 && data.hitCount > 0) {
-                message = `❌ 玩家${constructorPlayer}只命中 ${data.hitCount}/${data.targetCount} 个目标，扣1分`;
+                message = `❌ ${playerDisplay}只命中 ${data.hitCount}/${data.targetCount} 个目标，扣1分`;
             } else {
-                message = `❌ 玩家${constructorPlayer}未命中目标！扣1分`;
+                message = `❌ ${playerDisplay}未命中目标！扣1分`;
             }
             this.flashGrid('miss');
             this.showScorePopup(constructorPlayer, -1);
@@ -1008,6 +1446,14 @@ class UIController {
             this.exitTestMode();
             return;
         }
+        
+        // 人机模式下，如果当前是AI的回合，禁止玩家操作
+        const state = this.gameController.getGameState();
+        if (this.gameController.gameMode === 'ai' && state.currentPlayer === 'B') {
+            this.showMessage('Summa 正在思考中...', 'info');
+            return;
+        }
+        
         this.gameController.skipPhase();
     }
     
@@ -1134,9 +1580,19 @@ class UIController {
     handleStart() {
         const rounds = parseInt(this.roundSelect.value);
         const difficulty = this.difficultySelect.value;
+        let gameMode = this.selectedMode;
+        
+        // 测试模式不支持AI对战，强制使用本地模式
+        if (difficulty === 'test') {
+            if (gameMode === 'ai') {
+                console.log('[UI] 测试模式不支持AI对战，自动切换为本地模式');
+                gameMode = 'local';
+                this.selectMode('local'); // 更新UI
+            }
+        }
         
         this.startModal.style.display = 'none';
-        this.gameController.initGame(rounds, difficulty);
+        this.gameController.initGame(rounds, difficulty, gameMode);
         
         // 测试模式特殊初始化
         if (this.gameController.isTestMode()) {
@@ -1537,7 +1993,12 @@ class UIController {
             return;
         }
         
-        this.currentPlayerElement.textContent = `玩家 ${state.currentPlayer}`;
+        // 人机模式：玩家B显示为Summa
+        let playerName = `玩家 ${state.currentPlayer}`;
+        if (state.gameMode === 'ai' && state.currentPlayer === 'B') {
+            playerName = 'Summa';
+        }
+        this.currentPlayerElement.textContent = playerName;
         
         let hint = '';
         let confirmText = '确认';

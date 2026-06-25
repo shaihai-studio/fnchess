@@ -9,6 +9,9 @@ class GameController {
         this.totalRounds = 8; // 默认8回合
         this.currentRound = 1;
         
+        // 游戏模式
+        this.gameMode = 'local'; // 'local' 本地对战, 'ai' 人机对战
+        
         // 难度设置
         this.difficulty = 'normal'; // easy, normal, hard, expert, test
         this.targetCount = 1; // 根据难度设置目标格数量
@@ -55,6 +58,9 @@ class GameController {
             score: 0
         };
         
+        // 历史使用过的格子（目标格和禁止区）
+        this.usedCells = []; // [{x, y, type: 'target'|'forbidden', round: number}, ...]
+        
         // 回调函数
         this.callbacks = {};
         
@@ -86,18 +92,29 @@ class GameController {
      * 初始化游戏
      * @param {number} rounds - 总回合数
      * @param {string} difficulty - 难度级别 (easy, normal, hard, expert, test)
+     * @param {string} gameMode - 游戏模式 (local, ai)
      */
-    initGame(rounds = 8, difficulty = 'normal') {
+    initGame(rounds = 8, difficulty = 'normal', gameMode = 'local') {
         this.totalRounds = Math.min(Math.max(rounds, 4), 24);
         this.difficulty = difficulty;
         this.targetCount = this.getTargetCountByDifficulty(difficulty);
         this.currentRound = 1;
+        this.gameMode = gameMode;
         this.players.A.score = 0;
         this.players.B.score = 0;
         
         // 清空测试模式函数和游戏历史
         this.testModeFunctions = [];
         this.clearGameHistory();
+        
+        // 清空历史使用过的格子
+        this.usedCells = [];
+        
+        // 记录每个元素被锁定的次数（一局游戏中最多2次）
+        this.elementLockCounts = new Map(); // element -> count
+        
+        // 记录历史函数（用于淡化显示）
+        this.functionHistory = []; // [{expression, round, points, color}, ...]
         
         // 第1回合B选择目标，A构建函数
         this.currentPlayer = 'B';
@@ -118,7 +135,8 @@ class GameController {
             timeLimit: this.timeLimit,
             difficulty: this.difficulty,
             targetCount: this.targetCount,
-            isTestMode: this.isTestMode()
+            isTestMode: this.isTestMode(),
+            gameMode: this.gameMode
         });
     }
     
@@ -138,6 +156,7 @@ class GameController {
         this.difficulty = 'normal';
         this.targetCount = 1;
         this.currentRound = 1;
+        this.gameMode = 'local';
         this.players.A.score = 0;
         this.players.B.score = 0;
         this.testModeFunctions = [];
@@ -235,7 +254,32 @@ class GameController {
                 return false;
             }
         }
+        
+        // 检查该元素是否已经被锁定2次
+        const count = this.elementLockCounts.get(element) || 0;
+        if (count >= 2) {
+            return false;
+        }
+        
         return true;
+    }
+    
+    /**
+     * 增加元素的锁定次数
+     * @param {string} element - 元素
+     */
+    incrementElementLockCount(element) {
+        const currentCount = this.elementLockCounts.get(element) || 0;
+        this.elementLockCounts.set(element, currentCount + 1);
+    }
+    
+    /**
+     * 获取元素的锁定次数
+     * @param {string} element - 元素
+     * @returns {number}
+     */
+    getElementLockCount(element) {
+        return this.elementLockCounts.get(element) || 0;
     }
     
     /**
@@ -306,17 +350,12 @@ class GameController {
                 this.emit('timerUpdate', { remainingTime: this.remainingTime });
                 break;
             case this.phases.SET_FORBIDDEN:
-                // 检查是否需要设置禁止区
-                if (this.getMaxForbiddenCount() === 0) {
-                    this.setPhase(this.phases.SET_LOCKS);
-                }
+                // 注意：不在这里自动跳过，让AI有机会执行
+                // 如果需要跳过，应该在nextPhase中处理
                 break;
             case this.phases.SET_LOCKS:
-                const maxLocks = this.getMaxLockCount();
-                // 检查是否需要设置锁定
-                if (maxLocks === 0) {
-                    this.switchToInputPhase();
-                }
+                // 注意：不在这里自动跳过，让AI有机会执行
+                // 如果需要跳过，应该在nextPhase中处理
                 break;
             case this.phases.INPUT_FUNCTION:
                 this.startTimer();
@@ -464,6 +503,9 @@ class GameController {
             return false;
         }
         
+        // 注意：不立即添加到 usedCells，等回合结束后再添加
+        // 这样当前回合的目标格会保持绿色，不会变灰
+        
         // 使用和跳过按钮一致的逻辑
         this.nextPhase();
         return true;
@@ -515,11 +557,22 @@ class GameController {
      * 确认禁止区设置
      */
     confirmForbiddenSelection() {
+        console.log('[Game] confirmForbiddenSelection 被调用');
+        console.log('[Game] 当前阶段:', this.currentPhase);
+        console.log('[Game] 期望阶段:', this.phases.SET_FORBIDDEN);
+        
         if (this.currentPhase !== this.phases.SET_FORBIDDEN) {
+            console.error('[Game] 阶段不匹配，无法确认禁区！');
             return false;
         }
+        
+        // 注意：不立即添加到 usedCells，等回合结束后再添加
+        // 这样当前回合的禁区会保持红色，不会变灰
+        
+        console.log('[Game] 调用 nextPhase()');
         // 使用和跳过按钮一致的逻辑
         this.nextPhase();
+        console.log('[Game] nextPhase() 完成，当前阶段:', this.currentPhase);
         return true;
     }
     
@@ -536,6 +589,9 @@ class GameController {
         
         // x 不能被锁定
         if (element === 'x') return false;
+        
+        // 括号不能被锁定
+        if (element === '(' || element === ')') return false;
         
         // 检查元素是否可被锁定（简单难度保护）
         if (!this.canLockElement(element)) return false;
@@ -557,6 +613,12 @@ class GameController {
         if (this.currentPhase !== this.phases.SET_LOCKS) {
             return false;
         }
+        
+        // 增加本回合锁定元素的计数
+        for (const element of this.roundState.lockedElements) {
+            this.incrementElementLockCount(element);
+        }
+        
         // 使用和跳过按钮一致的逻辑
         this.nextPhase();
         return true;
@@ -643,7 +705,9 @@ class GameController {
             score,
             totalScore: this.players[this.currentPlayer].score,
             targetCount: this.targetCount,
-            hitCount: this.roundState.hitTargets.length
+            hitCount: this.roundState.hitTargets.length,
+            expression: this.roundState.functionExpression,
+            round: this.currentRound
         });
         
         this.setPhase(this.phases.SWITCH_PLAYER);
@@ -653,6 +717,31 @@ class GameController {
      * 切换玩家
      */
     switchPlayer() {
+        // 回合结束，将当前回合的目标格和禁区添加到历史记录
+        // 这样它们会在下一回合变成灰色
+        for (const cell of this.roundState.targetCells) {
+            const exists = this.usedCells.some(c => c.x === cell.x && c.y === cell.y);
+            if (!exists) {
+                this.usedCells.push({
+                    x: cell.x,
+                    y: cell.y,
+                    type: 'target',
+                    round: this.currentRound
+                });
+            }
+        }
+        for (const cell of this.roundState.forbiddenCells) {
+            const exists = this.usedCells.some(c => c.x === cell.x && c.y === cell.y);
+            if (!exists) {
+                this.usedCells.push({
+                    x: cell.x,
+                    y: cell.y,
+                    type: 'forbidden',
+                    round: this.currentRound
+                });
+            }
+        }
+        
         // 增加回合数
         this.currentRound++;
         
@@ -702,13 +791,27 @@ class GameController {
         
         const currentIndex = phaseOrder.indexOf(this.currentPhase);
         if (currentIndex < phaseOrder.length - 1) {
-            const nextPhase = phaseOrder[currentIndex + 1];
+            let nextPhase = phaseOrder[currentIndex + 1];
+            
             // 如果从SET_LOCKS进入INPUT_FUNCTION，需要切换玩家
             if (this.currentPhase === this.phases.SET_LOCKS && nextPhase === this.phases.INPUT_FUNCTION) {
                 this.switchToInputPhase();
-            } else {
-                this.setPhase(nextPhase);
+                return;
             }
+            
+            // 自动跳过不需要设置的阶段（在AI确认后）
+            if (nextPhase === this.phases.SET_FORBIDDEN && this.getMaxForbiddenCount() === 0) {
+                console.log('[Game] 自动跳过设置禁区阶段（前4回合）');
+                nextPhase = this.phases.SET_LOCKS;
+            }
+            
+            if (nextPhase === this.phases.SET_LOCKS && this.getMaxLockCount() === 0) {
+                console.log('[Game] 自动跳过设置锁定阶段（前4回合）');
+                this.switchToInputPhase();
+                return;
+            }
+            
+            this.setPhase(nextPhase);
         }
     }
     
@@ -793,6 +896,7 @@ class GameController {
             difficulty: this.difficulty,
             targetCount: this.targetCount,
             isTestMode: this.isTestMode(),
+            gameMode: this.gameMode,
             testModeFunctions: this.testModeFunctions,
             scores: {
                 A: this.players.A.score,
@@ -800,7 +904,11 @@ class GameController {
             },
             roundState: { ...this.roundState },
             maxForbidden: this.getMaxForbiddenCount(),
-            maxLocks: this.getMaxLockCount()
+            maxLocks: this.getMaxLockCount(),
+            usedCells: this.usedCells,
+            elementLockCounts: this.elementLockCounts,
+            getElementLockCount: (element) => this.getElementLockCount(element),
+            functionHistory: this.functionHistory
         };
     }
     

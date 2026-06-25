@@ -127,8 +127,17 @@
                 </select>
                 <small id="difficulty-hint" style="display: block; margin-top: 5px; opacity: 0.7;">简单模式：1个目标格，四则运算无法被锁定，每回合+20秒</small>
             </div>
-            
-            <button class="btn btn-primary" id="start-btn" style="width: 100%;">开始游戏</button>
+                        
+            <!-- 游戏模式切换 -->
+            <div class="mode-select">
+                <div class="mode-toggle">
+                    <button class="mode-btn active" id="mode-local" data-mode="local">👥 本地对战</button>
+                    <button class="mode-btn" id="mode-ai" data-mode="ai">🤖 人机对战</button>
+                </div>
+                <small id="mode-hint" style="display: block; margin-top: 5px; opacity: 0.7;">本地对战：两位玩家轮流操作</small>
+            </div>
+                        
+            <button class="btn btn-primary" id="start-btn" style="width: 100;">开始游戏</button>
         </div>
     </div>
     
@@ -155,10 +164,13 @@
     <!-- 加载 JavaScript 模块 -->
     <script src="js/GridSystem.js"></script>
     <script src="js/CollisionDetector.js"></script>
+    <script src="js/函数复杂度运算/function-complexity-analyzer.js"></script>
     <script src="js/FunctionParser.js"></script>
     <script src="js/FunctionRenderer.js"></script>
+    <script src="js/AIController.js"></script>
     <script src="js/GameController.js"></script>
     <script src="js/UIController.js"></script>
+    <script src="js/SummaTrainer.js"></script>
     
     <script>
         // 初始化游戏
@@ -170,6 +182,14 @@
             // 创建UI控制器
             const uiController = new UIController(gridSystem, gameController);
             
+            // 创建Summa训练器
+            const summaTrainer = new SummaTrainer(gameController, gridSystem);
+            
+            // 将训练器暴露到全局，方便控制台调用
+            window.summaTrainer = summaTrainer;
+            window.gameController = gameController;
+            window.uiController = uiController;
+            
             // 显示开始界面
             document.getElementById('start-modal').style.display = 'flex';
             
@@ -177,8 +197,17 @@
             console.log('游戏模块:', {
                 gridSystem: !!gridSystem,
                 gameController: !!gameController,
-                uiController: !!uiController
+                uiController: !!uiController,
+                summaTrainer: !!summaTrainer
             });
+            
+            console.log('\n=== Summa训练器已就绪 ===');
+            console.log('使用方法：');
+            console.log('1. 开始训练: summaTrainer.startTraining({totalGames: 1000, difficulty: "hard"})');
+            console.log('2. 停止训练: summaTrainer.stopTraining()');
+            console.log('3. 查看统计: summaTrainer.getTrainingStats()');
+            console.log('4. 加载数据: summaTrainer.loadTrainingData()');
+            console.log('========================\n');
         });
     </script>
 </body>

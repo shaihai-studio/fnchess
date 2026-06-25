@@ -17,7 +17,8 @@ class GridSystem {
         this.colors = {
             gridLine: 'rgba(255, 255, 255, 0.2)',
             axis: 'rgba(255, 255, 255, 0.6)',
-            target: '#22c55e',
+            target: 'rgba(34, 197, 94, 0.5)',  // 半透明绿色
+            targetBorder: '#22c55e',
             forbidden: 'rgba(239, 68, 68, 0.3)',
             forbiddenBorder: '#ef4444',
             background: '#0a0a1a'
@@ -27,6 +28,12 @@ class GridSystem {
         this.targetCell = null; // {x, y} - 兼容旧代码
         this.targetCells = []; // [{x, y}, ...] - 多个目标格
         this.forbiddenCells = []; // [{x, y}, ...]
+        
+        // 历史使用过的格子
+        this.usedCells = []; // [{x, y, type: 'target'|'forbidden', round: number}, ...]
+        
+        // 历史函数（用于淡化显示）
+        this.functionHistory = []; // [{expression, round, points, color}, ...]
         
         // 缩放配置（用于测试模式）
         this.minRange = 5;   // 最小范围
@@ -116,17 +123,29 @@ class GridSystem {
      */
     updateRange(round) {
         if (round <= 4) {
+            // 1-4回合：范围5
             this.gridSize = 10;
             this.range = 5;
         } else if (round <= 8) {
+            // 5-8回合：范围6
+            this.gridSize = 12;
+            this.range = 6;
+        } else if (round <= 12) {
+            // 9-12回合：范围7
+            this.gridSize = 14;
+            this.range = 7;
+        } else if (round <= 16) {
+            // 13-16回合：范围8
+            this.gridSize = 16;
+            this.range = 8;
+        } else if (round <= 20) {
+            // 17-20回合：范围9
+            this.gridSize = 18;
+            this.range = 9;
+        } else {
+            // 21-24回合：范围10
             this.gridSize = 20;
             this.range = 10;
-        } else if (round <= 12) {
-            this.gridSize = 30;
-            this.range = 15;
-        } else {
-            this.gridSize = 40;
-            this.range = 20;
         }
         this.resize();
     }
@@ -294,8 +313,9 @@ class GridSystem {
      */
     clearAll() {
         this.targetCell = null;
-        this.targetCells = [];
-        this.forbiddenCells = [];
+        this.targetCells = [];  // 清空当前回合的目标格
+        this.forbiddenCells = [];  // 清空当前回合的禁区
+        // 注意：不清空 usedCells，这是历史格子，需要在下一回合显示为灰色
         this.draw();
     }
     
@@ -310,6 +330,9 @@ class GridSystem {
         ctx.fillStyle = this.colors.background;
         ctx.fillRect(0, 0, size, size);
         
+        // 绘制历史使用过的格子
+        this.drawUsedCells();
+        
         // 绘制禁止区
         this.drawForbiddenCells();
         
@@ -321,6 +344,9 @@ class GridSystem {
         
         // 绘制坐标轴
         this.drawAxes();
+        
+        // 绘制历史函数（淡化显示）
+        this.drawHistoryFunctions();
     }
     
     /**
@@ -438,6 +464,177 @@ class GridSystem {
     }
     
     /**
+     * 绘制历史函数（淡化显示）
+     */
+    drawHistoryFunctions() {
+        const ctx = this.ctx;
+        const currentRound = this.currentRound || 1;
+        const currentRange = this.range;
+        
+        for (const func of this.functionHistory) {
+            const roundDiff = currentRound - func.round;
+            
+            // 只绘制上2回合的函数
+            if (roundDiff < 1 || roundDiff > 2) continue;
+            
+            // 计算透明度：上回合30%，上上回合10%
+            const opacity = roundDiff === 2 ? 0.1 : 0.3;
+            
+            // 检查采样点范围是否足够，如果不够需要重新采样
+            let points = func.points;
+            if (func.points && func.points.length > 0) {
+                // 检查采样点的范围
+                const minX = func.points[0].x;
+                const maxX = func.points[func.points.length - 1].x;
+                
+                // 如果采样点范围小于当前range，需要重新采样
+                if (minX > -currentRange || maxX < currentRange) {
+                    // 使用FunctionParser重新采样（如果有引用）
+                    // 这里我们扩展采样点到当前范围
+                    points = this.extendFunctionPoints(func.expression, func.points, -currentRange, currentRange);
+                }
+            }
+            
+            if (!points || points.length < 2) continue;
+            
+            // 解析颜色并应用透明度（历史函数使用白色）
+            const baseColor = '#ffffff';  // 白色
+            ctx.strokeStyle = this.addAlphaToColor(baseColor, opacity);
+            ctx.lineWidth = 2;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            
+            // 处理断点：分段绘制
+            let segmentStart = -1;
+            
+            for (let i = 0; i < points.length; i++) {
+                const point = points[i];
+                
+                if (point.y === null || point.isBreak) {
+                    // 遇到断点，绘制当前段
+                    if (segmentStart !== -1 && i - segmentStart >= 2) {
+                        ctx.beginPath();
+                        const p1 = this.mathToCanvas(points[segmentStart].x, points[segmentStart].y);
+                        ctx.moveTo(p1.x, p1.y);
+                        
+                        for (let j = segmentStart + 1; j < i; j++) {
+                            const p = this.mathToCanvas(points[j].x, points[j].y);
+                            ctx.lineTo(p.x, p.y);
+                        }
+                        ctx.stroke();
+                    }
+                    segmentStart = -1;
+                } else {
+                    // 有效点
+                    if (segmentStart === -1) {
+                        segmentStart = i;
+                    }
+                }
+            }
+            
+            // 绘制最后一段
+            if (segmentStart !== -1 && points.length - segmentStart >= 2) {
+                ctx.beginPath();
+                const p1 = this.mathToCanvas(points[segmentStart].x, points[segmentStart].y);
+                ctx.moveTo(p1.x, p1.y);
+                
+                for (let j = segmentStart + 1; j < points.length; j++) {
+                    const p = this.mathToCanvas(points[j].x, points[j].y);
+                    ctx.lineTo(p.x, p.y);
+                }
+                ctx.stroke();
+            }
+        }
+    }
+    
+    /**
+     * 给颜色添加透明度
+     */
+    addAlphaToColor(color, alpha) {
+        // 如果是十六进制颜色，转换为rgba
+        if (color.startsWith('#')) {
+            const r = parseInt(color.slice(1, 3), 16);
+            const g = parseInt(color.slice(3, 5), 16);
+            const b = parseInt(color.slice(5, 7), 16);
+            return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+        }
+        return color;
+    }
+    
+    /**
+     * 扩展函数采样点到新的范围
+     * @param {string} expression - 函数表达式
+     * @param {Array} oldPoints - 旧的采样点
+     * @param {number} newMinX - 新的最小x
+     * @param {number} newMaxX - 新的最大x
+     * @returns {Array} 新的采样点
+     */
+    extendFunctionPoints(expression, oldPoints, newMinX, newMaxX) {
+        // 如果没有expression，返回原点
+        if (!expression) return oldPoints;
+        
+        // 创建临时的FunctionParser来重新采样
+        // 这里我们使用简单的扩展策略：在两端添加新点
+        const deltaX = 0.01; // 采样精度
+        const newPoints = [];
+        
+        // 获取旧的采样范围
+        const oldMinX = oldPoints[0].x;
+        const oldMaxX = oldPoints[oldPoints.length - 1].x;
+        
+        // 采样左边扩展部分
+        for (let x = newMinX; x < oldMinX; x += deltaX) {
+            const y = this.evaluateExpression(expression, x);
+            if (y !== null && isFinite(y)) {
+                newPoints.push({ x, y });
+            } else {
+                newPoints.push({ x, y: null, isBreak: true });
+            }
+        }
+        
+        // 添加旧点
+        newPoints.push(...oldPoints);
+        
+        // 采样右边扩展部分
+        for (let x = oldMaxX; x <= newMaxX; x += deltaX) {
+            const y = this.evaluateExpression(expression, x);
+            if (y !== null && isFinite(y)) {
+                newPoints.push({ x, y });
+            } else {
+                newPoints.push({ x, y: null, isBreak: true });
+            }
+        }
+        
+        return newPoints;
+    }
+    
+    /**
+     * 简单的表达式求值（用于扩展采样点）
+     */
+    evaluateExpression(expression, x) {
+        try {
+            // 替换表达式中的x
+            const expr = expression.replace(/x/g, `(${x})`)
+                                  .replace(/sin/g, 'Math.sin')
+                                  .replace(/cos/g, 'Math.cos')
+                                  .replace(/tan/g, 'Math.tan')
+                                  .replace(/abs/g, 'Math.abs')
+                                  .replace(/exp/g, 'Math.exp')
+                                  .replace(/ln/g, 'Math.log')
+                                  .replace(/log/g, 'Math.log10')
+                                  .replace(/pi/gi, 'Math.PI')
+                                  .replace(/e/g, 'Math.E')
+                                  .replace(/\^/g, '**');
+            
+            // eslint-disable-next-line no-eval
+            const result = eval(expr);
+            return result;
+        } catch (e) {
+            return null;
+        }
+    }
+    
+    /**
      * 根据坐标系范围获取刻度间隔
      * @returns {number} 刻度间隔
      */
@@ -470,9 +667,38 @@ class GridSystem {
             const width = bottomRight.x - topLeft.x;
             const height = bottomRight.y - topLeft.y;
             
-            // 绘制目标格
+            // 绘制目标格填充
             ctx.fillStyle = this.colors.target;
             ctx.fillRect(topLeft.x, topLeft.y, width, height);
+            
+            // 绘制目标格边框
+            ctx.strokeStyle = this.colors.targetBorder;
+            ctx.lineWidth = 2;
+            ctx.strokeRect(topLeft.x, topLeft.y, width, height);
+        }
+    }
+    
+    /**
+     * 绘制历史使用过的格子
+     */
+    drawUsedCells() {
+        const ctx = this.ctx;
+            
+        for (const cell of this.usedCells) {
+            const key = `${cell.x},${cell.y}`;
+            const topLeft = this.mathToCanvas(cell.x, cell.y + 1);
+            const bottomRight = this.mathToCanvas(cell.x + 1, cell.y);
+                
+            const width = bottomRight.x - topLeft.x;
+            const height = bottomRight.y - topLeft.y;
+                
+            // 直接绘制灰色，不使用动画
+            ctx.fillStyle = 'rgba(100, 100, 100, 0.25)';
+            ctx.fillRect(topLeft.x, topLeft.y, width, height);
+                
+            ctx.strokeStyle = 'rgba(100, 100, 100, 0.4)';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(topLeft.x, topLeft.y, width, height);
         }
     }
     

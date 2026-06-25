@@ -21,6 +21,11 @@ class FunctionParser {
             operators: ['.', '^', '!', '(', ')'],
             functions: ['sin', 'cos', 'tan', 'abs', 'exp', 'ln', 'log']
         };
+        
+        // 初始化函数复杂度分析器
+        if (typeof FunctionComplexityAnalyzer !== 'undefined') {
+            this.complexityAnalyzer = new FunctionComplexityAnalyzer();
+        }
     }
     
     /**
@@ -385,19 +390,71 @@ class FunctionParser {
     convertFactorial(expression) {
         let converted = expression;
         
-        // 处理数字阶乘: 5! -> factorial(5)
-        converted = converted.replace(/(\d+)(!)/g, 'factorial($1)');
+        // 处理数字多阶乘: 5!!! -> factorial(factorial(factorial(5)))
+        converted = converted.replace(/(\d+)(!+)/g, (match, num, facts) => {
+            const count = facts.length;
+            let result = num;
+            for (let i = 0; i < count; i++) {
+                result = `factorial(${result})`;
+            }
+            return result;
+        });
         
-        // 处理变量阶乘: x! -> factorial(x)
-        converted = converted.replace(/(x)(!)/gi, 'factorial($1)');
+        // 处理变量多阶乘: x!!! -> factorial(factorial(factorial(x)))
+        converted = converted.replace(/(x)(!+)/gi, (match, variable, facts) => {
+            const count = facts.length;
+            let result = variable;
+            for (let i = 0; i < count; i++) {
+                result = `factorial(${result})`;
+            }
+            return result;
+        });
         
         // 处理括号阶乘: (expression)! -> factorial(expression)
-        // 使用循环处理嵌套括号
+        // 使用智能方法：从内到外逐层处理，支持嵌套和多阶乘
         let prev;
+        let maxIterations = 20; // 增加迭代次数以支持多阶乘
+        let iterations = 0;
+        
         do {
             prev = converted;
-            converted = converted.replace(/(\([^()]+\))(!)/g, 'factorial($1)');
-        } while (converted !== prev);
+            iterations++;
+            
+            // 方法1: 匹配简单括号 + 多阶乘 \([^()]*\)!+
+            converted = converted.replace(/(\([^()]*\))(!+)/g, (match, expr, facts) => {
+                const count = facts.length;
+                let result = expr;
+                for (let i = 0; i < count; i++) {
+                    result = `factorial(${result})`;
+                }
+                return result;
+            });
+            
+            // 方法2: 匹配包含factorial的括号 + 多阶乘
+            if (converted === prev) {
+                converted = converted.replace(/(\(factorial\([^)]*\)\))(!+)/g, (match, expr, facts) => {
+                    const count = facts.length;
+                    let result = expr;
+                    for (let i = 0; i < count; i++) {
+                        result = `factorial(${result})`;
+                    }
+                    return result;
+                });
+            }
+            
+            // 方法3: 匹配包含任意嵌套括号的复杂表达式 + 多阶乘
+            if (converted === prev) {
+                converted = converted.replace(/(\((?:[^()]*|\([^()]*\))*\))(!+)/g, (match, expr, facts) => {
+                    const count = facts.length;
+                    let result = expr;
+                    for (let i = 0; i < count; i++) {
+                        result = `factorial(${result})`;
+                    }
+                    return result;
+                });
+            }
+            
+        } while (converted !== prev && iterations < maxIterations);
         
         return converted;
     }
@@ -435,7 +492,8 @@ class FunctionParser {
         // 实现方法：当遇到 "数字/数字变量" 或 "数字/数字(" 时，将除号后面的部分用括号括起来。
         
         // 模式1: /数字x -> /(数字*x)
-        converted = converted.replace(/\/(\d+)([a-zA-Z])/g, '/($1*$2)');
+        // 注意：只匹配除法后面紧跟数字和字母的情况，避免误转换 x/2 这种合法表达式
+        converted = converted.replace(/(?<=[^a-zA-Z])\/(\d+)([a-zA-Z])/g, '/($1*$2)');
         
         // 模式2: /数字( -> /(数字*(...))
         // 这是一个简化的处理，匹配 /数字( 并在对应的右括号后闭合
@@ -450,27 +508,33 @@ class FunctionParser {
         
         // 处理数字与π/e之间缺少乘号的情况，如 2π -> 2*PI
         converted = converted.replace(/(\d)(PI)/g, '$1*$2');
-        converted = converted.replace(/(\d)(e)/g, '$1*$2');
+        // 注意：只在e后面不是字母时才匹配，避免把exp中的e当作常数
+        converted = converted.replace(/(\d)(e)(?![a-zA-Z])/g, '$1*$2');
         
         // 处理π/e与数字之间缺少乘号的情况，如 π2 -> PI*2
         converted = converted.replace(/(PI)(\d)/g, '$1*$2');
-        converted = converted.replace(/(e)(\d)/g, '$1*$2');
+        // 注意：只在e后面不是字母时才匹配
+        converted = converted.replace(/(e)(\d)(?![a-zA-Z])/g, '$1*$2');
         
         // 处理x与π/e之间缺少乘号的情况，如 xπ -> x*PI
         converted = converted.replace(/(x)(PI)/gi, '$1*$2');
-        converted = converted.replace(/(x)(e)/gi, '$1*$2');
+        // 注意：只在e后面不是字母时才匹配
+        converted = converted.replace(/(x)(e)(?![a-zA-Z])/gi, '$1*$2');
         
         // 处理π/e与x之间缺少乘号的情况，如 πx -> PI*x
         converted = converted.replace(/(PI)(x)/gi, '$1*$2');
-        converted = converted.replace(/(e)(x)/gi, '$1*$2');
+        // 注意：只在e后面不是字母时才匹配
+        converted = converted.replace(/(e)(x)(?![a-zA-Z])/gi, '$1*$2');
         
         // 处理i与π/e之间缺少乘号的情况，如 iπ -> i*PI
         converted = converted.replace(/(i)(PI)/gi, '$1*$2');
-        converted = converted.replace(/(i)(e)/gi, '$1*$2');
+        // 注意：只在e后面不是字母时才匹配
+        converted = converted.replace(/(i)(e)(?![a-zA-Z])/gi, '$1*$2');
         
         // 处理π/e与i之间缺少乘号的情况，如 πi -> PI*i
         converted = converted.replace(/(PI)(i)/gi, '$1*$2');
-        converted = converted.replace(/(e)(i)/gi, '$1*$2');
+        // 注意：只在e后面不是字母时才匹配
+        converted = converted.replace(/(e)(i)(?![a-zA-Z])/gi, '$1*$2');
         
         // 处理i与x之间缺少乘号的情况，如 ix -> i*x
         converted = converted.replace(/(i)(x)/gi, '$1*$2');
@@ -525,7 +589,8 @@ class FunctionParser {
         
         // 处理 π/e 与括号之间缺少乘号的情况，如 π(x) -> PI*(x)
         converted = converted.replace(/(PI)(\()/g, '$1*$2');
-        converted = converted.replace(/(e)(\()/g, '$1*$2');
+        // 注意：只在e后面不是字母时才匹配
+        converted = converted.replace(/(e)(\()(?![a-zA-Z])/g, '$1*$2');
         
         return converted;
     }
@@ -632,6 +697,24 @@ class FunctionParser {
             return { valid: false, error: '表达式不能为空' };
         }
         
+        // 检查函数是否带括号
+        const cleanExpr = expression.toLowerCase().replace(/\s/g, '');
+        const functionNames = ['sin', 'cos', 'tan', 'abs', 'exp', 'ln', 'log'];
+        
+        for (const func of functionNames) {
+            // 查找函数名
+            let pos = cleanExpr.indexOf(func);
+            while (pos !== -1) {
+                // 检查函数名后面是否跟着 (
+                const afterFunc = cleanExpr.substring(pos + func.length);
+                if (!afterFunc.startsWith('(')) {
+                    return { valid: false, error: `函数 ${func} 必须带括号，例如 ${func}(x)` };
+                }
+                // 继续查找下一个
+                pos = cleanExpr.indexOf(func, pos + func.length);
+            }
+        }
+        
         // 检查括号匹配
         let bracketCount = 0;
         for (const char of expression) {
@@ -665,84 +748,35 @@ class FunctionParser {
     
     /**
      * 分析函数类型并计算得分
-     * 新规则：
-     * - 常值函数（0次）：+0分
-     * - n次方程：+n分（1次+1，2次+2，3次+3）
-     * - 4次及以上：统一+4分
-     * - abs、sin、cos等函数：统一+2分
-     * - 分式函数：分母的次数即为得分（1/x → +1, 1/x^2 → +2, 1/(x+1)^3 → +3）
+     * 临时方案：统一+1分
      * @param {string} expression - 函数表达式
      * @returns {Object} {type: string, score: number}
      */
     analyzeFunctionType(expression) {
         const cleanExpr = expression.toLowerCase().replace(/\s/g, '');
-        console.log(`[DEBUG] analyzeFunctionType: 表达式=${cleanExpr}`);
         
-        // 检查是否为常值函数（不含x）
-        // 注意：π 和 e 是常数，不是变量
-        if (!cleanExpr.includes('x')) {
-            console.log(`[DEBUG] analyzeFunctionType: 常值函数，得分=0`);
-            return { type: 'constant', score: 0 };
-        }
-        
-        // 检查是否为特殊函数（abs、sin、cos、tan、exp、ln、log、sqrt、factorial）
-        const specialFuncs = ['abs', 'sin', 'cos', 'tan', 'exp', 'ln', 'log', 'sqrt'];
-        for (const func of specialFuncs) {
-            if (cleanExpr.includes(func)) {
-                console.log(`[DEBUG] analyzeFunctionType: 特殊函数${func}，得分=2`);
-                return { type: func, score: 2 };
-            }
-        }
-        
-        // 检查是否包含阶乘
-        if (cleanExpr.includes('!')) {
-            console.log(`[DEBUG] analyzeFunctionType: 阶乘函数，得分=2`);
-            return { type: 'factorial', score: 2 };
-        }
-        
-        // 检查是否为欧拉公式形式（包含 (-1)^(1/2) 或虚数单位 i）
-        if (cleanExpr.includes('(-1)^(1/2)') || cleanExpr.includes('(-1)^0.5') || cleanExpr.includes('i')) {
-            console.log(`[DEBUG] analyzeFunctionType: 欧拉公式形式，得分=2`);
-            return { type: 'euler', score: 2 };
-        }
-        
-        // 检查是否为分式形式（包含除法运算符 / 且含有变量 x）
-        if (cleanExpr.includes('/')) {
-            // 区分线性组合与分式：
-            // 1/2*x -> 一次函数 (+1)
-            // 1/2x -> 分式函数，次数为分母的次数
+        // 使用新的函数复杂度分析器
+        if (this.complexityAnalyzer) {
+            const complexity = this.complexityAnalyzer.analyze(expression);
             
-            // 如果除号后面紧跟数字且紧接着有 *x，则视为线性组合
-            const linearPattern = /^\d+\/\d+\*x$/;
-            const linearPattern2 = /^\d+\/\(\d+\)\*x$/;
-            
-            if (linearPattern.test(cleanExpr) || linearPattern2.test(cleanExpr)) {
-                console.log(`[DEBUG] analyzeFunctionType: 线性组合（如1/2*x），得分=1`);
-                return { type: 'degree_1', score: 1 };
+            // 根据复杂度值映射函数类型
+            let type;
+            if (complexity <= 1) {
+                type = 'degree_1';
+            } else if (complexity === 2) {
+                type = 'degree_2';
+            } else if (complexity === 3) {
+                type = 'degree_3';
+            } else {
+                type = 'high_degree';
             }
             
-            // 分式函数：提取分母的次数
-            const denominatorDegree = this.getDenominatorDegree(cleanExpr);
-            const score = Math.min(Math.max(denominatorDegree, 1), 4); // 限制在1-4分之间
-            console.log(`[DEBUG] analyzeFunctionType: 分式形式，分母次数=${denominatorDegree}，得分=${score}`);
-            return { type: `fraction_degree_${denominatorDegree}`, score: score };
+            return { type, score: complexity };
         }
         
-        // 分析多项式次数
-        const degree = this.getPolynomialDegree(cleanExpr);
-        console.log(`[DEBUG] analyzeFunctionType: 多项式次数=${degree}`);
-        
-        // 根据次数计算得分
-        let score;
-        if (degree === 0) {
-            score = 0;
-        } else if (degree >= 4) {
-            score = 4;
-        } else {
-            score = degree;
-        }
-        console.log(`[DEBUG] analyzeFunctionType: 最终得分=${score}`);
-        return { type: `degree_${degree}`, score: score };
+        // 降级方案：如果分析器未加载，使用临时方案
+        console.warn('[WARN] FunctionComplexityAnalyzer 未加载，使用临时方案');
+        return { type: 'degree_1', score: 1 };
     }
     
     /**
@@ -829,6 +863,23 @@ class FunctionParser {
         }
         
         return maxDegree;
+    }
+    
+    /**
+     * 提取分子的次数
+     * @param {string} expression - 已清理的表达式（小写，无空格）
+     * @returns {number} 分子的次数
+     */
+    getNumeratorDegree(expression) {
+        // 找到第一个除号的位置
+        const slashIndex = expression.indexOf('/');
+        if (slashIndex === -1) return 0;
+        
+        // 提取分子部分（除号前面的所有内容）
+        const numerator = expression.substring(0, slashIndex);
+        
+        // 计算分子的次数
+        return this.getPolynomialDegree(numerator);
     }
     
     /**

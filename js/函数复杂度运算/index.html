@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>函数复杂度分析器</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 1.1em;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .input-section {
+            margin-bottom: 30px;
+        }
+
+        .input-section label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #333;
+            font-size: 1.1em;
+        }
+
+        .input-wrapper {
+            display: flex;
+            gap: 10px;
+        }
+
+        .input-wrapper input {
+            flex: 1;
+            padding: 15px;
+            font-size: 1.2em;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            transition: border-color 0.3s;
+        }
+
+        .input-wrapper input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .input-wrapper button {
+            padding: 15px 30px;
+            font-size: 1.1em;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .input-wrapper button:hover {
+            transform: translateY(-2px);
+        }
+
+        .result-section {
+            background: #f8f9fa;
+            padding: 25px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+
+        .result-section h2 {
+            color: #667eea;
+            margin-bottom: 15px;
+        }
+
+        .complexity-value {
+            font-size: 4em;
+            font-weight: bold;
+            color: #764ba2;
+            margin: 20px 0;
+        }
+
+        .complexity-label {
+            font-size: 1.2em;
+            color: #666;
+        }
+
+        .examples-section {
+            margin-top: 30px;
+        }
+
+        .examples-section h3 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 1.3em;
+        }
+
+        .example-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 10px;
+        }
+
+        .example-item {
+            background: white;
+            padding: 12px;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .example-item:hover {
+            background: #f0f0f0;
+            transform: translateX(5px);
+        }
+
+        .example-item .expr {
+            font-weight: bold;
+            color: #333;
+            font-size: 1.1em;
+        }
+
+        .example-item .result {
+            color: #667eea;
+            font-size: 0.9em;
+            margin-top: 5px;
+        }
+
+        .test-section {
+            margin-top: 30px;
+            padding: 20px;
+            background: #fff;
+            border-radius: 10px;
+            border: 2px solid #667eea;
+        }
+
+        .test-section h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+        }
+
+        .test-results {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .test-item {
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 5px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .test-item.pass {
+            background: #d4edda;
+            border-left: 4px solid #28a745;
+        }
+
+        .test-item.fail {
+            background: #f8d7da;
+            border-left: 4px solid #dc3545;
+        }
+
+        .run-tests-btn {
+            padding: 12px 25px;
+            background: #28a745;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1em;
+            margin-bottom: 15px;
+            transition: all 0.2s;
+        }
+
+        .run-tests-btn:hover {
+            background: #218838;
+            transform: translateY(-2px);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎯 函数复杂度分析器</h1>
+            <p>输入数学函数，自动计算其复杂度（0-4）</p>
+        </div>
+
+        <div class="content">
+            <div class="input-section">
+                <label for="functionInput">输入函数表达式：</label>
+                <div class="input-wrapper">
+                    <input 
+                        type="text" 
+                        id="functionInput" 
+                        placeholder="例如：x^2+sin(x), x^x, sin(cos(x))"
+                        value="x^2+sin(x)"
+                    >
+                    <button onclick="analyzeFunction()">分析复杂度</button>
+                </div>
+            </div>
+
+            <div class="result-section">
+                <h2>复杂度结果</h2>
+                <div class="complexity-value" id="complexityValue">-</div>
+                <div class="complexity-label" id="complexityLabel">输入函数后显示结果</div>
+            </div>
+
+            <div class="examples-section">
+                <h3>📚 示例函数（点击快速测试）</h3>
+                <div class="example-grid" id="exampleGrid">
+                    <!-- 示例将通过JS动态生成 -->
+                </div>
+            </div>
+
+            <div class="test-section">
+                <h3>🧪 运行所有测试用例</h3>
+                <button class="run-tests-btn" onclick="runAllTests()">运行测试</button>
+                <div class="test-results" id="testResults"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="function-complexity-analyzer.js"></script>
+    <script>
+        const analyzer = new FunctionComplexityAnalyzer();
+
+        // 示例函数列表
+        const examples = [
+            { expr: 'x', desc: '简单x' },
+            { expr: 'x^2', desc: 'x的平方' },
+            { expr: 'x^3', desc: 'x的立方' },
+            { expr: 'x^4', desc: 'x的四次方' },
+            { expr: 'x^0.5', desc: 'x的0.5次方' },
+            { expr: 'sin(x)', desc: 'sin函数' },
+            { expr: 'cos(x)', desc: 'cos函数' },
+            { expr: 'sin(x^2)', desc: '复合函数' },
+            { expr: 'cos(sin(x))', desc: '嵌套函数' },
+            { expr: 'x^x', desc: '指数函数' },
+            { expr: 'x^sin(x)', desc: 'x的sin(x)次方' },
+            { expr: 'x^2+sin(x)', desc: '组合函数' },
+            { expr: 'x*sin(x)', desc: '乘法组合' },
+            { expr: '0*x^4', desc: '零系数' },
+            { expr: '1/x^2', desc: '倒数' },
+            { expr: 'abs(sin(cos(tan(x^x))))', desc: '深度嵌套' },
+        ];
+
+        // 生成示例网格
+        function generateExamples() {
+            const grid = document.getElementById('exampleGrid');
+            grid.innerHTML = '';
+            
+            examples.forEach(example => {
+                const complexity = analyzer.analyze(example.expr);
+                const item = document.createElement('div');
+                item.className = 'example-item';
+                item.innerHTML = `
+                    <div class="expr">${example.expr}</div>
+                    <div class="result">${example.desc} → y=${complexity}</div>
+                `;
+                item.onclick = () => {
+                    document.getElementById('functionInput').value = example.expr;
+                    analyzeFunction();
+                };
+                grid.appendChild(item);
+            });
+        }
+
+        // 分析函数
+        function analyzeFunction() {
+            const input = document.getElementById('functionInput').value;
+            if (!input.trim()) {
+                alert('请输入函数表达式！');
+                return;
+            }
+
+            const complexity = analyzer.analyze(input);
+            document.getElementById('complexityValue').textContent = complexity;
+            
+            let label = '';
+            if (complexity === 0) label = '常数或零函数';
+            else if (complexity === 1) label = '线性函数';
+            else if (complexity === 2) label = '二次函数/基本超越函数';
+            else if (complexity === 3) label = '三次函数/简单复合函数';
+            else if (complexity === 4) label = '高次函数/复杂复合函数（最高复杂度）';
+            
+            document.getElementById('complexityLabel').textContent = label;
+        }
+
+        // 运行所有测试
+        function runAllTests() {
+            const testCases = [
+                { expr: 'x', expected: 1, desc: '简单x' },
+                { expr: '2*x', expected: 1, desc: '系数*x' },
+                { expr: 'x^2', expected: 2, desc: 'x的平方' },
+                { expr: 'x^3', expected: 3, desc: 'x的立方' },
+                { expr: 'x^4', expected: 4, desc: 'x的四次方' },
+                { expr: 'x^8', expected: 4, desc: 'x的八次方' },
+                { expr: 'x^0.5', expected: 1, desc: 'x的0.5次方' },
+                { expr: 'x^1.5', expected: 2, desc: 'x的1.5次方' },
+                { expr: '1/x', expected: 1, desc: '1/x' },
+                { expr: '1/x^2', expected: 2, desc: '1/x^2' },
+                { expr: 'sin(x)', expected: 2, desc: 'sin(x)' },
+                { expr: 'cos(x)', expected: 2, desc: 'cos(x)' },
+                { expr: 'tan(x)', expected: 2, desc: 'tan(x)' },
+                { expr: 'abs(x)', expected: 2, desc: 'abs(x)' },
+                { expr: 'log(x)', expected: 2, desc: 'log(x)' },
+                { expr: 'ln(x)', expected: 2, desc: 'ln(x)' },
+                { expr: 'sin(x^2)', expected: 3, desc: 'sin(x^2)' },
+                { expr: 'cos(sin(x))', expected: 3, desc: 'cos(sin(x))' },
+                { expr: 'x^x', expected: 2, desc: 'x^x' },
+                { expr: 'x^x^x', expected: 3, desc: 'x^x^x' },
+                { expr: 'x^(x^2)', expected: 3, desc: 'x^(x^2)' },
+                { expr: 'x^sin(x)', expected: 3, desc: 'x^sin(x)' },
+                { expr: 'x^2+sin(x)', expected: 2, desc: 'x^2+sin(x)' },
+                { expr: 'x*sin(x)', expected: 2, desc: 'x*sin(x)' },
+                { expr: '0*x^4', expected: 0, desc: '0*x^4' },
+                { expr: '2', expected: 0, desc: '常数2' },
+                { expr: '0.001*x^8+3*x^2+2', expected: 4, desc: '多项式' },
+                { expr: 'abs(sin(cos(tan(x^x))))', expected: 4, desc: '深度嵌套' },
+            ];
+
+            const resultsDiv = document.getElementById('testResults');
+            resultsDiv.innerHTML = '';
+
+            let passed = 0;
+            let failed = 0;
+
+            testCases.forEach((test, index) => {
+                const result = analyzer.analyze(test.expr);
+                const isPass = result === test.expected;
+                
+                if (isPass) passed++;
+                else failed++;
+
+                const testItem = document.createElement('div');
+                testItem.className = `test-item ${isPass ? 'pass' : 'fail'}`;
+                testItem.innerHTML = `
+                    <span>
+                        <strong>测试 ${index + 1}:</strong> ${test.desc} 
+                        (${test.expr})
+                    </span>
+                    <span>
+                        期望: ${test.expected} | 
+                        实际: ${result} | 
+                        ${isPass ? '✓' : '✗'}
+                    </span>
+                `;
+                resultsDiv.appendChild(testItem);
+            });
+
+            // 添加总结
+            const summary = document.createElement('div');
+            summary.style.cssText = 'margin-top: 15px; padding: 15px; background: #f8f9fa; border-radius: 8px; font-weight: bold;';
+            summary.innerHTML = `
+                测试总结：总计 ${testCases.length} 个 | 
+                通过: ${passed} ✓ | 
+                失败: ${failed} ✗ | 
+                通过率: ${((passed / testCases.length) * 100).toFixed(2)}%
+            `;
+            resultsDiv.appendChild(summary);
+        }
+
+        // 页面加载时生成示例
+        window.onload = () => {
+            generateExamples();
+            analyzeFunction(); // 分析默认值
+        };
+
+        // 回车键触发分析
+        document.getElementById('functionInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                analyzeFunction();
+            }
+        });
+    </script>
+</body>
+</html>
