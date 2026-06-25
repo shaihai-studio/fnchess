@@ -15,6 +15,9 @@ class UIController {
         this.currentExpression = '';
         this.expressionElements = [];
         
+        // 光标位置（索引）
+        this.cursorIndex = 0;
+        
         // 拖拽状态
         this.draggedElement = null;
         
@@ -40,11 +43,17 @@ class UIController {
         this.phaseHintElement = document.getElementById('phase-hint');
         this.expressionDisplay = document.getElementById('expression-display');
         this.messageElement = document.getElementById('message');
+        this.messagePanel = document.getElementById('message-panel');
         
         // 按钮
         this.confirmBtn = document.getElementById('confirm-btn');
         this.clearBtn = document.getElementById('clear-btn');
-        this.skipBtn = document.getElementById('skip-btn');
+        this.exitBtn = document.getElementById('exit-btn');
+        
+        // 退出气泡框元素
+        this.exitPopover = document.getElementById('exit-confirm-popover');
+        this.cancelExitBtn = document.getElementById('cancel-exit-btn');
+        this.confirmExitBtn = document.getElementById('confirm-exit-btn');
         
         // 元素拖拽区
         this.elementsContainer = document.getElementById('elements-container');
@@ -54,6 +63,12 @@ class UIController {
         this.winnerElement = document.getElementById('winner');
         this.finalScoresElement = document.getElementById('final-scores');
         this.restartBtn = document.getElementById('restart-btn');
+        this.viewReportBtn = document.getElementById('view-report-btn');
+        
+        // 游戏报告弹窗
+        this.reportModal = document.getElementById('report-modal');
+        this.reportContentElement = document.getElementById('report-content');
+        this.closeReportBtn = document.getElementById('close-report-btn');
         
         // 开始界面
         this.startModal = document.getElementById('start-modal');
@@ -175,6 +190,9 @@ class UIController {
             this.gridSystem.clearAll();
             this.clearExpression();
             this.showMessage(`第 ${data.currentRound - 1} 回合结束`);
+            
+            // 确保在回合切换时重新初始化元素视图，以清除上一回合的锁定符号
+            this.initDraggableElements();
         });
         
         this.gameController.on('gameEnd', (data) => {
@@ -193,11 +211,25 @@ class UIController {
         // 按钮事件
         this.confirmBtn.addEventListener('click', () => this.handleConfirm());
         this.clearBtn.addEventListener('click', () => this.handleClear());
-        this.skipBtn.addEventListener('click', () => this.handleSkip());
+        this.exitBtn.addEventListener('click', () => this.handleExitClick());
         this.restartBtn.addEventListener('click', () => this.handleRestart());
         this.startBtn.addEventListener('click', () => this.handleStart());
+        if (this.viewReportBtn) {
+            this.viewReportBtn.addEventListener('click', () => this.showGameReport());
+        }
+        if (this.closeReportBtn) {
+            this.closeReportBtn.addEventListener('click', () => this.hideGameReport());
+        }
         
-        // 表达式显示区点击删除
+        // 退出气泡框事件
+        if (this.cancelExitBtn) {
+            this.cancelExitBtn.addEventListener('click', () => this.hideExitConfirm());
+        }
+        if (this.confirmExitBtn) {
+            this.confirmExitBtn.addEventListener('click', () => this.handleExit());
+        }
+        
+        // 表达式显示区点击删除与光标移动
         this.expressionDisplay.addEventListener('click', (e) => this.handleExpressionClick(e));
         
         // 键盘输入事件
@@ -261,11 +293,39 @@ class UIController {
             this.addElementToExpression('i');
         } else if (key === 'Backspace') {
             e.preventDefault();
-            // 删除最后一个元素
-            if (this.expressionElements.length > 0) {
-                this.expressionElements.pop();
+            // 删除光标前的一个元素
+            if (this.cursorIndex > 0) {
+                this.expressionElements.splice(this.cursorIndex - 1, 1);
+                this.cursorIndex--;
                 this.updateExpressionDisplay();
             }
+        } else if (key === 'Delete') {
+            e.preventDefault();
+            // 删除光标后的一个元素
+            if (this.cursorIndex < this.expressionElements.length) {
+                this.expressionElements.splice(this.cursorIndex, 1);
+                this.updateExpressionDisplay();
+            }
+        } else if (key === 'ArrowLeft') {
+            e.preventDefault();
+            if (this.cursorIndex > 0) {
+                this.cursorIndex--;
+                this.updateExpressionDisplay();
+            }
+        } else if (key === 'ArrowRight') {
+            e.preventDefault();
+            if (this.cursorIndex < this.expressionElements.length) {
+                this.cursorIndex++;
+                this.updateExpressionDisplay();
+            }
+        } else if (key === 'Home') {
+            e.preventDefault();
+            this.cursorIndex = 0;
+            this.updateExpressionDisplay();
+        } else if (key === 'End') {
+            e.preventDefault();
+            this.cursorIndex = this.expressionElements.length;
+            this.updateExpressionDisplay();
         } else if (key === 'Escape') {
             e.preventDefault();
             // 清除表达式
@@ -474,10 +534,28 @@ class UIController {
         const state = this.gameController.getGameState();
         const lockedElements = state.roundState.lockedElements;
         
+        // 函数显示名称映射（用于锁定视图）
+        const lockFuncDisplayNames = {
+            'sin': 'sin', 'cos': 'cos', 'tan': 'tan',
+            'abs': 'abs', 'exp': 'exp',
+            'ln': 'ln', 'log': 'log'
+        };
+        
         // 更新按钮状态
         const buttons = this.elementsContainer.querySelectorAll('.element-btn');
         buttons.forEach(btn => {
             const value = btn.dataset.value;
+            
+            // 先清除所有锁定状态
+            btn.classList.remove('locked');
+            btn.disabled = false;
+            // 移除锁图标，恢复原始文本
+            if (btn.querySelector('.lock-icon')) {
+                const originalValue = lockFuncDisplayNames[value] || this.getDisplaySymbol(value);
+                btn.textContent = originalValue;
+            }
+            
+            // 如果元素在当前锁定列表中，添加锁定状态
             if (lockedElements.includes(value)) {
                 btn.classList.add('locked');
                 btn.disabled = true;
@@ -544,7 +622,9 @@ class UIController {
             return;
         }
         
-        this.expressionElements.push(element);
+        // 在光标位置插入元素
+        this.expressionElements.splice(this.cursorIndex, 0, element);
+        this.cursorIndex++;
         this.updateExpressionDisplay();
     }
     
@@ -569,10 +649,24 @@ class UIController {
         
         if (this.expressionElements.length === 0) {
             this.expressionDisplay.innerHTML = '<span class="placeholder">点击元素或键盘输入构建表达式...</span>';
+            this.cursorIndex = 0;
             return;
         }
         
+        // 确保光标位置合法
+        if (this.cursorIndex > this.expressionElements.length) {
+            this.cursorIndex = this.expressionElements.length;
+        }
+        
         for (let i = 0; i < this.expressionElements.length; i++) {
+            // 在光标位置前插入光标元素
+            if (i === this.cursorIndex) {
+                const cursorSpan = document.createElement('span');
+                cursorSpan.className = 'cursor';
+                cursorSpan.textContent = '|';
+                this.expressionDisplay.appendChild(cursorSpan);
+            }
+            
             const span = document.createElement('span');
             span.className = 'expression-element';
             // 使用数学符号显示
@@ -580,17 +674,62 @@ class UIController {
             span.dataset.index = i;
             this.expressionDisplay.appendChild(span);
         }
+        
+        // 如果光标在末尾
+        if (this.cursorIndex === this.expressionElements.length) {
+            const cursorSpan = document.createElement('span');
+            cursorSpan.className = 'cursor';
+            cursorSpan.textContent = '|';
+            this.expressionDisplay.appendChild(cursorSpan);
+        }
     }
     
     /**
-     * 处理表达式点击（删除元素）
+     * 处理表达式点击（删除元素或移动光标）
      */
     handleExpressionClick(e) {
-        if (e.target.classList.contains('expression-element')) {
-            const index = parseInt(e.target.dataset.index);
-            this.expressionElements.splice(index, 1);
-            this.updateExpressionDisplay();
+        const phase = this.gameController.currentPhase;
+        if (phase !== 'input_function') return;
+        
+        // 如果点击的是某个具体的元素块，则删除该元素
+        const elementSpan = e.target.closest('.expression-element');
+        if (elementSpan) {
+            const index = parseInt(elementSpan.dataset.index);
+            if (!isNaN(index)) {
+                this.expressionElements.splice(index, 1);
+                // 调整光标位置：如果删除的元素在光标前，光标也要前移
+                if (index < this.cursorIndex) {
+                    this.cursorIndex--;
+                }
+                this.updateExpressionDisplay();
+            }
+            return;
         }
+        
+        // 如果点击的是空白区域，则将光标移动到点击位置
+        // 计算点击位置相对于容器左边缘的偏移量
+        const rect = this.expressionDisplay.getBoundingClientRect();
+        const clickX = e.clientX - rect.left;
+        
+        // 遍历所有子节点，找到点击位置对应的索引
+        let totalWidth = 0;
+        let newIndex = 0;
+        
+        for (let i = 0; i < this.expressionDisplay.children.length; i++) {
+            const child = this.expressionDisplay.children[i];
+            const childRect = child.getBoundingClientRect();
+            const childCenter = childRect.left - rect.left + childRect.width / 2;
+            
+            // 如果点击位置在当前元素的中心左侧，则光标放在该元素之前
+            if (clickX < childCenter) {
+                newIndex = i;
+                break;
+            }
+            newIndex = i + 1;
+        }
+        
+        this.cursorIndex = newIndex;
+        this.updateExpressionDisplay();
     }
     
     /**
@@ -607,14 +746,19 @@ class UIController {
      */
     handleConfirm() {
         const phase = this.gameController.currentPhase;
-        console.log(`[DEBUG] handleConfirm: phase=${phase}`);
+        const state = this.gameController.getGameState();
+        
+        // 人机模式下，如果是 AI 的回合，禁止玩家操作
+        if (this.gameController.gameMode === 'ai' && state.currentPlayer === 'B') {
+            this.showMessage('AI 正在思考中...', 'info');
+            return;
+        }
         
         if (phase === 'select_target') {
             this.gameController.confirmTargetSelection();
         } else if (phase === 'set_forbidden') {
             this.gameController.confirmForbiddenSelection();
         } else if (phase === 'set_locks') {
-            console.log(`[DEBUG] handleConfirm: 调用confirmLockSelection`);
             this.gameController.confirmLockSelection();
         } else if (phase === 'input_function') {
             this.submitFunction();
@@ -722,9 +866,13 @@ class UIController {
      * 绘制函数并评估结果
      */
     async renderAndEvaluate(expression) {
-        // 绘制函数
-        const points = await this.renderer.drawFunction(expression, true);
-        const polyline = this.renderer.convertToPolyline(points);
+        // 1. 渲染用采样（标准精度）
+        const renderPoints = await this.renderer.drawFunction(expression, true);
+        
+        // 2. 碰撞检测用采样（高精度）
+        const range = this.gridSystem.getRange();
+        const collisionPoints = this.renderer.sampleFunction(expression, range.min, range.max, true);
+        const polyline = this.renderer.convertToPolyline(collisionPoints);
         
         // 获取目标网格和禁止区
         const state = this.gameController.getGameState();
@@ -852,7 +1000,7 @@ class UIController {
     }
     
     /**
-     * 处理跳过按钮
+     * 处理跳过按钮（已废弃，改为退出功能）
      */
     handleSkip() {
         // 测试模式：结束测试返回开始界面
@@ -864,15 +1012,72 @@ class UIController {
     }
     
     /**
+     * 处理退出按钮点击（根据模式决定是否显示气泡框）
+     */
+    handleExitClick() {
+        // 测试模式直接退出，不显示气泡框
+        if (this.gameController.isTestMode()) {
+            this.handleExit();
+        } else {
+            // 普通模式显示确认气泡框
+            this.showExitConfirm();
+        }
+    }
+    
+    /**
+     * 显示退出确认气泡框
+     */
+    showExitConfirm() {
+        if (this.exitPopover) {
+            this.exitPopover.classList.add('visible');
+        }
+    }
+    
+    /**
+     * 隐藏退出确认气泡框
+     */
+    hideExitConfirm() {
+        if (this.exitPopover) {
+            this.exitPopover.classList.remove('visible');
+        }
+    }
+    
+    /**
+     * 处理退出游戏
+     */
+    handleExit() {
+        this.hideExitConfirm();
+        
+        // 如果是测试模式，执行退出测试逻辑
+        if (this.gameController.isTestMode()) {
+            this.exitTestMode();
+        } else {
+            // 普通对战模式：返回开始界面
+            this.gameController.resetGame();
+            document.getElementById('start-modal').style.display = 'flex';
+            if (this.gameOverModal) this.gameOverModal.style.display = 'none';
+        }
+    }
+    
+    /**
      * 退出测试模式
      */
     exitTestMode() {
+        // 隐藏消息面板
+        if (this.messagePanel) this.messagePanel.classList.remove('visible');
+        
         // 清空函数
         this.gameController.clearTestModeFunctions();
         this.gridSystem.clearAll();
         
-        // 恢复header样式
+        // 恢复 header 样式
         if (this.header) this.header.classList.remove('test-mode');
+                
+        // 移除 Canvas 容器的测试模式类
+        const canvasSection = document.querySelector('.canvas-section');
+        if (canvasSection) {
+            canvasSection.classList.remove('test-mode');
+        }
         
         // 恢复标题
         const gameTitle = document.querySelector('.game-title');
@@ -903,15 +1108,20 @@ class UIController {
         const zoomControls = document.getElementById('zoom-controls');
         if (zoomControls) zoomControls.remove();
         
+        // 移除滚轮事件监听
+        if (this.wheelHandler) {
+            this.gridSystem.canvas.removeEventListener('wheel', this.wheelHandler);
+            this.wheelHandler = null;
+        }
+        
         // 恢复坐标系范围
         this.gridSystem.setRange(5);
         
-        // 恢复跳过按钮
-        this.skipBtn.textContent = '跳过';
-        this.skipBtn.className = 'btn btn-secondary';
-        
-        // 恢复确认按钮
-        this.confirmBtn.textContent = '确认';
+        // 恢复退出按钮样式和文本
+        if (this.exitBtn) {
+            this.exitBtn.textContent = '退出对局';
+            this.exitBtn.className = 'btn btn-exit';
+        }
         
         // 返回开始界面
         this.startModal.style.display = 'flex';
@@ -935,11 +1145,20 @@ class UIController {
     }
     
     /**
-     * 初始化测试模式UI
+     * 初始化测试模式 UI
      */
     initTestModeUI() {
-        // 添加测试模式样式到header
+        // 显示消息面板
+        if (this.messagePanel) this.messagePanel.classList.add('visible');
+        
+        // 添加测试模式样式到 header
         if (this.header) this.header.classList.add('test-mode');
+            
+        // 为 Canvas 容器添加测试模式类
+        const canvasSection = document.querySelector('.canvas-section');
+        if (canvasSection) {
+            canvasSection.classList.add('test-mode');
+        }
         
         // 修改标题为"测试模式"，显示在左上角
         const gameTitle = document.querySelector('.game-title');
@@ -975,12 +1194,79 @@ class UIController {
         // 添加缩放按钮
         this.addZoomButtons();
         
-        // 修改跳过按钮为结束按钮
-        this.skipBtn.textContent = '结束测试';
-        this.skipBtn.className = 'btn btn-danger';
+        // 添加鼠标滚轮缩放功能
+        this.addWheelZoomSupport();
+        
+        // 修改退出按钮为结束测试（保持原样）
+        if (this.exitBtn) {
+            this.exitBtn.textContent = '结束测试';
+            this.exitBtn.className = 'btn btn-danger';
+        }
         
         // 初始化元素选择
         this.initDraggableElements();
+    }
+    
+    /**
+     * 添加鼠标滚轮缩放功能
+     */
+    addWheelZoomSupport() {
+        // 移除旧的滚轮事件（如果存在）
+        if (this.wheelHandler) {
+            this.gridSystem.canvas.removeEventListener('wheel', this.wheelHandler);
+        }
+        
+        // 创建新的滚轮事件处理器
+        this.wheelHandler = (e) => {
+            e.preventDefault();
+            
+            // 如果正在绘制，不响应滚轮
+            if (this.renderer.isDrawing) {
+                return;
+            }
+            
+            const delta = e.deltaY > 0 ? 1 : -1;
+            const wheelStep = 1; // 滚轮步长为 1，比按钮的 5 更小
+            let newRange;
+            
+            if (delta > 0) {
+                // 向下滚动，放大坐标系（范围增加）
+                newRange = this.adjustRange(wheelStep);
+            } else {
+                // 向上滚动，缩小坐标系（范围减小）
+                newRange = this.adjustRange(-wheelStep);
+            }
+            
+            // 更新显示
+            this.updateZoomDisplay(newRange);
+            
+            // 重绘所有函数
+            this.redrawAllTestFunctions();
+        };
+        
+        // 绑定滚轮事件到 Canvas
+        this.gridSystem.canvas.addEventListener('wheel', this.wheelHandler, { passive: false });
+    }
+    
+    /**
+     * 调整坐标系范围（支持任意步长）
+     * @param {number} step - 步长（正数放大，负数缩小）
+     * @returns {number} 新的范围值
+     */
+    adjustRange(step) {
+        const newRange = this.gridSystem.range + step;
+        // 严格限制在最小值和最大值之间
+        const clampedRange = Math.max(
+            this.gridSystem.minRange,
+            Math.min(newRange, this.gridSystem.maxRange)
+        );
+        
+        if (clampedRange !== this.gridSystem.range) {
+            this.gridSystem.range = clampedRange;
+            this.gridSystem.gridSize = clampedRange * 2;
+            requestAnimationFrame(() => this.gridSystem.resize());
+        }
+        return this.gridSystem.range;
     }
     
     /**
@@ -1007,17 +1293,19 @@ class UIController {
         
         // 绑定事件
         document.getElementById('zoom-out-btn').addEventListener('click', () => {
-            // 取消正在进行的绘制
-            this.renderer.cancelDrawing();
-            const newRange = this.gridSystem.zoomOut();
+            // 如果正在绘制，不响应
+            if (this.renderer.isDrawing) return;
+            
+            const newRange = this.adjustRange(5); // 按钮步长为 5
             this.updateZoomDisplay(newRange);
             this.redrawAllTestFunctions();
         });
         
         document.getElementById('zoom-in-btn').addEventListener('click', () => {
-            // 取消正在进行的绘制
-            this.renderer.cancelDrawing();
-            const newRange = this.gridSystem.zoomIn();
+            // 如果正在绘制，不响应
+            if (this.renderer.isDrawing) return;
+            
+            const newRange = this.adjustRange(-5); // 按钮步长为 5
             this.updateZoomDisplay(newRange);
             this.redrawAllTestFunctions();
         });
@@ -1112,6 +1400,42 @@ class UIController {
     }
     
     /**
+     * 将表达式字符串智能拆分为元素数组
+     * @param {string} expr - 表达式字符串
+     * @returns {Array} 元素数组
+     */
+    tokenizeExpression(expr) {
+        const tokens = [];
+        let i = 0;
+        const len = expr.length;
+        
+        // 多字母函数名列表
+        const multiCharFuncs = ['sin', 'cos', 'tan', 'abs', 'exp', 'ln', 'log', 'sqrt'];
+        
+        while (i < len) {
+            let matched = false;
+            
+            // 尝试匹配多字母函数
+            for (const func of multiCharFuncs) {
+                if (expr.substring(i, i + func.length) === func) {
+                    tokens.push(func);
+                    i += func.length;
+                    matched = true;
+                    break;
+                }
+            }
+            
+            if (matched) continue;
+            
+            // 匹配单个字符（变量、数字、运算符、括号等）
+            tokens.push(expr[i]);
+            i++;
+        }
+        
+        return tokens;
+    }
+    
+    /**
      * 编辑测试模式函数
      */
     editTestFunction(index) {
@@ -1119,8 +1443,10 @@ class UIController {
         const func = functions[index];
         if (!func) return;
         
-        // 将函数表达式加载到输入区
-        this.expressionElements = func.expression.split('');
+        // 使用智能分词加载函数表达式
+        this.expressionElements = this.tokenizeExpression(func.expression);
+        // 设置光标到末尾
+        this.cursorIndex = this.expressionElements.length;
         this.updateExpressionDisplay();
         
         // 删除原函数（重新绘制时会添加新的）
@@ -1293,27 +1619,26 @@ class UIController {
         }
         
         this.messageElement.textContent = message;
-        this.messageElement.className = 'message';
         this.messageElement.style.opacity = '1';
         
-        if (type === 'error') {
-            this.messageElement.classList.add('error');
-        } else if (type === 'success') {
-            this.messageElement.classList.add('success');
-        }
-        
-        // 测试模式下消息渐隐消失
+        // 测试模式下：显示容器并渐隐消息
         if (this.gameController.isTestMode()) {
+            if (this.messagePanel) this.messagePanel.classList.add('visible');
+            this.messageElement.className = 'message';
+            
+            if (type === 'error') {
+                this.messageElement.classList.add('error');
+            } else if (type === 'success') {
+                this.messageElement.classList.add('success');
+            }
+            
             // 2秒后开始渐隐
             this.messageTimeout = setTimeout(() => {
                 this.fadeOutMessage();
             }, 2000);
         } else {
-            // 普通模式5秒后清除
-            this.messageTimeout = setTimeout(() => {
-                this.messageElement.textContent = '';
-                this.messageElement.className = 'message';
-            }, 5000);
+            // 普通模式：隐藏整个消息容器
+            if (this.messagePanel) this.messagePanel.classList.remove('visible');
         }
     }
     
@@ -1353,6 +1678,125 @@ class UIController {
         `;
         
         this.gameOverModal.style.display = 'flex';
+    }
+    
+    /**
+     * 显示游戏报告
+     */
+    showGameReport() {
+        const state = this.gameController.getGameState();
+        const report = this.gameController.getGameReport();
+        
+        let html = `
+            <div class="report-summary">
+                <h3>比赛总结</h3>
+                <p>难度: ${this.getDifficultyName(report.difficulty)}</p>
+                <p>总回合: ${report.totalRounds}</p>
+                <p>获胜者: ${report.winner === 'draw' ? '平局' : '玩家 ' + report.winner}</p>
+                <p>最终比分: A ${report.finalScores.A} - ${report.finalScores.B} B</p>
+            </div>
+            <div class="report-history">
+                <h3>回合详情</h3>
+                <table class="report-table">
+                    <thead>
+                        <tr>
+                            <th>回合</th>
+                            <th>选择方</th>
+                            <th>构建方</th>
+                            <th>目标坐标</th>
+                            <th>禁止区</th>
+                            <th>锁定元素</th>
+                            <th>函数表达式</th>
+                            <th>类型</th>
+                            <th>结果</th>
+                            <th>得分</th>
+                            <th>总分(A-B)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+        
+        for (const round of report.history) {
+            const resultText = round.hitForbidden ? '进入禁区' : 
+                              (round.hitTarget ? '命中目标' : '未命中');
+            const scoreClass = round.score >= 0 ? 'score-positive' : 'score-negative';
+            
+            // 格式化坐标和元素显示
+            const targetCoords = round.targetCells.map(c => `(${c.x},${c.y})`).join(', ');
+            const forbiddenCoords = round.forbiddenCells.length > 0 ? round.forbiddenCells.map(c => `(${c.x},${c.y})`).join(', ') : '-';
+            const lockedElems = round.lockedElements.length > 0 ? round.lockedElements.join(', ') : '-';
+            
+            html += `
+                <tr>
+                    <td>${round.round}</td>
+                    <td>玩家 ${round.selector}</td>
+                    <td>玩家 ${round.constructor}</td>
+                    <td class="coord-cell">${targetCoords}</td>
+                    <td class="coord-cell">${forbiddenCoords}</td>
+                    <td class="elem-cell">${lockedElems}</td>
+                    <td class="expr-cell">${round.expression || '-'}</td>
+                    <td>${this.getFunctionTypeName(round.functionType.type)}</td>
+                    <td>${resultText}</td>
+                    <td class="${scoreClass}">${round.score >= 0 ? '+' : ''}${round.score}</td>
+                    <td>${round.totalScoreA} - ${round.totalScoreB}</td>
+                </tr>
+            `;
+        }
+        
+        html += `
+                    </tbody>
+                </table>
+            </div>
+        `;
+        
+        this.reportContentElement.innerHTML = html;
+        this.reportModal.style.display = 'flex';
+    }
+    
+    /**
+     * 隐藏游戏报告
+     */
+    hideGameReport() {
+        this.reportModal.style.display = 'none';
+    }
+    
+    /**
+     * 获取难度名称
+     */
+    getDifficultyName(difficulty) {
+        const names = {
+            'easy': '简单',
+            'normal': '普通',
+            'hard': '困难',
+            'expert': '专家',
+            'test': '测试'
+        };
+        return names[difficulty] || difficulty;
+    }
+    
+    /**
+     * 获取函数类型名称
+     */
+    getFunctionTypeName(type) {
+        const names = {
+            'constant': '常值函数',
+            'degree_1': '一次函数',
+            'degree_2': '二次函数',
+            'degree_3': '三次函数',
+            'degree_4': '四次及以上',
+            'fraction': '分式函数',
+            'abs': '绝对值函数',
+            'sin': '正弦函数',
+            'cos': '余弦函数',
+            'tan': '正切函数',
+            'exp': '指数函数',
+            'ln': '自然对数',
+            'log': '常用对数',
+            'sqrt': '根号函数',
+            'factorial': '阶乘函数',
+            'euler': '欧拉公式'
+        };
+        return names[type] || type;
     }
 }
 

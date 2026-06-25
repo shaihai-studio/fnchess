@@ -13,6 +13,10 @@ class FunctionRenderer {
         this.deltaX = 0.01; // 采样精度
         this.maxDeltaY = 100; // 最大Y变化，超过视为断点
         
+        // 碰撞检测专用高精度采样配置
+        this.collisionDeltaX = 0.002; // 碰撞检测使用更高精度（5倍）
+        this.collisionMaxDeltaY = 500; // 碰撞检测允许更高的斜率
+        
         // 颜色配置
         this.colors = {
             function: '#ffffff',
@@ -132,13 +136,14 @@ class FunctionRenderer {
     }
     
     /**
-     * 采样函数
+     * 采样函数（支持自定义精度）
      * @param {string} expression - 函数表达式
      * @param {number} xMin - x 最小值
      * @param {number} xMax - x 最大值
+     * @param {boolean} forCollision - 是否为碰撞检测采样（使用更高精度）
      * @returns {Array} 采样点数组 [{x, y}, ...]
      */
-    sampleFunction(expression, xMin, xMax) {
+    sampleFunction(expression, xMin, xMax, forCollision = false) {
         const points = [];
         const range = this.gridSystem.getRange();
         
@@ -146,20 +151,24 @@ class FunctionRenderer {
         const sampleMin = Math.max(xMin, range.min - 1);
         const sampleMax = Math.min(xMax, range.max + 1);
         
+        // 根据用途选择采样参数
+        const deltaX = forCollision ? this.collisionDeltaX : this.deltaX;
+        const maxSlope = forCollision ? this.collisionMaxDeltaY : this.maxDeltaY;
+        
         let prevY = null;
         let prevX = null;
         
-        for (let x = sampleMin; x <= sampleMax; x += this.deltaX) {
+        for (let x = sampleMin; x <= sampleMax; x += deltaX) {
             const y = this.parser.evaluate(expression, x);
             
             if (y !== null && isFinite(y)) {
                 // 检查是否为断点（Y值突变）
                 if (prevY !== null && prevX !== null) {
                     const deltaY = Math.abs(y - prevY);
-                    const deltaX = x - prevX;
+                    const deltaXStep = x - prevX;
                     
                     // 如果斜率过大，视为断点
-                    if (deltaX > 0 && Math.abs(deltaY / deltaX) > this.maxDeltaY) {
+                    if (deltaXStep > 0 && Math.abs(deltaY / deltaXStep) > maxSlope) {
                         // 添加断点标记
                         points.push({ x: x, y: null, isBreak: true });
                         prevY = null;
@@ -341,9 +350,16 @@ class FunctionRenderer {
      * @returns {Array} 折线点数组
      */
     convertToPolyline(points) {
-        return points
-            .filter(p => p.y !== null)
-            .map(p => ({ x: p.x, y: p.y }));
+        const polyline = [];
+        for (const p of points) {
+            if (p.y === null || p.isBreak) {
+                // 遇到断点或无效值，插入 null 作为分隔符
+                polyline.push(null);
+            } else {
+                polyline.push({ x: p.x, y: p.y });
+            }
+        }
+        return polyline;
     }
     
     /**

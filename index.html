@@ -69,12 +69,21 @@
                 <div class="button-group">
                     <button class="btn btn-primary" id="confirm-btn">确认目标</button>
                     <button class="btn btn-secondary" id="clear-btn">清除</button>
-                    <button class="btn btn-secondary" id="skip-btn">跳过</button>
+                    <button class="btn btn-exit" id="exit-btn">退出对局</button>
+                </div>
+            </div>
+            
+            <!-- 退出确认气泡框 -->
+            <div class="exit-confirm-popover" id="exit-confirm-popover">
+                <p>确定要退出当前对局吗？</p>
+                <div class="popover-buttons">
+                    <button class="btn btn-small btn-confirm-exit" id="confirm-exit-btn">确认退出</button>
+                    <button class="btn btn-small btn-cancel" id="cancel-exit-btn">取消</button>
                 </div>
             </div>
             
             <!-- 消息提示 -->
-            <div class="panel-card">
+            <div class="panel-card message-panel" id="message-panel">
                 <div class="message" id="message"></div>
             </div>
         </aside>
@@ -91,7 +100,7 @@
             <h2>函数棋</h2>
             <p>
                 一款基于函数的策略对抗游戏<br>
-                玩家B选择目标，玩家A构造函数<br>
+                一方选择目标，另一方构造函数<br>
                 精准命中目标，避开禁止区域！
             </p>
             
@@ -129,7 +138,17 @@
             <h2>游戏结束</h2>
             <div class="winner-text" id="winner"></div>
             <div class="final-scores" id="final-scores"></div>
+            <button class="btn btn-primary" id="view-report-btn" style="width: 100%; margin-bottom: 10px;">查看游戏报告</button>
             <button class="btn btn-primary" id="restart-btn" style="width: 100%;">重新开始</button>
+        </div>
+    </div>
+    
+    <!-- 游戏报告模态框 -->
+    <div class="modal" id="report-modal" style="display: none;">
+        <div class="modal-content report-modal-content">
+            <h2>游戏报告</h2>
+            <div id="report-content"></div>
+            <button class="btn btn-secondary" id="close-report-btn" style="width: 100%; margin-top: 20px;">关闭</button>
         </div>
     </div>
     

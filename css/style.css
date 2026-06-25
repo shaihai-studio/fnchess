@@ -135,6 +135,15 @@ body {
     max-height: 100%;
 }
 
+/* 测试模式：Canvas 支持滚轮缩放 */
+.canvas-section.test-mode #game-canvas {
+    cursor: grab;
+}
+
+.canvas-section.test-mode #game-canvas:active {
+    cursor: grabbing;
+}
+
 /* 右侧控制面板 */
 .control-panel {
     flex: 0 0 30%;
@@ -218,10 +227,10 @@ body {
     color: #ffffff;
     display: flex;
     flex-wrap: wrap;
-    gap: 5px;
+    gap: 8px; /* 增加间距，方便点击空隙 */
     align-items: center;
     border: 1px solid rgba(255, 255, 255, 0.2);
-    cursor: pointer;
+    cursor: text; /* 提示用户可以点击移动光标 */
 }
 
 .expression-display .placeholder {
@@ -241,6 +250,19 @@ body {
 .expression-element:hover {
     background: rgba(239, 68, 68, 0.3);
     border-color: rgba(239, 68, 68, 0.5);
+}
+
+/* 光标样式 */
+.cursor {
+    color: #ffffff;
+    font-weight: bold;
+    animation: blink 1s step-end infinite;
+    margin: 0 2px;
+}
+
+@keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
 }
 
 /* 按钮组 */
@@ -283,9 +305,99 @@ body {
     background: rgba(255, 255, 255, 0.2);
 }
 
+/* 退出按钮样式 - 白底黑字 */
+.btn-exit {
+    flex: 1;
+    padding: 12px 20px;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    background: #ffffff;
+    color: #000000;
+}
+
+.btn-exit:hover:not(:disabled) {
+    background: #e5e7eb;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(255, 255, 255, 0.3);
+}
+
+/* 退出确认气泡框 */
+.exit-confirm-popover {
+    position: absolute;
+    bottom: 160px; /* 位于按钮组上方 */
+    right: 20px;
+    background: rgba(15, 23, 42, 0.95);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 12px;
+    padding: 20px;
+    min-width: 240px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    display: none;
+    z-index: 200;
+    animation: fadeIn 0.2s ease-out;
+}
+
+.exit-confirm-popover.visible {
+    display: block;
+}
+
+.exit-confirm-popover p {
+    margin: 0 0 15px 0;
+    color: #e5e7eb;
+    font-size: 14px;
+    text-align: center;
+}
+
+.popover-buttons {
+    display: flex;
+    gap: 10px;
+}
+
+.btn-small {
+    flex: 1;
+    padding: 8px 12px;
+    font-size: 12px;
+    border-radius: 6px;
+}
+
+.btn-cancel {
+    background: rgba(255, 255, 255, 0.1);
+    color: #e5e7eb;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.btn-cancel:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.btn-confirm-exit {
+    background: linear-gradient(135deg, #ef4444, #dc2626);
+    color: white;
+}
+
+.btn-confirm-exit:hover {
+    background: linear-gradient(135deg, #dc2626, #b91c1c);
+}
+
 .btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+}
+
+/* 消息提示容器 */
+.message-panel {
+    display: none; /* 普通模式下隐藏整个容器 */
+}
+
+.message-panel.visible {
+    display: block; /* 测试模式下显示 */
 }
 
 /* 消息提示 */
@@ -623,6 +735,103 @@ body {
     background: rgba(255, 255, 255, 0.05);
     border-radius: 8px;
     border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* 游戏报告样式 */
+.report-modal-content {
+    max-width: 900px;
+    width: 95%;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+.report-summary {
+    text-align: left;
+    margin-bottom: 20px;
+    padding: 15px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+}
+
+.report-summary h3 {
+    color: #22c55e;
+    margin-bottom: 10px;
+    font-size: 18px;
+}
+
+.report-summary p {
+    margin: 5px 0;
+    color: #e5e7eb;
+    font-size: 14px;
+}
+
+.report-history {
+    text-align: left;
+}
+
+.report-history h3 {
+    color: #3b82f6;
+    margin-bottom: 10px;
+    font-size: 18px;
+}
+
+.report-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    margin-top: 10px;
+}
+
+.report-table th,
+.report-table td {
+    padding: 8px;
+    text-align: center;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.report-table th {
+    background: rgba(59, 130, 246, 0.2);
+    color: #e5e7eb;
+    font-weight: bold;
+}
+
+.report-table tbody tr:nth-child(even) {
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.report-table tbody tr:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.expr-cell {
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.coord-cell {
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    color: #94a3b8;
+}
+
+.elem-cell {
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    color: #f59e0b;
+}
+
+.score-positive {
+    color: #22c55e;
+    font-weight: bold;
+}
+
+.score-negative {
+    color: #ef4444;
+    font-weight: bold;
 }
 
 /* 响应式布局 */

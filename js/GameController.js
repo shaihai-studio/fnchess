@@ -57,6 +57,9 @@ class GameController {
         
         // 回调函数
         this.callbacks = {};
+        
+        // 游戏历史记录（用于生成报告）
+        this.gameHistory = [];
     }
     
     /**
@@ -92,8 +95,9 @@ class GameController {
         this.players.A.score = 0;
         this.players.B.score = 0;
         
-        // 清空测试模式函数
+        // 清空测试模式函数和游戏历史
         this.testModeFunctions = [];
+        this.clearGameHistory();
         
         // 第1回合B选择目标，A构建函数
         this.currentPlayer = 'B';
@@ -124,6 +128,23 @@ class GameController {
      */
     isTestMode() {
         return this.difficulty === 'test';
+    }
+    
+    /**
+     * 重置游戏状态
+     */
+    resetGame() {
+        this.totalRounds = 8;
+        this.difficulty = 'normal';
+        this.targetCount = 1;
+        this.currentRound = 1;
+        this.players.A.score = 0;
+        this.players.B.score = 0;
+        this.testModeFunctions = [];
+        this.clearGameHistory();
+        this.resetRoundState();
+        this.setPhase(this.phases.SELECT_TARGET);
+        this.emit('gameReset');
     }
     
     /**
@@ -277,36 +298,27 @@ class GameController {
         });
         
         // 根据阶段执行相应逻辑
-        console.log(`[DEBUG] setPhase: 进入阶段 ${phase}, currentRound=${this.currentRound}`);
         switch (phase) {
             case this.phases.SELECT_TARGET:
-                console.log(`[DEBUG] setPhase: SELECT_TARGET`);
                 // 选择目标阶段不需要计时器
                 this.stopTimer();
                 this.remainingTime = this.timeLimit;
                 this.emit('timerUpdate', { remainingTime: this.remainingTime });
                 break;
             case this.phases.SET_FORBIDDEN:
-                console.log(`[DEBUG] setPhase: SET_FORBIDDEN, maxForbidden=${this.getMaxForbiddenCount()}`);
                 // 检查是否需要设置禁止区
                 if (this.getMaxForbiddenCount() === 0) {
-                    console.log(`[DEBUG] setPhase: 禁止区为0，自动进入SET_LOCKS`);
                     this.setPhase(this.phases.SET_LOCKS);
                 }
                 break;
             case this.phases.SET_LOCKS:
                 const maxLocks = this.getMaxLockCount();
-                console.log(`[DEBUG] setPhase: SET_LOCKS, maxLocks=${maxLocks}, currentPlayer=${this.currentPlayer}, currentRound=${this.currentRound}`);
                 // 检查是否需要设置锁定
                 if (maxLocks === 0) {
-                    console.log(`[DEBUG] setPhase: 锁定为0，自动进入INPUT_FUNCTION`);
                     this.switchToInputPhase();
-                } else {
-                    console.log(`[DEBUG] setPhase: 锁定不为0(${maxLocks})，等待用户确认`);
                 }
                 break;
             case this.phases.INPUT_FUNCTION:
-                console.log(`[DEBUG] setPhase: INPUT_FUNCTION, currentPlayer=${this.currentPlayer}`);
                 this.startTimer();
                 break;
             case this.phases.EVALUATE:
@@ -326,9 +338,7 @@ class GameController {
      */
     switchToInputPhase() {
         // 切换到构建函数的玩家（与选择目标的玩家相反）
-        console.log(`[DEBUG] switchToInputPhase: 切换前 currentPlayer=${this.currentPlayer}`);
         this.currentPlayer = this.currentPlayer === 'A' ? 'B' : 'A';
-        console.log(`[DEBUG] switchToInputPhase: 切换后 currentPlayer=${this.currentPlayer}`);
         this.setPhase(this.phases.INPUT_FUNCTION);
     }
     
@@ -447,16 +457,13 @@ class GameController {
      * 确认目标选择，进入下一阶段
      */
     confirmTargetSelection() {
-        console.log(`[DEBUG] confirmTargetSelection: currentPhase=${this.currentPhase}`);
         if (this.currentPhase !== this.phases.SELECT_TARGET) return false;
         
         // 检查是否已选择足够的目标格
         if (this.roundState.targetCells.length < this.targetCount) {
-            console.log(`[DEBUG] confirmTargetSelection: 目标格不足 ${this.roundState.targetCells.length}/${this.targetCount}`);
             return false;
         }
         
-        console.log(`[DEBUG] confirmTargetSelection: 进入下一阶段`);
         // 使用和跳过按钮一致的逻辑
         this.nextPhase();
         return true;
@@ -508,12 +515,9 @@ class GameController {
      * 确认禁止区设置
      */
     confirmForbiddenSelection() {
-        console.log(`[DEBUG] confirmForbiddenSelection: currentPhase=${this.currentPhase}`);
         if (this.currentPhase !== this.phases.SET_FORBIDDEN) {
-            console.log(`[DEBUG] confirmForbiddenSelection: 阶段不匹配`);
             return false;
         }
-        console.log(`[DEBUG] confirmForbiddenSelection: 进入SET_LOCKS`);
         // 使用和跳过按钮一致的逻辑
         this.nextPhase();
         return true;
@@ -550,12 +554,9 @@ class GameController {
      * 确认锁定设置
      */
     confirmLockSelection() {
-        console.log(`[DEBUG] confirmLockSelection: currentPhase=${this.currentPhase}, expected=${this.phases.SET_LOCKS}`);
         if (this.currentPhase !== this.phases.SET_LOCKS) {
-            console.log(`[DEBUG] confirmLockSelection: 阶段不匹配，返回false`);
             return false;
         }
-        console.log(`[DEBUG] confirmLockSelection: 进入INPUT_FUNCTION`);
         // 使用和跳过按钮一致的逻辑
         this.nextPhase();
         return true;
@@ -616,6 +617,23 @@ class GameController {
         
         this.roundState.score = score;
         this.players[this.currentPlayer].score += score;
+        
+        // 记录回合历史
+        this.recordRoundHistory({
+            round: this.currentRound,
+            selector: this.currentPlayer,
+            constructor: this.currentPlayer === 'A' ? 'B' : 'A',
+            targetCells: this.roundState.targetCells,
+            forbiddenCells: this.roundState.forbiddenCells,
+            lockedElements: this.roundState.lockedElements,
+            expression: this.roundState.functionExpression,
+            functionType: functionType,
+            hitTarget: this.roundState.hitTarget,
+            hitForbidden: hitForbidden,
+            score: score,
+            totalScoreA: this.players.A.score,
+            totalScoreB: this.players.B.score
+        });
         
         this.emit('evaluationComplete', {
             hitTarget: this.roundState.hitTarget,
@@ -695,6 +713,53 @@ class GameController {
     }
     
     /**
+     * 记录回合历史
+     * @param {Object} roundData - 回合数据
+     */
+    recordRoundHistory(roundData) {
+        this.gameHistory.push({
+            round: roundData.round,
+            selector: roundData.selector,
+            constructor: roundData.constructor,
+            targetCells: [...roundData.targetCells],
+            forbiddenCells: [...roundData.forbiddenCells],
+            lockedElements: [...roundData.lockedElements],
+            expression: roundData.expression,
+            functionType: roundData.functionType,
+            hitTarget: roundData.hitTarget,
+            hitForbidden: roundData.hitForbidden,
+            score: roundData.score,
+            totalScoreA: roundData.totalScoreA,
+            totalScoreB: roundData.totalScoreB
+        });
+    }
+    
+    /**
+     * 获取游戏报告
+     * @returns {Object} 游戏报告数据
+     */
+    getGameReport() {
+        return {
+            difficulty: this.difficulty,
+            totalRounds: this.totalRounds,
+            winner: this.players.A.score > this.players.B.score ? 'A' :
+                   this.players.B.score > this.players.A.score ? 'B' : 'draw',
+            finalScores: {
+                A: this.players.A.score,
+                B: this.players.B.score
+            },
+            history: this.gameHistory
+        };
+    }
+    
+    /**
+     * 清空游戏历史
+     */
+    clearGameHistory() {
+        this.gameHistory = [];
+    }
+    
+    /**
      * 结束游戏
      */
     endGame() {
@@ -708,7 +773,8 @@ class GameController {
             scores: {
                 A: this.players.A.score,
                 B: this.players.B.score
-            }
+            },
+            report: this.getGameReport()
         });
     }
     

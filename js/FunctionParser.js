@@ -428,7 +428,24 @@ class FunctionParser {
         converted = converted.replace(/\^/g, '**');
         
         // 确保乘法显式表示
-        // 处理数字与x之间缺少乘号的情况，如 2x -> 2*x
+        
+        // 【核心逻辑】处理隐式乘法的高优先级问题：
+        // 在数学中，2x 或 2(x) 的优先级高于除法。
+        // 例如：1/2x 应被解析为 1/(2*x) 而不是 (1/2)*x。
+        // 实现方法：当遇到 "数字/数字变量" 或 "数字/数字(" 时，将除号后面的部分用括号括起来。
+        
+        // 模式1: /数字x -> /(数字*x)
+        converted = converted.replace(/\/(\d+)([a-zA-Z])/g, '/($1*$2)');
+        
+        // 模式2: /数字( -> /(数字*(...))
+        // 这是一个简化的处理，匹配 /数字( 并在对应的右括号后闭合
+        let prev;
+        do {
+            prev = converted;
+            converted = converted.replace(/\/(\d+)\(([^()]+)\)/g, '/($1*($2))');
+        } while (converted !== prev);
+        
+        // 处理常规的数字与x之间缺少乘号的情况，如 2x -> 2*x
         converted = converted.replace(/(\d)(x)/gi, '$1*$2');
         
         // 处理数字与π/e之间缺少乘号的情况，如 2π -> 2*PI
@@ -653,7 +670,7 @@ class FunctionParser {
      * - n次方程：+n分（1次+1，2次+2，3次+3）
      * - 4次及以上：统一+4分
      * - abs、sin、cos等函数：统一+2分
-     * - 分数如1/x：统一+2分
+     * - 分式函数：分母的次数即为得分（1/x → +1, 1/x^2 → +2, 1/(x+1)^3 → +3）
      * @param {string} expression - 函数表达式
      * @returns {Object} {type: string, score: number}
      */
@@ -666,12 +683,6 @@ class FunctionParser {
         if (!cleanExpr.includes('x')) {
             console.log(`[DEBUG] analyzeFunctionType: 常值函数，得分=0`);
             return { type: 'constant', score: 0 };
-        }
-        
-        // 检查是否为分数形式（如1/x）
-        if (cleanExpr.includes('/x') || cleanExpr.includes('1/x')) {
-            console.log(`[DEBUG] analyzeFunctionType: 分数形式，得分=2`);
-            return { type: 'fraction', score: 2 };
         }
         
         // 检查是否为特殊函数（abs、sin、cos、tan、exp、ln、log、sqrt、factorial）
@@ -693,6 +704,28 @@ class FunctionParser {
         if (cleanExpr.includes('(-1)^(1/2)') || cleanExpr.includes('(-1)^0.5') || cleanExpr.includes('i')) {
             console.log(`[DEBUG] analyzeFunctionType: 欧拉公式形式，得分=2`);
             return { type: 'euler', score: 2 };
+        }
+        
+        // 检查是否为分式形式（包含除法运算符 / 且含有变量 x）
+        if (cleanExpr.includes('/')) {
+            // 区分线性组合与分式：
+            // 1/2*x -> 一次函数 (+1)
+            // 1/2x -> 分式函数，次数为分母的次数
+            
+            // 如果除号后面紧跟数字且紧接着有 *x，则视为线性组合
+            const linearPattern = /^\d+\/\d+\*x$/;
+            const linearPattern2 = /^\d+\/\(\d+\)\*x$/;
+            
+            if (linearPattern.test(cleanExpr) || linearPattern2.test(cleanExpr)) {
+                console.log(`[DEBUG] analyzeFunctionType: 线性组合（如1/2*x），得分=1`);
+                return { type: 'degree_1', score: 1 };
+            }
+            
+            // 分式函数：提取分母的次数
+            const denominatorDegree = this.getDenominatorDegree(cleanExpr);
+            const score = Math.min(Math.max(denominatorDegree, 1), 4); // 限制在1-4分之间
+            console.log(`[DEBUG] analyzeFunctionType: 分式形式，分母次数=${denominatorDegree}，得分=${score}`);
+            return { type: `fraction_degree_${denominatorDegree}`, score: score };
         }
         
         // 分析多项式次数
@@ -796,6 +829,61 @@ class FunctionParser {
         }
         
         return maxDegree;
+    }
+    
+    /**
+     * 提取分母的次数
+     * @param {string} expression - 已清理的表达式（小写，无空格）
+     * @returns {number} 分母的次数
+     */
+    getDenominatorDegree(expression) {
+        // 找到第一个除号的位置
+        const slashIndex = expression.indexOf('/');
+        if (slashIndex === -1) return 0;
+        
+        // 提取分母部分（除号后面的所有内容）
+        let denominator = expression.substring(slashIndex + 1);
+        
+        // 如果分母以括号开头，提取完整的括号内容
+        if (denominator.startsWith('(')) {
+            denominator = this.extractParenthesesContent(denominator);
+        }
+        
+        // 检查分母是否有幂次 ^n 或 **n
+        const powerMatch = denominator.match(/\^\s*(\d+)$/);
+        const powerMatch2 = denominator.match(/\*\*\s*(\d+)$/);
+        
+        if (powerMatch || powerMatch2) {
+            const power = parseInt((powerMatch || powerMatch2)[1]);
+            // 去掉幂次部分，计算基础表达式的次数
+            const baseExpr = denominator.replace(/[\^\*]+\s*\d+$/, '');
+            const baseDegree = this.getPolynomialDegree(baseExpr);
+            return baseDegree > 0 ? baseDegree * power : power;
+        }
+        
+        // 没有幂次，直接计算分母的次数
+        return this.getPolynomialDegree(denominator);
+    }
+    
+    /**
+     * 提取括号内容（支持嵌套括号）
+     * @param {string} str - 以 '(' 开头的字符串
+     * @returns {string} 括号内的内容
+     */
+    extractParenthesesContent(str) {
+        if (!str.startsWith('(')) return str;
+        
+        let depth = 0;
+        for (let i = 0; i < str.length; i++) {
+            if (str[i] === '(') depth++;
+            else if (str[i] === ')') {
+                depth--;
+                if (depth === 0) {
+                    return str.substring(0, i + 1);
+                }
+            }
+        }
+        return str;
     }
     
     /**

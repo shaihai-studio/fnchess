@@ -11,19 +11,19 @@ class CollisionDetector {
     
     /**
      * 判断线段是否与矩形相交（必须进入内部）
-     * 使用 Liang-Barsky 算法或分离轴定理
+     * 规则：擦边（仅接触边界）不算得分，必须完整穿过或进入内部
      * @param {Object} p1 - 线段起点 {x, y}
      * @param {Object} p2 - 线段终点 {x, y}
      * @param {Object} rect - 矩形 {x1, y1, x2, y2}
      * @returns {boolean} 是否相交（进入内部）
      */
     lineSegmentIntersectsRect(p1, p2, rect) {
-        // 首先检查线段端点是否在矩形内部
+        // 1. 检查线段端点是否在矩形内部（严格内部，不含边界）
         if (this.pointInRectInterior(p1, rect) || this.pointInRectInterior(p2, rect)) {
             return true;
         }
         
-        // 检查线段是否与矩形的任意边相交（不包括端点接触）
+        // 2. 检查线段是否与矩形的任意边真正相交（不包括端点接触）
         const edges = [
             { p1: { x: rect.x1, y: rect.y1 }, p2: { x: rect.x2, y: rect.y1 } }, // 下边
             { p1: { x: rect.x2, y: rect.y1 }, p2: { x: rect.x2, y: rect.y2 } }, // 右边
@@ -105,7 +105,7 @@ class CollisionDetector {
     
     /**
      * 检测折线是否与矩形相交
-     * @param {Array} polyline - 折线点数组 [{x, y}, ...]
+     * @param {Array} polyline - 折线点数组 [{x, y}, ...]，可能包含 null 分隔符
      * @param {Object} rect - 矩形 {x1, y1, x2, y2}
      * @returns {boolean}
      */
@@ -113,7 +113,15 @@ class CollisionDetector {
         if (polyline.length < 2) return false;
         
         for (let i = 0; i < polyline.length - 1; i++) {
-            if (this.lineSegmentIntersectsRect(polyline[i], polyline[i + 1], rect)) {
+            const p1 = polyline[i];
+            const p2 = polyline[i + 1];
+            
+            // 跳过 null 分隔符（断点）
+            if (p1 === null || p2 === null) {
+                continue;
+            }
+            
+            if (this.lineSegmentIntersectsRect(p1, p2, rect)) {
                 return true;
             }
         }
