@@ -1,4 +1,20 @@
+# 操作系统文件
+Thumbs.db
+Desktop.ini
 .DS_Store
+
+# IDE 文件
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 项目缓存
+.cursor/
+node_modules/
+.workbuddy/
+
+# 代码文件
 .qoder/
 _NODE_~
 *.backup*

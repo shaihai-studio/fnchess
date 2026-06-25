@@ -1,10 +1,28 @@
-/* ═══════════════════════════════════════════════════════════════
-   shaihai-theme.css — 函数棋 主题优化覆盖
-   在 style.css 之后加载，覆盖/增强原有样式
-   
-   保留 style.css 原始配色（深蓝黑底 + 绿/蓝主色）
-   增强：得意黑字体全局、毛玻璃、按钮光流、涟漪
-   ═══════════════════════════════════════════════════════════════ */
+/*
+ * 函数棋 (Function Chess)
+ * Copyright (C) 2024-2025 Shaihai Studio (Shaihai工作室)
+ * Visit us on Bilibili: https://space.bilibili.com/3690976753223882
+ * 
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published
+ * by the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ * 
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>。
+ *
+ * ═══════════════════════════════════════════════════════════════
+ * shaihai-theme.css — 函数棋 主题优化覆盖
+ * 在 style.css 之后加载，覆盖/增强原有样式
+ * 
+ * 保留 style.css 原始配色（深蓝黑底 + 绿/蓝主色）
+ * 增强：得意黑字体全局、毛玻璃、按钮光流、涟漪
+ * ═══════════════════════════════════════════════════════════════ */
 
 /* ================================================================
    1. 字体定义 — SmileySans 得意黑

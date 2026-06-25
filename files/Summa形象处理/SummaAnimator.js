@@ -1,4 +1,22 @@
 /**
+ * 函数棋 (Function Chess)
+ * Copyright (C) 2024-2025 Shaihai Studio (Shaihai工作室)
+ * Visit us on Bilibili: https://space.bilibili.com/3690976753223882
+ * 
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published
+ * by the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ * 
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * 
+ * ---
  * SummaAnimator.js
  * 驱动 Summa 形象的所有动画：眨眼、眼珠追踪、链式物理拖拽（重力+双端）、待机弹跳
  *

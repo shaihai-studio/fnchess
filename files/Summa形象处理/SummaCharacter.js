@@ -1,3 +1,21 @@
+/**
+ * 函数棋 (Function Chess)
+ * Copyright (C) 2024-2025 Shaihai Studio (Shaihai工作室)
+ * Visit us on Bilibili: https://space.bilibili.com/3690976753223882
+ * 
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published
+ * by the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ * 
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 class SummaCharacter {
     constructor(containerId) {
         this.container = document.getElementById(containerId);
@@ -123,8 +141,10 @@ class SummaCharacter {
         this._speechQueue = [];
         this._isSpeaking = false;
         this._speechToken = 0;
+        this._speechMode = 'idle';
         this.onSpeechQueueEmpty = null;
 
+        this.avatarSize = 256;
         this.render();
     }
 
@@ -149,10 +169,10 @@ class SummaCharacter {
         this.container.innerHTML = `
             <div id="summa-root" class="summa-root" style="display:none;">
                 <div id="summa-message" class="summa-message"></div>
-                <div id="summa-body" class="summa-body">
+                <div id="summa-body" class="summa-body" style="width:256px; height:256px;">
                     <div id="summa-hitbox" class="summa-hitbox"></div>
-                    <div id="summa-face-wrap" class="summa-face-wrap">
-                        <img id="summa-avatar" class="summa-avatar"
+                    <div id="summa-face-wrap" class="summa-face-wrap" style="width:256px; height:256px;">
+                        <img id="summa-avatar" class="summa-avatar" style="width:256px; height:256px; object-fit:contain;"
                              src="${this.imageMap.neutral}" alt="Summa">
 
                         <!-- 左眼覆盖层 -->
@@ -408,10 +428,40 @@ class SummaCharacter {
         return false;
     }
 
-    _enqueueSpeech(line, mood) {
-        this._speechQueue.push({ line, mood });
+    _enqueueSpeech(line, mood, mode = 'normal') {
+        if (!line) return;
+        const priorityRank = { normal: 0, revenge: 1 };
+        const incomingRank = priorityRank[mode] ?? 0;
+        const currentRank = priorityRank[this._speechMode] ?? 0;
+
+        // 低优先级语音直接丢弃，避免复仇/普通语音重叠
+        if (incomingRank < currentRank) return;
+
+        // 高优先级语音到来时，彻底打断当前播放与队列
+        if (incomingRank > currentRank) {
+            this.stopSpeech();
+            this._speechQueue = [];
+            this._speechMode = mode;
+        }
+
+        this._speechQueue.push({ line, mood, mode });
         if (!this._isSpeaking) {
             this._processSpeechQueue();
+        }
+    }
+
+    stopSpeech() {
+        this._speechToken++;
+        this._speechQueue = [];
+        this._isSpeaking = false;
+        this._speechMode = 'idle';
+        if (this.bubbleTimeout) {
+            clearTimeout(this.bubbleTimeout);
+            this.bubbleTimeout = null;
+        }
+        if (this.messageBox) {
+            this.messageBox.classList.remove('visible');
+            this.messageBox.textContent = '';
         }
     }
 
@@ -419,6 +469,7 @@ class SummaCharacter {
         if (this._isSpeaking || this._speechQueue.length === 0) return;
         const next = this._speechQueue.shift();
         this._isSpeaking = true;
+        this._speechMode = next.mode || 'normal';
 
         const token = ++this._speechToken;
         const line = next.line;
@@ -448,18 +499,21 @@ class SummaCharacter {
             this._isSpeaking = false;
             if (this._speechQueue.length > 0) {
                 this._processSpeechQueue();
-            } else if (typeof this.onSpeechQueueEmpty === 'function') {
-                this.onSpeechQueueEmpty();
+            } else {
+                this._speechMode = 'idle';
+                if (typeof this.onSpeechQueueEmpty === 'function') {
+                    this.onSpeechQueueEmpty();
+                }
             }
         }, duration);
     }
 
-    speak(situation, mood = 'neutral') {
+    speak(situation, mood = 'neutral', mode = 'normal') {
         const lines = this.dialogues[situation];
         if (!lines || lines.length === 0) return;
 
         const line = lines[Math.floor(Math.random() * lines.length)];
-        this._enqueueSpeech(line, mood);
+        this._enqueueSpeech(line, mood, mode);
     }
 
     // ── 游戏事件快捷接口 ─────────────────────────────────
@@ -506,21 +560,9 @@ class SummaCharacter {
      * @param {string} message - 要显示的消息
      * @param {string} mood - 情绪（影响立绘）
      */
-    say(message, mood = 'neutral') {
-        if (!this.messageBox) return;
-
-        this.setExpression(mood);
-        this.messageBox.textContent = message;
-        this.messageBox.classList.add('visible');
-
-        if (window.audioManager && typeof window.audioManager.playSummaTalkSequence === 'function') {
-            window.audioManager.playSummaTalkSequence(message, mood);
-        }
-
-        if (this.bubbleTimeout) clearTimeout(this.bubbleTimeout);
-        this.bubbleTimeout = setTimeout(() => {
-            this.messageBox.classList.remove('visible');
-        }, 5000);
+    say(message, mood = 'neutral', mode = 'normal') {
+        if (!message) return;
+        this._enqueueSpeech(message, mood, mode);
     }
 }
 

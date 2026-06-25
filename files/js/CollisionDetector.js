@@ -3,6 +3,24 @@
  * 实现视觉检测算法：通过采样函数图像的点来判定是否穿过格子
  * 优点：避免数学计算错误，更符合视觉直觉
  */
+/**
+ * 函数棋 (Function Chess)
+ * Copyright (C) 2024-2025 Shaihai Studio (Shaihai工作室)
+ * Visit us on Bilibili: https://space.bilibili.com/3690976753223882
+ * 
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published
+ * by the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ * 
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 class CollisionDetector {
     constructor(gridSystem) {
         // 采样密度：每段折线采样多少个点
