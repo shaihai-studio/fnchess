@@ -40,7 +40,10 @@ class GridSystem {
         this.maxRange = 50;  // 最大范围
         this.rangeStep = 5;  // 每次缩放步长
         this.fixedCampaignRange = 10; // 闯关模式固定 20x20
+        this.fixedRaceRange = 10; // 竞速模式固定 -10~10（20x20）
         this.isCampaignFixedRange = false;
+        this.isRaceMode = false;
+        this.isRaceFixedRange = false;
         
         // 防抖定时器
         this.resizeTimeout = null;
@@ -126,6 +129,8 @@ class GridSystem {
     setCampaignFixedRange(enabled) {
         this.isCampaignFixedRange = !!enabled;
         if (this.isCampaignFixedRange) {
+            this.isRaceFixedRange = false;
+            this.isRaceMode = false;
             this.range = this.fixedCampaignRange;
             this.gridSize = this.range * 2;
             this.resize();
@@ -133,6 +138,23 @@ class GridSystem {
             // 退出闯关时立即恢复默认对战网格，避免保留 20x20 状态
             this.range = 5;
             this.gridSize = 10;
+            this.resize();
+        }
+    }
+
+    setRaceFixedRange(enabled) {
+        this.isRaceFixedRange = !!enabled;
+        this.isRaceMode = !!enabled;
+        if (this.isRaceFixedRange) {
+            this.isCampaignFixedRange = false;
+            this.range = this.fixedRaceRange;
+            this.gridSize = this.range * 2;
+            this.usedCells = [];
+            this.resize();
+        } else {
+            this.range = 5;
+            this.gridSize = 10;
+            this.usedCells = [];
             this.resize();
         }
     }
@@ -144,6 +166,12 @@ class GridSystem {
     updateRange(round) {
         if (this.isCampaignFixedRange) {
             this.range = this.fixedCampaignRange;
+            this.gridSize = this.range * 2;
+            this.resize();
+            return false;
+        }
+        if (this.isRaceFixedRange) {
+            this.range = this.fixedRaceRange;
             this.gridSize = this.range * 2;
             this.resize();
             return false;
@@ -345,6 +373,9 @@ class GridSystem {
         this.targetCells = [];  // 清空当前回合的目标格
         this.forbiddenCells = [];  // 清空当前回合的禁区
         // 注意：不清空 usedCells，这是历史格子，需要在下一回合显示为灰色
+        if (this.isRaceMode) {
+            this.usedCells = [];
+        }
         this.draw();
     }
     
@@ -359,8 +390,10 @@ class GridSystem {
         ctx.fillStyle = this.colors.background;
         ctx.fillRect(0, 0, size, size);
         
-        // 绘制历史使用过的格子
-        this.drawUsedCells();
+        // 绘制历史使用过的格子（竞速模式禁用）
+        if (!this.isRaceMode) {
+            this.drawUsedCells();
+        }
         
         // 绘制禁止区
         this.drawForbiddenCells();

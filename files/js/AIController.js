@@ -396,6 +396,10 @@ class AIController {
         let bestExpr = 'x';
         this.lastThinkCount = 0;
 
+        // 倒计时最后10秒进入收尾模式：只保留最后一次尝试，然后立即开始输入
+        const remaining = Number(this.gameController.remainingTime || 0);
+        const deepSearchDeadline = remaining <= 10 ? 1 : 2000;
+
         // ── 优先尝试精确匹配的已学习解法 ──────────────────────────────────────
         if (this.learnedSolutions.length > 0 && this.uiController && this.uiController.renderer) {
             for (const solution of this.learnedSolutions) {
@@ -417,7 +421,10 @@ class AIController {
         const SLICE_MS = 8;
         let sliceStart = performance.now();
 
-        for (let attempt = 0; attempt < 2000; attempt++) {
+        for (let attempt = 0; attempt < deepSearchDeadline; attempt++) {
+            if (Number(this.gameController.remainingTime || 0) <= 10) {
+                break;
+            }
             const now = performance.now();
             if (now - sliceStart >= SLICE_MS) {
                 await new Promise(resolve => requestAnimationFrame(resolve));
@@ -441,6 +448,11 @@ class AIController {
                 const template = templates[Math.floor(Math.random() * templates.length)];
                 expression = template.replace(/\{n\}/g, () => Math.floor(Math.random() * 5) + 1)
                     .replace(/\{c\}/g, () => Math.floor(Math.random() * 10) - 5);
+            }
+
+            if (expression) {
+                expression = this.normalizeExpressionInput(expression);
+                expression = this.balanceParentheses(expression);
             }
 
             // ── 锁定合规检查：确保表达式不包含被锁定的元素 ──────────────────
@@ -1505,8 +1517,25 @@ class AIController {
 
         console.log('[AI] 通过 UIController 提交，逐个元素显示');
 
+        // 提交前先规范化表达式，避免少右括号/多余格式导致的解析失败
+        expression = this.finalizeExpression(expression);
+
         // 将表达式拆分为元素
         const tokens = this.tokenizeExpression(expression);
+
+        const syncExpressionFromTokens = () => {
+            this.uiController.currentExpression = this.uiController.expressionElements.join('');
+            this.uiController.updateExpressionDisplay();
+        };
+
+        const submitNow = async () => {
+            syncExpressionFromTokens();
+            const finalExpression = this.uiController.currentExpression;
+            if (!finalExpression) return false;
+            console.log('[AI] 通过 UIController 强制提交最终表达式:', finalExpression);
+            await this.uiController.forceSubmitFunction(finalExpression);
+            return true;
+        };
 
         // 先清空输入框，防止上一回合残留内容
         this.uiController.expressionElements = [];
@@ -1521,29 +1550,42 @@ class AIController {
         }
         */
 
-        // 逐个添加元素，模拟思考过程
-        for (let i = 0; i < tokens.length; i++) {
-            const token = tokens[i];
+        // 逐个添加元素，模拟思考过程；只在真正超时或阶段切换时中止
+        const shouldAbortTyping = () => this.gameController.currentPhase !== 'input_function';
+        const isTimeOver = () => Number(this.gameController.remainingTime || 0) <= 0;
 
-            // 添加当前元素
+        for (let i = 0; i < tokens.length; i++) {
+            if (shouldAbortTyping()) {
+                console.log('[AI] 阶段已变更，停止输入');
+                return;
+            }
+
+            const token = tokens[i];
             this.uiController.expressionElements.push(token);
             this.uiController.cursorIndex = this.uiController.expressionElements.length;
-            this.uiController.updateExpressionDisplay();
-
+            syncExpressionFromTokens();
             console.log(`[AI] 输入元素 ${i + 1}/${tokens.length}: ${token}`);
 
-            // 每个元素之间延迟，体现思考过程
-            const delay = 200 + Math.random() * 300; // 200-500ms
+            const delay = 200 + Math.random() * 300;
             await this.think(delay);
+
+            if (isTimeOver()) {
+                console.log('[AI] 时间截止，停止逐字输入并强制提交已输入内容');
+                const submitted = await submitNow();
+                if (!submitted) {
+                    console.warn('[AI] 强制提交失败，尝试直接以当前输入提交');
+                    this.gameController.submitFunction(this.uiController.currentExpression || this.uiController.expressionElements.join(''));
+                }
+                return;
+            }
         }
 
-        console.log('[AI] 表达式输入完成，等待确认...');
-
-        // 输入完成后稍微等待，然后提交
-        await this.think(500);
-
-        // 通过UIController提交
-        await this.uiController.submitFunction();
+        console.log('[AI] 表达式输入完成，准备提交表达式');
+        const submitted = await submitNow();
+        if (!submitted) {
+            console.warn('[AI] 正常提交失败，回退为直接提交当前表达式');
+            this.gameController.submitFunction(this.uiController.currentExpression || this.uiController.expressionElements.join(''));
+        }
     }
 
     /**
@@ -1636,12 +1678,9 @@ class AIController {
             }
             console.log(`[AI] 复仇模式: 成功放置 ${placedCount}/${finalTargets.length} 个目标格`);
 
-            if (window.summaCharacter) {
-                const msg = (dx === 0 && dy === 0)
-                    ? '这个局面让我很困惑……你来帮帮我吧？'
-                    : '换个方向，同样的难题……你能找到解法吗？';
-                window.summaCharacter.say(msg, 'neutral');
-            }
+            this.saySumma((dx === 0 && dy === 0)
+                ? '这个局面让我很困惑……你来帮帮我吧？'
+                : '换个方向，同样的难题……你能找到解法吗？', 'neutral', { priority: 'revenge' });
             console.log(`[AI] 挑衅反转成功，平移 (${dx}, ${dy})，放置 ${finalTargets.length}/${targetCount} 个目标格`);
             return true;
         }
@@ -1689,6 +1728,29 @@ class AIController {
      * — 存入精确解法库（完全相同局面时直接使用）
      * — 提取函数结构模板计入生成算法（类似局面自动适配常数）
      */
+    saySumma(message, emotion = 'neutral', options = {}) {
+        if (!window.summaCharacter || !message) return;
+        if (window.tutorialVoiceMode) message = 'asdfghjkl';
+
+        const priority = options.priority || 'normal';
+        const currentPriority = this._summaSpeechPriority || 'normal';
+        const priorityRank = { normal: 0, revenge: 1 };
+
+        if (priorityRank[priority] < priorityRank[currentPriority]) {
+            return;
+        }
+
+        if (priorityRank[priority] > priorityRank[currentPriority]) {
+            this._summaSpeechPriority = priority;
+            if (typeof window.summaCharacter.stopSpeech === 'function') {
+                window.summaCharacter.stopSpeech();
+            }
+        }
+
+        this._summaSpeechPriority = priority;
+        window.summaCharacter.say(message, emotion);
+    }
+
     learnFromPlayer(expression) {
         if (!this.pendingRevengePuzzle) return;
 
@@ -1715,9 +1777,7 @@ class AIController {
         this._saveLearnedData();
         this._saveArchiveRevengeTraining();
 
-        if (window.summaCharacter) {
-            window.summaCharacter.say(`"${expression}"……这个解法我记下了，下次就不会再被难倒了！`, 'determined');
-        }
+        this.saySumma(`"${expression}"……这个解法我记下了，下次就不会再被难倒了！`, 'determined', { priority: 'revenge' });
     }
 
     /**
@@ -1725,9 +1785,7 @@ class AIController {
      */
     notifyPlayerFailedRevenge() {
         this.pendingRevengePuzzle = null;
-        if (window.summaCharacter) {
-            window.summaCharacter.say('看来这个局面确实有难度……我们一起加油吧！', 'neutral');
-        }
+        this.saySumma('看来这个局面确实有难度……我们一起加油吧！', 'neutral', { priority: 'revenge' });
     }
 
     /**
@@ -1756,6 +1814,144 @@ class AIController {
             .replace(/÷/g, '/')
             .replace(/\bxx\b/g, 'x*x')
             .replace(/\[(.*?)\]/g, '($1)');
+    }
+
+    finalizeExpression(expression) {
+        let expr = this.normalizeExpressionInput(expression);
+        expr = this.balanceParentheses(expr);
+        expr = this.ensureFunctionCallsClosed(expr);
+        expr = this.convertMultiplicationToImplicit(expr);
+        expr = this.removeRedundantOuterParens(expr);
+        return expr;
+    }
+
+    /**
+     * 平衡表达式括号，避免缺少右括号/左括号
+     */
+    balanceParentheses(expression) {
+        if (!expression) return '';
+        const expr = String(expression);
+        let balance = 0;
+        let result = '';
+        for (const ch of expr) {
+            if (ch === '(') balance++;
+            if (ch === ')') {
+                if (balance > 0) {
+                    balance--;
+                    result += ch;
+                }
+                continue;
+            }
+            result += ch;
+        }
+        while (balance-- > 0) {
+            result += ')';
+        }
+        return result;
+    }
+
+    ensureFunctionCallsClosed(expression) {
+        if (!expression) return '';
+        let expr = String(expression);
+        const funcs = ['sin', 'cos', 'tan', 'abs', 'exp', 'ln', 'log', 'sqrt'];
+        for (const fn of funcs) {
+            const re = new RegExp(`\\b${fn}\\(([^()]*)$`, 'g');
+            expr = expr.replace(re, `${fn}($1)`);
+        }
+        return this.balanceParentheses(expr);
+    }
+
+    getExpressionTokens(expression) {
+        if (!expression) return [];
+        return String(expression).match(/sin|cos|tan|abs|exp|ln|log|sqrt|PI|π|[a-zA-Z]+|\d*\.?\d+|\^|\+|\-|\*|\/|\(|\)|!|,|\.|x|e|i/g) || [];
+    }
+
+    getExpressionPrecedence(token) {
+        if (!token) return -1;
+        if (['+','-'].includes(token)) return 1;
+        if (['*','/'].includes(token)) return 2;
+        if (token === '^') return 3;
+        return 4;
+    }
+
+    isAtomToken(token) {
+        return !!token && !['+','-','*','/','^',','].includes(token);
+    }
+
+    convertMultiplicationToImplicit(expression) {
+        if (!expression) return '';
+        let expr = String(expression);
+
+        // 只把“安全的乘法”改成隐式乘法：
+        // 1) 数字/变量/函数/右括号  *  数字/变量/函数/左括号
+        // 2) 尽量只包住左右两侧最小必要范围，避免括号漂移
+        const patterns = [
+            // 数字 * ( ... )
+            { re: /(?<![\w)])(-?\d*\.?\d+)\s*\*\s*(\([^()]+\))/g, fn: (_, a, b) => `${a}${b}` },
+            // ( ... ) * 数字
+            { re: /(\([^()]+\))\s*\*\s*(-?\d*\.?\d+)(?![\w(])/g, fn: (_, a, b) => `${a}${b}` },
+            // ( ... ) * ( ... )
+            { re: /(\([^()]+\))\s*\*\s*(\([^()]+\))/g, fn: (_, a, b) => `${a}${b}` },
+            // 变量/常量 * ( ... )
+            { re: /(?<![\w)])(x|e|i|π|PI)\s*\*\s*(\([^()]+\))/g, fn: (_, a, b) => `${a}${b}` },
+            // ( ... ) * 变量/常量
+            { re: /(\([^()]+\))\s*\*\s*(x|e|i|π|PI)(?![\w(])/g, fn: (_, a, b) => `${a}${b}` },
+            // 函数调用 * ( ... )
+            { re: /((?:sin|cos|tan|abs|exp|ln|log|sqrt)\([^()]+\))\s*\*\s*(\([^()]+\))/g, fn: (_, a, b) => `${a}${b}` },
+            // ( ... ) * 函数调用
+            { re: /(\([^()]+\))\s*\*\s*((?:sin|cos|tan|abs|exp|ln|log|sqrt)\([^()]+\))/g, fn: (_, a, b) => `${a}${b}` },
+        ];
+
+        let prev;
+        do {
+            prev = expr;
+            for (const p of patterns) {
+                expr = expr.replace(p.re, p.fn);
+            }
+        } while (expr !== prev);
+
+        return expr;
+    }
+
+    wrapForImplicitMultiply(segment, side) {
+        return segment;
+    }
+
+    isSimpleAtom(s) {
+        return /^-?(?:\d*\.?\d+|x|e|i|π|PI)$/.test(s) || /^(sin|cos|tan|abs|exp|ln|log|sqrt)\(.+\)$/.test(s);
+    }
+
+    canBeKeptWithoutParens(s, side) {
+        return true;
+    }
+
+    isAlreadyWrappedForImplicit(s, side) {
+        return true;
+    }
+
+    removeRedundantOuterParens(expression) {
+        if (!expression) return '';
+        let expr = String(expression);
+        let changed = true;
+        while (changed && expr.startsWith('(') && expr.endsWith(')')) {
+            changed = false;
+            let depth = 0;
+            let ok = true;
+            for (let i = 0; i < expr.length; i++) {
+                const ch = expr[i];
+                if (ch === '(') depth++;
+                else if (ch === ')') depth--;
+                if (depth === 0 && i < expr.length - 1) { ok = false; break; }
+            }
+            if (ok) {
+                expr = expr.slice(1, -1);
+                changed = true;
+            }
+        }
+        expr = expr.replace(/\(\(([^()]+)\)\)/g, '($1)');
+        expr = expr.replace(/\((sin|cos|tan|abs|exp|ln|log|sqrt)\(([^()]*)\)\)/g, '$1($2)');
+        expr = expr.replace(/\((x|e|i|π|PI|\d*\.?\d+)\)/g, '$1');
+        return expr;
     }
 
     // ────────────────────────────────────────────────────────────
@@ -2105,9 +2301,9 @@ class AIController {
 
         console.log(`[AI-RevengeTrain] 开始复仇训练: 失败局面及平移变体 ${TOTAL_SIMS} 轮（预算 ${TIME_BUDGET_MS}ms）`);
 
-        // 轻量核心模板池：优先已学模板，限制池大小确保 10000 轮可在短时完成
+        // 轻量核心模板池：优先已学模板，扩大池大小以提升复仇训练覆盖面
         const learnedCores = this.learnedTemplates.length > 0
-            ? this.learnedTemplates.map(t => t.core).slice(-24)
+            ? this.learnedTemplates.map(t => t.core).slice(-120)
             : [];
         const baseTemplates = [...new Set([
             ...learnedCores,
@@ -2167,12 +2363,12 @@ class AIController {
             addSolutionIfNew(simTargets, simForbidden, adapted);
         }
 
-        // 限制库大小
-        if (this.learnedSolutions.length > 500) {
-            this.learnedSolutions = this.learnedSolutions.slice(-500);
+        // 限制库大小（增大容量，提升长期学习效果）
+        if (this.learnedSolutions.length > 5000) {
+            this.learnedSolutions = this.learnedSolutions.slice(-5000);
         }
-        if (this.learnedTemplates.length > 100) {
-            this.learnedTemplates = this.learnedTemplates.slice(-100);
+        if (this.learnedTemplates.length > 1000) {
+            this.learnedTemplates = this.learnedTemplates.slice(-1000);
         }
 
         // 保存到 localStorage

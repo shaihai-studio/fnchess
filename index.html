@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>函数棋 - Function Chess</title>
     <link rel="stylesheet" href="files/css/style.css">
     <link rel="stylesheet" href="files/css/shaihai-theme.css">
@@ -77,12 +77,33 @@
                 </div>
             </div>
             
+            <!-- 竞速实时用时 -->
+            <div class="panel-card race-live-panel" id="race-live-panel" style="display:none;">
+                <h3>CURRENT LAP TIME</h3>
+                <div class="race-live-time-card">
+                    <div class="race-live-time-label">TIMING</div>
+                    <div class="race-live-time-value" id="race-live-time-value">0.00s</div>
+                    <div class="race-live-time-bars" aria-hidden="true"><span></span><span></span><span></span></div>
+                    <div class="race-live-time-meta">
+                        <span class="race-live-meta-chip">Fnchess</span>
+                        <span class="race-live-meta-chip accent">F1</span>
+                        <span class="race-live-meta-chip">PIT</span>
+                    </div>
+                </div>
+            </div>
+
             <!-- 表达式构建区 -->
             <div class="panel-card">
                 <h3>函数表达式</h3>
                 <div class="expression-display" id="expression-display">
                     <span class="placeholder">点击元素构建表达式...</span>
                 </div>
+            </div>
+            
+            <!-- 移动端内联元素拖拽区（仅平板竖屏/手机显示，替代固定底栏） -->
+            <div class="panel-card inline-elements-card" id="inline-elements-card">
+                <div class="inline-elements-tabs" id="inline-elements-tabs"></div>
+                <div class="inline-elements-body" id="inline-elements-body"></div>
             </div>
             
             <!-- 按钮组 -->
@@ -140,6 +161,14 @@
                                 <button type="button" class="stepper-arrow" id="round-next" aria-label="增加回合数">→</button>
                             </div>
                         </div>
+
+                        <div class="selector-row time-limit-select">
+                            <div class="stepper-selector" id="time-limit-stepper" tabindex="0">
+                                <button type="button" class="stepper-arrow" id="time-limit-prev" aria-label="减少时间限制">←</button>
+                                <div class="stepper-value" id="time-limit-value" tabindex="0">普通棋</div>
+                                <button type="button" class="stepper-arrow" id="time-limit-next" aria-label="增加时间限制">→</button>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -156,6 +185,7 @@
                             <button class="mode-btn active" id="mode-local" data-mode="local">本地对战</button>
                             <button class="mode-btn" id="mode-ai" data-mode="ai">人机对战</button>
                             <button class="mode-btn" id="mode-campaign" data-mode="campaign">闯关模式</button>
+                            <button class="mode-btn" id="mode-race" data-mode="race">竞速模式</button>
                             <button class="mode-btn" id="mode-test" data-mode="test">测试模式</button>
                         </div>
                         <small id="mode-hint" style="display: block; margin-top: 5px; opacity: 0.7;">本地对战：两位玩家轮流操作</small>
@@ -181,6 +211,55 @@
                 <small id="campaign-progress" style="display:block; margin-top:6px; opacity:0.7;"></small>
             </div>
             <a class="about-us-link" href="https://space.bilibili.com/3690976753223882" target="_blank" rel="noopener noreferrer">关于我们</a>
+        </div>
+    </div>
+
+    <!-- 竞速模式模态框 -->
+    <div class="modal" id="race-modal" style="display:none;">
+        <div class="modal-content campaign-modal-content" style="max-width: 900px;">
+            <h2>竞速模式</h2>
+            <div id="race-step-levels">
+                <div style="display:flex; justify-content: space-between; align-items:center; margin-bottom: 10px;">
+                    <div>
+                        <div id="race-level-title" style="font-weight:bold; margin-bottom: 2px;">选择等级</div>
+                    </div>
+                    <div style="display:flex; gap:8px;">
+                        <button class="btn btn-secondary" id="race-reset-btn">重置进度</button>
+                        <button class="btn btn-exit" id="race-close-btn">关闭</button>
+                    </div>
+                </div>
+                <div id="race-level-grid" class="campaign-level-grid"></div>
+                <div style="display:flex; align-items:center; gap:10px; flex:1; min-width: 260px; margin-top: 10px;">
+                    <div id="race-star-progress" class="campaign-star-progress"></div>
+                </div>
+                <small id="race-level-progress" style="display:block; text-align:left; margin-top:4px; opacity:0.75;"></small>
+                <div id="race-ttsigma-display" class="campaign-lrsigma-display" style="margin-top:4px;"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="race-victory-modal" style="display:none;">
+        <div class="modal-content race-victory-content">
+            <div class="race-victory-main">
+                <div class="race-victory-head">
+                    <div class="race-victory-speed-bars" aria-hidden="true">
+                        <span class="bar left"></span>
+                        <span class="bar center"></span>
+                        <span class="bar right"></span>
+                    </div>
+                    <div id="race-victory-level" class="race-victory-level"></div>
+                </div>
+                <div class="race-victory-time-row">
+                    <div id="race-victory-time" class="race-victory-time"></div>
+                    <div id="race-victory-diff" class="race-victory-diff"></div>
+                </div>
+                <div id="race-victory-best" class="race-victory-best"></div>
+            </div>
+            <div class="race-victory-actions">
+                <button class="btn btn-secondary race-victory-left-btn" id="race-victory-level-select-btn">返回等级选择</button>
+                <button class="btn btn-secondary race-victory-mid-btn" id="race-victory-retry-btn">再次尝试</button>
+                <button class="btn btn-primary race-victory-right-btn" id="race-victory-next-btn">进入下一等级</button>
+            </div>
         </div>
     </div>
 
@@ -227,6 +306,7 @@
             </div>
         </div>
     </div>
+
 
     <input id="campaign-file-input" type="file" accept=".txt,application/json,text/plain" style="display:none;">
     
@@ -282,6 +362,28 @@
                 </button>
                 <button class="btn btn-primary icon-btn" id="campaign-next-btn" title="下一关">
                     <span>下一关</span>
+                    <span class="icon">→</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 竞速胜利模态框 -->
+    <div class="modal" id="race-victory-modal" style="display: none;">
+        <div class="modal-content campaign-victory-content">
+            <h2>等级完成</h2>
+            <div class="campaign-victory-text" id="race-victory-text">恭喜完成！</div>
+            <div class="campaign-victory-actions">
+                <button class="btn btn-primary icon-btn" id="race-victory-level-select-btn" title="等级选择">
+                    <span class="icon">⌂</span>
+                    <span>等级选择</span>
+                </button>
+                <button class="btn btn-primary icon-btn" id="race-victory-retry-btn" title="再来一次">
+                    <span class="icon">↻</span>
+                    <span>再来一次</span>
+                </button>
+                <button class="btn btn-primary icon-btn" id="race-victory-next-btn" title="下一级">
+                    <span>下一级</span>
                     <span class="icon">→</span>
                 </button>
             </div>
@@ -353,6 +455,8 @@
     <script src="files/js/AIController.js"></script>
     <script src="files/js/GameController.js"></script>
     <script src="files/js/campaignLevels.js"></script>
+    <script src="files/js/RaceMode/RaceModeManager.js"></script>
+    <script src="files/js/RaceMode/RaceModeController.js"></script>
     <script src="files/js/UIController.js"></script>
     <script src="files/js/SummaTrainer.js"></script>
     
@@ -365,6 +469,8 @@
 
             // 创建UI控制器
             const uiController = new UIController(gridSystem, gameController);
+            uiController.raceModeManager = new RaceModeManager();
+            uiController.raceModeController = new RaceModeController(gridSystem);
 
             // 创建Summa训练器
             const summaTrainer = new SummaTrainer(gameController, gridSystem);

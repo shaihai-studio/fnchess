@@ -10,8 +10,7 @@ class GameController {
         this.currentRound = 1;
         
         // 游戏模式
-        this.gameMode = 'local'; // 'local' 本地对战, 'ai' 人机对战, 'campaign' 闯关模式
-        
+        this.gameMode = 'local'; // 'local' 本地对战, 'ai' 人机对战, 'campaign' 闯关模式, 'race' 竞速模式        
         // 难度设置
         this.difficulty = 'normal'; // easy, normal, hard, expert, test
         this.targetCount = 1; // 根据难度设置目标格数量
@@ -42,6 +41,8 @@ class GameController {
         
         // 时间限制（秒）
         this.timeLimit = 40;
+        this.timeLimitMode = 'normal';
+        this.timeLimitMultiplier = 1;
         this.remainingTime = 40;
         this.timerInterval = null;
         
@@ -74,6 +75,22 @@ class GameController {
             totalLevels: 0,
             currentLevelId: 1
         };
+
+        // 竞速模式状态
+        this.raceState = {
+            active: false,
+            totalLevels: 30,
+            currentLevelId: 1,
+            startedAt: null,
+            clearedLevels: new Set(),
+            bestTimes: {},
+            elapsedTimer: null,
+            roundSeed: null,
+            solvedCount: 0,
+            puzzlesPerLevel: 10,
+            fixedRange: 10 // 20x20范围：坐标从-10到9
+        };
+
     }
     
     /**
@@ -103,11 +120,16 @@ class GameController {
      * @param {string} gameMode - 游戏模式 (local, ai)
      */
     initGame(rounds = 8, difficulty = 'normal', gameMode = 'local') {
-        // 退出闯关模式
+        // 退出闯关/竞速模式
         this.campaignState.active = false;
         this.campaignState.levelPack = null;
         this.campaignState.totalLevels = 0;
         this.campaignState.currentLevelId = 1;
+        this.raceState.active = false;
+        this.raceState.currentLevelId = 1;
+        this.raceState.startedAt = null;
+        this.raceState.clearedLevels = new Set();
+        this.raceState.solvedCount = 0;
 
         this.totalRounds = Math.min(Math.max(rounds, 4), 24);
         this.difficulty = difficulty;
@@ -245,6 +267,368 @@ class GameController {
         return true;
     }
 
+    initRace(levelId = 1) {
+        const safeLevelId = Math.max(1, Math.min(30, Number(levelId) || 1));
+        this.stopTimer();
+        this.campaignState.active = false;
+        this.campaignState.levelPack = null;
+        this.campaignState.totalLevels = 0;
+        this.campaignState.currentLevelId = 1;
+        this.raceState.active = false;
+        this.raceState.currentLevelId = safeLevelId;
+        this.raceState.startedAt = null;
+        this.raceState.elapsedTimer = null;
+        this.raceState.roundSeed = null;
+
+        this.gameMode = 'race';
+        this.raceState.active = true;
+        this.raceState.currentLevelId = safeLevelId;
+        this.raceState.startedAt = Date.now();
+        this.raceState.solvedCount = 0;
+        this.raceState.fixedRange = 10; // 20x20范围：坐标从-10到9
+        this.loadRaceBestTimes();
+
+        this.totalRounds = 1;
+        this.currentRound = safeLevelId;
+        this.difficulty = 'normal';
+        this.clearGameHistory();
+        this.usedCells = [];
+        this.functionHistory = [];
+        this.testModeFunctions = [];
+        this.elementLockCounts = new Map();
+
+        this.updateTimeLimit();
+        this.resetRoundState();
+
+        const raceLevel = this.buildRaceLevel();
+        this.targetCount = raceLevel.targetCells.length; // 动态设置为当前等级的允许区数量
+        this.roundState.targetCells = raceLevel.targetCells;
+        this.roundState.targetCell = this.roundState.targetCells[0] || null;
+        this.roundState.forbiddenCells = raceLevel.forbiddenCells;
+        this.roundState.lockedElements = raceLevel.lockedElements;
+        this.roundState.score = 0;
+        this.roundState.hitTargets = [];
+        this.roundState.hitTarget = false;
+        this.roundState.hitForbidden = false;
+
+        this.emit('gameInit', {
+            totalRounds: 1,
+            currentRound: safeLevelId,
+            timeLimit: this.timeLimit,
+            difficulty: this.difficulty,
+            targetCount: this.targetCount,
+            isTestMode: false,
+            gameMode: this.gameMode,
+            raceLevel
+        });
+
+        this.emit('raceLevelLoaded', {
+            levelId: safeLevelId,
+            totalLevels: this.raceState.totalLevels,
+            roundState: { ...this.roundState },
+            elapsed: 0,
+            raceLevel
+        });
+
+        this.setPhase(this.phases.INPUT_FUNCTION);
+        return true;
+    }
+
+    cleanupRaceState() {
+        this.stopTimer();
+        this.raceState.active = false;
+        this.raceState.currentLevelId = 1;
+        this.raceState.startedAt = null;
+        this.raceState.elapsedTimer = null;
+        this.raceState.roundSeed = null;
+    }
+
+    pauseTimer() {
+        this.stopTimer();
+    }
+
+    getRaceElapsedSeconds() {
+        if (!this.raceState.startedAt) return 0;
+        return (Date.now() - this.raceState.startedAt) / 1000;
+    }
+
+    getRaceStarsByElapsed(elapsed) {
+        const t = Number(elapsed) || 0;
+        if (t < 100) return 5;
+        if (t < 150) return 4;
+        if (t < 300) return 3;
+        if (t < 1000) return 2;
+        return 1;
+    }
+
+    loadRacePuzzleForCurrentLevel() {
+        const raceLevel = this.buildRaceLevel();
+        this.resetRoundState();
+        this.roundState.targetCells = raceLevel.targetCells;
+        this.roundState.targetCell = this.roundState.targetCells[0] || null;
+        this.roundState.forbiddenCells = raceLevel.forbiddenCells;
+        this.roundState.lockedElements = raceLevel.lockedElements;
+        this.roundState.score = 0;
+        this.roundState.hitTargets = [];
+        this.roundState.hitTarget = false;
+        this.roundState.hitForbidden = false;
+        this.roundState.functionExpression = '';
+        this.emit('racePuzzleLoaded', {
+            levelId: this.raceState.currentLevelId,
+            solvedCount: this.raceState.solvedCount || 0,
+            totalSolved: this.raceState.puzzlesPerLevel || 10,
+            roundState: { ...this.roundState },
+            raceLevel
+        });
+        this.setPhase(this.phases.INPUT_FUNCTION);
+    }
+
+    buildRaceLevel() {
+        const levelId = this.raceState.currentLevelId;
+        const seed = Date.now() + Math.floor(Math.random() * 1000000);
+        const rand = this.createSeededRandom(seed);
+        const used = new Set();
+        const minCoord = -this.raceState.fixedRange;
+        const maxCoord = this.raceState.fixedRange - 1;
+        const pickCell = () => {
+            let x, y, key;
+            do {
+                x = Math.floor(rand() * (maxCoord - minCoord + 1)) + minCoord;
+                y = Math.floor(rand() * (maxCoord - minCoord + 1)) + minCoord;
+                key = `${x},${y}`;
+            } while (used.has(key));
+            used.add(key);
+            return { x, y };
+        };
+
+        // 30个等级的配置数据
+        const levelConfigs = [
+            // id: 1
+            { allowed: 1, forbidden: 1, fixedLocks: 0, randomLocks: 0, mustLock: [] },
+            // id: 2
+            { allowed: 1, forbidden: 1, fixedLocks: 1, randomLocks: 0, mustLock: [] },
+            // id: 3
+            { allowed: 1, forbidden: 3, fixedLocks: 3, randomLocks: 0, mustLock: [] },
+            // id: 4
+            { allowed: 2, forbidden: 1, fixedLocks: 0, randomLocks: 0, mustLock: [] },
+            // id: 5
+            { allowed: 2, forbidden: 1, fixedLocks: 1, randomLocks: 0, mustLock: [] },
+            // id: 6
+            { allowed: 2, forbidden: 2, fixedLocks: 2, randomLocks: 0, mustLock: [] },
+            // id: 7
+            { allowed: 1, forbidden: 20, fixedLocks: 10, randomLocks: 0, mustLock: [] },
+            // id: 8
+            { allowed: 2, forbidden: 4, fixedLocks: 3, randomLocks: 0, mustLock: [] },
+            // id: 9
+            { allowed: 2, forbidden: 2, fixedLocks: 2, randomLocks: 2, mustLock: ['+', '-'] },
+            // id: 10
+            { allowed: 2, forbidden: 4, fixedLocks: 13, randomLocks: 1, mustLock: ['0','1','2','3','4','5','6','7','8','9','π','e','i'] },
+            // id: 11
+            { allowed: 2, forbidden: 10, fixedLocks: 2, randomLocks: 0, mustLock: [] },
+            // id: 12
+            { allowed: 3, forbidden: 1, fixedLocks: 0, randomLocks: 0, mustLock: [] },
+            // id: 13
+            { allowed: 2, forbidden: 20, fixedLocks: 5, randomLocks: 0, mustLock: [] },
+            // id: 14
+            { allowed: 3, forbidden: 1, fixedLocks: 2, randomLocks: 0, mustLock: [] },
+            // id: 15
+            { allowed: 3, forbidden: 1, fixedLocks: 5, randomLocks: 0, mustLock: [] },
+            // id: 16
+            { allowed: 3, forbidden: 2, fixedLocks: 3, randomLocks: 0, mustLock: [] },
+            // id: 17
+            { allowed: 3, forbidden: 3, fixedLocks: 4, randomLocks: 0, mustLock: [] },
+            // id: 18
+            { allowed: 3, forbidden: 20, fixedLocks: 2, randomLocks: 0, mustLock: [] },
+            // id: 19
+            { allowed: 4, forbidden: 1, fixedLocks: 2, randomLocks: 0, mustLock: [] },
+            // id: 20
+            { allowed: 4, forbidden: 2, fixedLocks: 3, randomLocks: 0, mustLock: [] },
+            // id: 21
+            { allowed: 2, forbidden: 200, fixedLocks: 0, randomLocks: 0, mustLock: [] },
+            // id: 22
+            { allowed: 2, forbidden: 300, fixedLocks: 0, randomLocks: 2, mustLock: [] },
+            // id: 23
+            { allowed: 4, forbidden: 3, fixedLocks: 4, randomLocks: 0, mustLock: [] },
+            // id: 24
+            { allowed: 3, forbidden: 6, fixedLocks: 6, randomLocks: 0, mustLock: [] },
+            // id: 25
+            { allowed: 5, forbidden: 2, fixedLocks: 2, randomLocks: 0, mustLock: [] },
+            // id: 26
+            { allowed: 5, forbidden: 3, fixedLocks: 4, randomLocks: 0, mustLock: [] },
+            // id: 27
+            { allowed: 3, forbidden: 200, fixedLocks: 1, randomLocks: 0, mustLock: [] },
+            // id: 28
+            { allowed: 3, forbidden: 5, fixedLocks: 5, randomLocks: 3, mustLock: ['sin','cos','tan','+','-'] },
+            // id: 29
+            { allowed: 3, forbidden: 4, fixedLocks: 15, randomLocks: 2, mustLock: ['0','1','2','3','4','5','6','7','8','9','π','e','i','+','-'] },
+            // id: 30
+            { allowed: 6, forbidden: 6, fixedLocks: 6, randomLocks: 0, mustLock: [] }
+        ];
+
+        const config = levelConfigs[levelId - 1];
+        if (!config) {
+            return { targetCells: [pickCell(), pickCell()], forbiddenCells: [pickCell(), pickCell()], lockedElements: [] };
+        }
+
+        const targetCells = [];
+        for (let i = 0; i < config.allowed; i++) {
+            targetCells.push(pickCell());
+        }
+
+        // 生成禁止区，确保不与目标格重叠
+        const allCells = [];
+        for (let x = minCoord; x <= maxCoord; x++) {
+            for (let y = minCoord; y <= maxCoord; y++) {
+                const key = `${x},${y}`;
+                if (!used.has(key)) {
+                    allCells.push({ x, y });
+                }
+            }
+        }
+        const forbiddenCount = Math.min(config.forbidden, allCells.length);
+        const forbiddenCells = [];
+        for (let i = 0; i < forbiddenCount; i++) {
+            const idx = Math.floor(rand() * allCells.length);
+            const cell = allCells.splice(idx, 1)[0];
+            used.add(`${cell.x},${cell.y}`);
+            forbiddenCells.push(cell);
+        }
+
+        // 生成锁定元素
+        const lockedElements = [];
+        const conflictGroups = [
+            ['+', '-', '^'],           // 不能全部同时锁定
+            ['!', 'sin', 'cos', 'tan'] // 不能全部同时锁定
+        ];
+        const wouldLockAll = (candidate, locked) => {
+            for (const g of conflictGroups) {
+                if (g.includes(candidate)) {
+                    const already = locked.filter(el => g.includes(el)).length;
+                    if (already + 1 === g.length) return true;
+                }
+            }
+            return false;
+        };
+
+        // 固定锁定元素（mustLock中指定的），确保每个都被锁定
+        const fixed = config.mustLock || [];
+        for (const el of fixed) {
+            if (lockedElements.includes(el)) continue;
+            // 如果添加这个元素会导致冲突组全部被锁定，则需要先解锁组内一个非mustLock的元素
+            if (wouldLockAll(el, lockedElements)) {
+                for (const g of conflictGroups) {
+                    if (g.includes(el)) {
+                        const lockedInGroup = lockedElements.filter(x => g.includes(x));
+                        // 找一个不是mustLock的元素解锁
+                        const toUnlock = lockedInGroup.find(x => !fixed.includes(x));
+                        if (toUnlock) {
+                            lockedElements.splice(lockedElements.indexOf(toUnlock), 1);
+                        } else {
+                            console.warn(`竞速模式等级${levelId}：mustLock元素'${el}'导致冲突组[${g.join(',')}]全部锁定，但组内元素均为mustLock，无法调整`);
+                        }
+                        break;
+                    }
+                }
+            }
+            if (!lockedElements.includes(el)) {
+                lockedElements.push(el);
+            }
+        }
+
+        // 如果固定锁定数量不足，从剩余元素中补充（不与已有元素冲突）
+        const allElements = ['+','-','*','/','^','!','sin','cos','tan','abs','sqrt','ln','log','exp','factorial','0','1','2','3','4','5','6','7','8','9','π','e','i'];
+        const banned = new Set(['x', '(', ')']);
+        let pool = allElements.filter(el => !banned.has(el) && !lockedElements.includes(el));
+
+        while (lockedElements.length < config.fixedLocks && pool.length > 0) {
+            const idx = Math.floor(rand() * pool.length);
+            const candidate = pool[idx];
+            if (candidate && !wouldLockAll(candidate, lockedElements)) {
+                lockedElements.push(candidate);
+                pool.splice(idx, 1);
+            } else {
+                pool.splice(idx, 1);
+            }
+        }
+
+        // 随机锁定元素（从剩余元素中选，不导致冲突组全部锁定）
+        pool = allElements.filter(el => !banned.has(el) && !lockedElements.includes(el));
+        let attempts = 0;
+        while (lockedElements.length < config.fixedLocks + config.randomLocks && pool.length > 0 && attempts < 1000) {
+            attempts++;
+            const idx = Math.floor(rand() * pool.length);
+            const candidate = pool[idx];
+            if (candidate && !wouldLockAll(candidate, lockedElements)) {
+                lockedElements.push(candidate);
+                pool.splice(idx, 1);
+            } else {
+                pool.splice(idx, 1);
+            }
+        }
+
+        return { targetCells, forbiddenCells, lockedElements };
+    }
+
+    createSeededRandom(seed) {
+        let s = (seed * 9301 + 49297) % 233280;
+        return () => {
+            s = (s * 9301 + 49297) % 233280;
+            return s / 233280;
+        };
+    }
+
+    getRaceProgress() {
+        try {
+            const cleared = localStorage.getItem('function_chess_race_cleared');
+            const stars = localStorage.getItem('function_chess_race_stars');
+            return {
+                cleared: cleared ? Number(cleared) || 0 : 0,
+                stars: stars ? Number(stars) || 0 : 0
+            };
+        } catch {
+            return { cleared: 0, stars: 0 };
+        }
+    }
+
+    setRaceProgress({ cleared = 0, stars = 0 } = {}) {
+        try {
+            localStorage.setItem('function_chess_race_cleared', String(Math.max(0, Number(cleared) || 0)));
+            localStorage.setItem('function_chess_race_stars', String(Math.max(0, Number(stars) || 0)));
+        } catch {}
+    }
+
+    getRaceBestTime(levelId) {
+        try {
+            const map = this.raceState.bestTimes || {};
+            const v = Number(map[levelId]);
+            return Number.isFinite(v) && v > 0 ? v : Infinity;
+        } catch {
+            return Infinity;
+        }
+    }
+
+    setRaceBestTime(levelId, elapsed) {
+        const t = Number(elapsed);
+        if (!Number.isFinite(t) || t <= 0) return;
+        const prev = this.getRaceBestTime(levelId);
+        if (!Number.isFinite(prev) || t < prev) {
+            this.raceState.bestTimes[levelId] = t;
+            try {
+                localStorage.setItem('function_chess_race_best_times', JSON.stringify(this.raceState.bestTimes));
+            } catch {}
+        }
+    }
+
+    loadRaceBestTimes() {
+        try {
+            const raw = localStorage.getItem('function_chess_race_best_times');
+            const parsed = raw ? JSON.parse(raw) : {};
+            this.raceState.bestTimes = parsed && typeof parsed === 'object' ? parsed : {};
+        } catch {
+            this.raceState.bestTimes = {};
+        }
+    }
+
     getCampaignProgress() {
         try {
             const raw = localStorage.getItem('function_chess_campaign_cleared');
@@ -373,13 +757,13 @@ class GameController {
      * @returns {boolean}
      */
     canLockElement(element) {
-        
-        // 检查该元素是否已经被锁定2次
         const count = this.elementLockCounts.get(element) || 0;
+        if (this.raceState && this.raceState.active) {
+            return count < 2;
+        }
         if (count >= 2) {
             return false;
         }
-        
         return true;
     }
     
@@ -411,6 +795,11 @@ class GameController {
     updateTimeLimit() {
         const group = Math.floor((this.currentRound - 1) / 4);
         
+        if (this.raceState && this.raceState.active) {
+            this.timeLimit = 0;
+            this.remainingTime = 0;
+            return;
+        }
         if (group === 0) {
             // 1-4回合
             this.timeLimit = 40;
@@ -423,8 +812,16 @@ class GameController {
             this.timeLimit = Math.min(50 + (group - 1) * 10, 90);
         }
         
-        // 移除简单模式+20秒的额外逻辑
-        
+        const multipliers = {
+            super_slow: 2.0,
+            slow: 1.5,
+            normal: 1.0,
+            fast: 0.75,
+            super_fast: 0.5
+        };
+        const multiplier = multipliers[this.timeLimitMode] ?? 1.0;
+        this.timeLimitMultiplier = multiplier;
+        this.timeLimit = Math.round(this.timeLimit * multiplier);
         this.remainingTime = this.timeLimit;
     }
     
@@ -451,6 +848,9 @@ class GameController {
      */
     setPhase(phase) {
         this.currentPhase = phase;
+        if (this.raceState && this.raceState.active && phase === this.phases.SELECT_TARGET) {
+            this.currentRound = this.raceState.currentLevelId;
+        }
         this.emit('phaseChange', {
             phase: phase,
             currentPlayer: this.currentPlayer,
@@ -502,7 +902,7 @@ class GameController {
      */
     startTimer() {
         // 测试模式/闯关模式不启动计时器
-        if (this.isTestMode() || (this.campaignState && this.campaignState.active)) return;
+        if (this.isTestMode() || (this.campaignState && this.campaignState.active) || (this.raceState && this.raceState.active)) return;
         
         this.stopTimer();
         this.remainingTime = this.timeLimit;
@@ -540,6 +940,29 @@ class GameController {
             this.roundState.score = -1;
             this.players[this.currentPlayer].score -= 1;
             this.emit('timeout', { player: this.currentPlayer });
+
+            // 清空当前表达式，确保时间到立即停止输入
+            this.roundState.functionExpression = '';
+            this.emit('forceClearExpression', { player: this.currentPlayer });
+
+            // 记录超时回合到游戏报告，避免报告中遗漏
+            this.recordRoundHistory({
+                round: this.currentRound,
+                selector: this.currentPlayer,
+                constructor: this.currentPlayer === 'A' ? 'B' : 'A',
+                targetCells: this.roundState.targetCells,
+                forbiddenCells: this.roundState.forbiddenCells,
+                lockedElements: this.roundState.lockedElements,
+                expression: this.roundState.functionExpression,
+                functionType: { type: 'timeout' },
+                hitTarget: false,
+                hitForbidden: false,
+                score: -1,
+                totalScoreA: this.players.A.score,
+                totalScoreB: this.players.B.score
+            });
+
+            // 立即开始下一轮选择目标格
             this.setPhase(this.phases.SWITCH_PLAYER);
         } else {
             // 其他阶段超时，自动进入下一阶段
@@ -552,6 +975,7 @@ class GameController {
      * @returns {number}
      */
     getMaxForbiddenCount() {
+        if (this.raceState && this.raceState.active) return 2;
         if (this.currentRound <= 8) return 1;
         if (this.currentRound <= 16) return 2;
         return 3;
@@ -562,6 +986,7 @@ class GameController {
      * @returns {number}
      */
     getMaxLockCount() {
+        if (this.raceState && this.raceState.active) return 2;
         if (this.currentRound <= 4) return 0;
         if (this.currentRound <= 12) return 1;
         return 2;
@@ -841,8 +1266,58 @@ class GameController {
                 clearedMax: this.getCampaignProgress(),
                 totalLevels: this.campaignState.totalLevels
             });
-            // 冻结在 INIT，等待 UI 触发重试/下一关
             this.setPhase(this.phases.INIT);
+            return;
+        }
+
+        if (this.raceState && this.raceState.active) {
+            const pass = !!this.roundState.hitTarget && !hitForbidden;
+            if (pass) {
+                this.raceState.solvedCount = (this.raceState.solvedCount || 0) + 1;
+                const completed = this.raceState.solvedCount;
+                const total = Number(this.raceState.puzzlesPerLevel || 10);
+                const elapsed = this.getRaceElapsedSeconds();
+
+                if (completed >= total) {
+                    const best = this.getRaceBestTime(this.currentRound);
+                    const isNewBest = !Number.isFinite(best) || elapsed < best;
+                    if (isNewBest) this.setRaceBestTime(this.currentRound, elapsed);
+                    const stars = this.getRaceStarsByElapsed(elapsed);
+                    this.pauseTimer();
+                    this.emit('raceLevelResult', {
+                        levelId: this.currentRound,
+                        pass,
+                        score,
+                        elapsed,
+                        bestTime: this.getRaceBestTime(this.currentRound),
+                        previousBestTime: isNewBest ? best : this.getRaceBestTime(this.currentRound),
+                        isNewBest,
+                        stars,
+                        solvedCount: completed,
+                        totalSolved: total,
+                        expression: this.roundState.functionExpression,
+                        roundState: { ...this.roundState }
+                    });
+                    this.setPhase(this.phases.INIT);
+                    return;
+                }
+
+                this.emit('racePuzzleCleared', {
+                    levelId: this.currentRound,
+                    solvedCount: completed,
+                    totalSolved: total,
+                    elapsed,
+                    isNewBest: false,
+                    stars: this.getRaceStarsByElapsed(elapsed),
+                    bestTime: this.getRaceBestTime(this.currentRound),
+                    previousBestTime: this.getRaceBestTime(this.currentRound)
+                });
+                this.loadRacePuzzleForCurrentLevel();
+                return;
+            }
+            this.roundState.functionExpression = '';
+            this.emit('forceClearExpression', { player: this.currentPlayer });
+            this.setPhase(this.phases.INPUT_FUNCTION);
             return;
         }
 
