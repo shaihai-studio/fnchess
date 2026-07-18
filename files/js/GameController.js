@@ -1353,7 +1353,7 @@ class GameController {
             return;
         }
 
-        // P2P：发送 function_result 给对手，由对手确认后再推进回合（P9）
+        // P2P：发送 function_result 给对手，双方各自推进回合；状态同步通过 state_sync 保持一致
         if (this.gameMode === 'p2p') {
             this._sendP2PAction('function_result', {
                 hitTargets: this.roundState.hitTargets,

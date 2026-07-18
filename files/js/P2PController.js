@@ -391,9 +391,10 @@ class P2PController {
     }
 
     sendStateSync(state) {
+        // 版本号机制已能避免旧快照覆盖新状态，因此即使动作确认期间也允许发送 state_sync，
+        // 防止发送方在 actionPending 时无法把阶段推进同步给对端。
         if (this._actionPending) {
-            console.log('[P2P] 动作确认中，跳过 state_sync');
-            return;
+            console.log('[P2P] 动作确认中，仍发送 state_sync');
         }
         console.log('[P2P] 发送 state_sync');
         this.send({ type: 'state_sync', state, gen: this._gen });
