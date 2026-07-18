@@ -2785,8 +2785,9 @@ class UIController {
     
     /**
      * 更新表达式显示
+     * @param {boolean} skipSync - 是否跳过 P2P 同步与版本号递增（远端快照回放时使用）
      */
-    updateExpressionDisplay() {
+    updateExpressionDisplay(skipSync = false) {
         this.currentExpression = this.expressionElements.join('');
         this.expressionDisplay.innerHTML = '';
         
@@ -2836,15 +2837,17 @@ class UIController {
             this.expressionDisplay.appendChild(cursorSpan);
         }
 
-        // P2P：表达式变化时防抖同步，避免输入过程中高频发送 state_sync 导致乱序覆盖
-        if (this._syncDebounceTimer) clearTimeout(this._syncDebounceTimer);
-        this._syncDebounceTimer = setTimeout(() => {
-            this._syncDebounceTimer = null;
-            this._syncToPeer();
-        }, 250);
-        // 表达式属于 UI 层状态，手动递增版本号，确保远端能持续收到最新表达式
-        if (this.gameController && typeof this.gameController.bumpStateVersion === 'function') {
-            this.gameController.bumpStateVersion();
+        // P2P：本地输入时防抖同步，避免高频发送 state_sync 导致乱序覆盖
+        if (!skipSync) {
+            if (this._syncDebounceTimer) clearTimeout(this._syncDebounceTimer);
+            this._syncDebounceTimer = setTimeout(() => {
+                this._syncDebounceTimer = null;
+                this._syncToPeer();
+            }, 250);
+            // 表达式属于 UI 层状态，手动递增版本号，确保远端能持续收到最新表达式
+            if (this.gameController && typeof this.gameController.bumpStateVersion === 'function') {
+                this.gameController.bumpStateVersion();
+            }
         }
     }
     
@@ -3215,10 +3218,11 @@ class UIController {
         if (!s || !s.gc) return;
         this._applyingRemote = true;
         try {
-            this.gameController.loadStateSnapshot(s.gc);
+            const applied = this.gameController.loadStateSnapshot(s.gc);
             this.expressionElements = (s.expr || []).slice();
             this.cursorIndex = (typeof s.cursorIndex === 'number') ? s.cursorIndex : this.expressionElements.length;
-            this._renderFromState();
+            // 只有真正应用了新的状态才执行完整重绘，避免旧/重复快照触发不必要的重绘
+            if (applied) this._renderFromState();
         } finally {
             this._applyingRemote = false;
         }
@@ -3246,8 +3250,8 @@ class UIController {
         this.updatePhaseUI(state.currentPhase);
         // 锁定元素按钮状态
         this.updateLockedElements();
-        // 表达式显示
-        this.updateExpressionDisplay();
+        // 表达式显示（远端快照回放，跳过 P2P 同步与版本号递增）
+        this.updateExpressionDisplay(true);
         // 分数与回合
         this.updateScoreboard();
         this.roundElement.textContent = state.currentRound;
@@ -3265,14 +3269,14 @@ class UIController {
 
     /**
      * 仅在远端（观战方）绘制函数曲线，不做碰撞检测/计分
+     * 观战方同步使用非动画方式，并跳过冗余的棋盘重绘，避免高频 state_sync 阻塞 UI
      */
     async _drawRemoteFunction(expr) {
         if (expr === this._lastRemoteExpr) return; // 表达式未变则跳过重绘
         this._lastRemoteExpr = expr;
         try {
-            await this.prepareRenderCanvas();
-            await this.renderer.drawFunction(expr, true);
-            await this.postRenderRefresh();
+            // _renderFromState 已调用 gridSystem.draw() 完成棋盘重绘，这里直接叠加函数曲线
+            await this.renderer.drawFunction(expr, false);
         } catch (e) {
             // 远端函数绘制失败时静默处理，避免噪声日志
         }
@@ -5838,25 +5842,20 @@ class UIController {
         this.messageElement.textContent = message;
         this.messageElement.style.opacity = '1';
         
-        // 测试模式下：显示容器并渐隐消息
-        if (this.gameController.isTestMode()) {
-            if (this.messagePanel) this.messagePanel.classList.add('visible');
-            this.messageElement.className = 'message';
-            
-            if (type === 'error') {
-                this.messageElement.classList.add('error');
-            } else if (type === 'success') {
-                this.messageElement.classList.add('success');
-            }
-            
-            // 2秒后开始渐隐
-            this.messageTimeout = setTimeout(() => {
-                this.fadeOutMessage();
-            }, 2000);
-        } else {
-            // 普通模式：隐藏整个消息容器
-            if (this.messagePanel) this.messagePanel.classList.remove('visible');
+        // 显示消息容器并设置样式
+        if (this.messagePanel) this.messagePanel.classList.add('visible');
+        this.messageElement.className = 'message';
+        
+        if (type === 'error') {
+            this.messageElement.classList.add('error');
+        } else if (type === 'success') {
+            this.messageElement.classList.add('success');
         }
+        
+        // 2秒后开始渐隐
+        this.messageTimeout = setTimeout(() => {
+            this.fadeOutMessage();
+        }, 2000);
     }
     
     /**
@@ -5871,6 +5870,7 @@ class UIController {
                 this.messageElement.textContent = '';
                 this.messageElement.className = 'message';
                 this.messageElement.style.opacity = '1';
+                if (this.messagePanel) this.messagePanel.classList.remove('visible');
             } else {
                 this.messageElement.style.opacity = opacity.toString();
             }

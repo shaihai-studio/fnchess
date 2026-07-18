@@ -1633,12 +1633,12 @@ class GameController {
         this._stateVersion++;
     }
     loadStateSnapshot(s) {
-        if (!s) return;
+        if (!s) return false;
         const remoteVersion = s.version ?? -1;
         // P2P：远端版本低于或等于本地已知版本时，忽略旧快照，防止覆盖最新状态
         if (remoteVersion !== -1 && remoteVersion <= this._stateVersion) {
             console.log(`[GC][Sync] 忽略旧快照 localVersion=${this._stateVersion}, remoteVersion=${remoteVersion}`);
-            return;
+            return false;
         }
         this._applyingRemote = true;
         try {
@@ -1673,6 +1673,7 @@ class GameController {
         } finally {
             this._applyingRemote = false;
         }
+        return true;
     }
     
     /**
