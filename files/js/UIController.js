@@ -1132,6 +1132,15 @@ class UIController {
         this.p2pController?.disconnect();
         this.p2pController = null;
         this.isP2PMode = false;
+        // 清理 P2P 对局残留的历史函数与格子，防止切换到其他模式时仍显示旧图像
+        if (this.gridSystem) {
+            this.gridSystem.functionHistory = [];
+            this.gridSystem.usedCells = [];
+        }
+        this._lastRemoteExpr = null;
+        if (this.gameController && typeof this.gameController.bumpStateVersion === 'function') {
+            this.gameController._syncHook = null;
+        }
     }
 
     /**
@@ -1178,6 +1187,9 @@ class UIController {
         this.gameController.on('gameInit', (data) => {
             // 完全重置UI状态
             this.gridSystem.clearAll();
+            this.gridSystem.functionHistory = [];
+            this.gridSystem.usedCells = [];
+            this._lastRemoteExpr = null;
             this.clearExpression();
             this.updateScoreboard();
             this.roundElement.textContent = data.currentRound;
@@ -1480,6 +1492,9 @@ class UIController {
                 // 设置目标与禁区
                 this.gridSystem.setTargetCells(data.roundState.targetCells || []);
                 this.gridSystem.forbiddenCells = data.roundState.forbiddenCells || [];
+                // 闯关模式每关独立，清空上一关遗留的历史函数与历史格子
+                this.gridSystem.functionHistory = [];
+                this.gridSystem.usedCells = [];
                 this.gridSystem.draw();
 
                 // 初始化可拖拽元素（会根据 lockedElements 上锁）
@@ -1511,6 +1526,8 @@ class UIController {
                 this.clearExpression();
                 this.gridSystem.setTargetCells(data.roundState.targetCells || []);
                 this.gridSystem.forbiddenCells = data.roundState.forbiddenCells || [];
+                // 竞速每关独立，清空历史函数
+                this.gridSystem.functionHistory = [];
                 this.raceLivePanel && (this.raceLivePanel.style.display = 'block');
                 this.updateRacePuzzleProgress(data.solvedCount || 0, data.totalSolved || 10);
                 this.gridSystem.draw();
@@ -3842,6 +3859,12 @@ class UIController {
         if (this.isP2PMode || this.gameController.gameMode === 'p2p') {
             this._cleanupP2P();
             this.isP2PMode = false;
+            // 清理上一局残留的历史函数与格子
+            if (this.gridSystem) {
+                this.gridSystem.functionHistory = [];
+                this.gridSystem.usedCells = [];
+            }
+            this._lastRemoteExpr = null;
             this.resetBattleGrid();
             this.hideModal(this.gameOverModal);
             const p2pModal = document.getElementById('p2p-room-modal');

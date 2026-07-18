@@ -162,6 +162,7 @@ class GameController {
         this._stateVersion = 0;
         
         // 记录历史函数（用于淡化显示）
+        this.functionHistory = [];
         
         // 第1回合B选择目标，A构建函数
         this.currentPlayer = 'B';
@@ -688,6 +689,8 @@ class GameController {
         this.players.B.score = 0;
         this.testModeFunctions = [];
         this.clearGameHistory();
+        this.functionHistory = [];
+        this.usedCells = [];
         this.resetRoundState();
         this.setPhase(this.phases.SELECT_TARGET);
         this.emit('gameReset');
