@@ -1370,12 +1370,13 @@ class GameController {
      * 统一准备输入阶段（消除两套清理机制分叉）
      * 模型清理（重设 roundState 表达式/命中字段）+ UI清理（事件通知）+ 切到 INPUT_FUNCTION
      */
-    prepareInputPhase() {
+    prepareInputPhase(clearExpr = true) {
         this.roundState.functionExpression = '';
         this.roundState.hitTargets = [];
         this.roundState.hitTarget = false;
         this.roundState.hitForbidden = false;
-        this.emit('prepareInputPhase', { player: this.currentPlayer });
+        // clearExpr=false 时 UI 侧保留已输入的表达式（供「提交失败后保留解析式」开关使用）
+        this.emit('prepareInputPhase', { player: this.currentPlayer, clearExpression: clearExpr !== false });
         this.setPhase(this.phases.INPUT_FUNCTION);
     }
     

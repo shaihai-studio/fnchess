@@ -94,11 +94,15 @@
             </div>
 
             <!-- 表达式构建区 -->
-            <div class="panel-card">
+            <div class="panel-card expr-panel">
                 <h3>函数表达式</h3>
                 <div class="expression-display" id="expression-display">
                     <span class="placeholder">点击元素构建表达式...</span>
                 </div>
+                <label class="keep-expr-toggle" id="keep-expr-toggle-wrap">
+                    <input type="checkbox" id="keep-expr-toggle">
+                    <span>提交失败后保留解析式（不自动清空）</span>
+                </label>
             </div>
 
             <!-- 移动端内联元素拖拽区（仅平板竖屏/手机显示，替代固定底栏） -->
@@ -521,6 +525,17 @@
     <script src="files/js/RaceMode/RaceModeManager.js"></script>
     <script src="files/js/RaceMode/RaceModeController.js"></script>
     <script src="files/js/UIController.js"></script>
+    <!-- UIController 方法已拆分到以下模块（运行时挂回 UIController.prototype），须在 UIController.js 之后、实例化之前加载 -->
+    <script src="files/js/ui/UIModals.js"></script>
+    <script src="files/js/ui/UIStart.js"></script>
+    <script src="files/js/ui/UIInput.js"></script>
+    <script src="files/js/ui/UICanvas.js"></script>
+    <script src="files/js/ui/UIPhase.js"></script>
+    <script src="files/js/ui/UICampaign.js"></script>
+    <script src="files/js/ui/UIRace.js"></script>
+    <script src="files/js/ui/UIP2P.js"></script>
+    <script src="files/js/ui/UILevelEditor.js"></script>
+    <script src="files/js/ui/UICore.js"></script>
     <script src="files/js/SummaTrainer.js"></script>
     
     <script>

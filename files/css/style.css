@@ -21,6 +21,8 @@ body {
     min-height: 100vh;
     min-height: 100dvh;
     overflow-x: hidden;
+    /* 修复 #45：不拥挤时不要纵向滚动条；超高内容由各内部滚动容器自行滚动 */
+    overflow-y: hidden;
     overscroll-behavior: none;
     -webkit-overflow-scrolling: touch;
     position: relative;
@@ -1059,6 +1061,16 @@ body::before {
     flex-direction: column;
     gap: 12px;
     min-width: 300px;
+    /* 内容不高时不要显示滚动条；超高时面板内部滚动（而非压缩/裁切子元素），
+       保证开关与按钮始终可达 */
+    overflow-y: hidden;
+    overflow-x: hidden;
+    padding-right: 4px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(148, 163, 184, 0.65) rgba(15, 23, 42, 0.25);
+}
+.control-panel.is-scrollable {
+    overflow-y: auto;
 }
 
 .panel-card {
@@ -1067,6 +1079,11 @@ body::before {
     border-radius: 18px;
     padding: 18px 22px;
     border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* 表达式面板卡：固定不压缩，避免长表达式时把「保留解析式」开关挤掉 */
+.expr-panel {
+    flex-shrink: 0;
 }
 
 .panel-card h3 {
@@ -1170,7 +1187,7 @@ body::before {
 /* 表达式显示区 */
 .expression-display {
     min-height: 60px;
-    max-height: 160px;
+    max-height: 320px;
     background: rgba(2, 6, 23, 0.8);
     border-radius: 14px;
     padding: 14px 16px;
@@ -1179,15 +1196,23 @@ body::before {
     color: #c8cdd5;
     display: flex;
     flex-wrap: wrap;
-    gap: 8px; /* 增加间距，方便点击空隙 */
+    gap: 6px; /* 增加间距，方便点击空隙 */
     align-items: center;
+    align-content: flex-start;
     border: 1px solid rgba(255, 255, 255, 0.2);
     cursor: text; /* 提示用户可以点击移动光标 */
-    overflow-y: auto;
+    /* 修复 #45：表达式不多时不显示滚动条；表达式很多（>max-height）时才自动滚动 */
+    overflow-y: hidden;
     overflow-x: hidden;
     white-space: normal;
     scrollbar-width: thin;
     scrollbar-color: rgba(148, 163, 184, 0.65) rgba(15, 23, 42, 0.25);
+}
+.expression-display.is-scrollable {
+    overflow-y: auto;
+}
+.expression-display.is-scrollable-x {
+    overflow-x: auto;
 }
 
 .expression-display .placeholder {
@@ -1197,11 +1222,34 @@ body::before {
 
 .expression-element {
     background: rgba(59, 130, 246, 0.3);
-    padding: 5px 10px;
+    padding: 4px 8px;
     border-radius: 8px;
     cursor: pointer;
     transition: all 0.2s;
     border: 1px solid rgba(59, 130, 246, 0.5);
+    font-size: 16px;
+}
+
+/* 提交失败后保留解析式 开关 */
+.keep-expr-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px dashed rgba(255, 255, 255, 0.12);
+    font-size: 13px;
+    color: #94a3b8;
+    cursor: pointer;
+    user-select: none;
+    flex-shrink: 0; /* 绝不被压缩/裁切 */
+}
+
+.keep-expr-toggle input {
+    width: 16px;
+    height: 16px;
+    accent-color: #3b82f6;
+    cursor: pointer;
 }
 
 .expression-element:hover {
