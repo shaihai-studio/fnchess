@@ -978,7 +978,7 @@ class GameController {
 
             // 清空当前表达式，确保时间到立即停止输入
             this.roundState.functionExpression = '';
-            this.emit('forceClearExpression', { player: this.currentPlayer });
+            this.emit('prepareInputPhase', { player: this.currentPlayer });
 
             // 记录超时回合到游戏报告，避免报告中遗漏
             this.recordRoundHistory({
@@ -1348,13 +1348,8 @@ class GameController {
                 this.loadRacePuzzleForCurrentLevel();
                 return;
             }
-            // 竞速失败重试：清空表达式并重置命中相关字段，避免残留过期 truthy 值（修复项 ⑩）
-            this.roundState.functionExpression = '';
-            this.roundState.hitTargets = [];
-            this.roundState.hitTarget = false;
-            this.roundState.hitForbidden = false;
-            this.emit('forceClearExpression', { player: this.currentPlayer });
-            this.setPhase(this.phases.INPUT_FUNCTION);
+            // 竞速失败重试：统一通过 prepareInputPhase 清理
+            this.prepareInputPhase();
             return;
         }
 
@@ -1369,6 +1364,19 @@ class GameController {
         }
 
         this.setPhase(this.phases.SWITCH_PLAYER);
+    }
+    
+    /**
+     * 统一准备输入阶段（消除两套清理机制分叉）
+     * 模型清理（重设 roundState 表达式/命中字段）+ UI清理（事件通知）+ 切到 INPUT_FUNCTION
+     */
+    prepareInputPhase() {
+        this.roundState.functionExpression = '';
+        this.roundState.hitTargets = [];
+        this.roundState.hitTarget = false;
+        this.roundState.hitForbidden = false;
+        this.emit('prepareInputPhase', { player: this.currentPlayer });
+        this.setPhase(this.phases.INPUT_FUNCTION);
     }
     
     /**

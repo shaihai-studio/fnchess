@@ -1290,7 +1290,8 @@ class UIController {
             this.showMessage(`${this.getPlayerDisplayName(data.player)}超时！扣1分`, 'error');
         });
 
-        this.gameController.on('forceClearExpression', () => {
+        // 统一的输入阶段准备：只做 UI 侧清理（模型清理由 GameController.prepareInputPhase() 负责）
+        this.gameController.on('prepareInputPhase', () => {
             this.clearExpression();
         });
         
@@ -1456,8 +1457,7 @@ class UIController {
                     if (data.pass) {
                         this.showCampaignVictory(data);
                     } else {
-                        this.clearExpression();
-                        this.gameController.setPhase(this.gameController.phases.INPUT_FUNCTION);
+                        this.gameController.prepareInputPhase();
                     }
                 } catch (e) {
                     console.error('[Campaign] 处理关卡结果失败:', e);
@@ -1571,8 +1571,7 @@ class UIController {
                     if (data.isNewBest) this.playRaceNewRecordIntro(() => { if (window.audioManager) window.audioManager.playRaceFanfare?.(); this.unlockNextRaceLevel(data.levelId); this.showRaceVictory(data); });
                     else { if (window.audioManager) window.audioManager.playRaceFinish?.(); this.unlockNextRaceLevel(data.levelId); this.showRaceVictory(data); }
                 } else {
-                    this.clearExpression();
-                    this.gameController.setPhase(this.gameController.phases.INPUT_FUNCTION);
+                    this.gameController.prepareInputPhase();
                 }
             } catch (e) {
                 console.error('[Race] raceLevelResult 错误:', e);

@@ -13,6 +13,7 @@ Desktop.ini
 .cursor/
 node_modules/
 .workbuddy/
+.codebuddy/
 
 # 代码文件
 .qoder/
