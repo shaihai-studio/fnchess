@@ -11,16 +11,17 @@ class CollisionDetector {
     }
     
     /**
-     * 根据坐标系范围计算自适应容差
-     * 范围=5时容差=0.8px，范围=6时容差=0.8*5/6px，以此类推
+     * 根据坐标系范围计算自适应容差（像素）。
+     * 与渲染/碰撞共用 GridSystem 的「像素↔单位」单一换算源（见 GridSystem.pxPerUnit），
+     * 保持「函数穿过格子内部即命中」的宽松手感（决策 ⑤：维持现状，不改为规则单位换算）。
+     * 范围=5 时容差=0.8px，范围越大容差越小。
      * @returns {number} 容差（像素）
      */
     getAdaptiveTolerance() {
         const range = this.gridSystem.range;
         const baseTolerance = 0.8;
         const baseRange = 5;
-        
-        // 按比例缩放：range越大，容差越小
+        // 按比例缩放：range 越大，容差越小（与 GridSystem.pxPerUnit 同处一个坐标空间）
         return baseTolerance * baseRange / range;
     }
     

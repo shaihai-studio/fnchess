@@ -690,6 +690,7 @@ class GameController {
         this.testModeFunctions = [];
         this.clearGameHistory();
         this.functionHistory = [];
+        this.elementLockCounts = new Map();
         this.usedCells = [];
         this.resetRoundState();
         this.setPhase(this.phases.SELECT_TARGET);
@@ -1347,7 +1348,11 @@ class GameController {
                 this.loadRacePuzzleForCurrentLevel();
                 return;
             }
+            // 竞速失败重试：清空表达式并重置命中相关字段，避免残留过期 truthy 值（修复项 ⑩）
             this.roundState.functionExpression = '';
+            this.roundState.hitTargets = [];
+            this.roundState.hitTarget = false;
+            this.roundState.hitForbidden = false;
             this.emit('forceClearExpression', { player: this.currentPlayer });
             this.setPhase(this.phases.INPUT_FUNCTION);
             return;

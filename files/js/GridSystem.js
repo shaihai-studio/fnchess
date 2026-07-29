@@ -667,27 +667,36 @@ class GridSystem {
         return newPoints;
     }
     
+    /** 单位换算单一真源：每「数学单位」对应的 canvas 像素数（修复项 ⑨） */
+    get pxPerUnit() {
+        return this.canvas.height / (this.range * 2);
+    }
+
+    /** 单位换算单一真源：每个格子的 canvas 像素边长（修复项 ⑨） */
+    get cellSizePx() {
+        return this.canvas.height / (this.range * 2);
+    }
+
     /**
-     * 简单的表达式求值（用于扩展采样点）
+     * 表达式求值（用于扩展采样点）
+     * 复用 FunctionRenderer 同款的 FunctionParser AST 引擎，
+     * 与渲染/碰撞检测走同一条已验证的求值路径，从根本上消除
+     * 此前基于 eval + 正则字符串替换导致的 exp/e 顺序错误、
+     * π/i 等 token 缺失、以及注入风险（修复项 ②、⑧）。
      */
     evaluateExpression(expression, x) {
         try {
-            // 替换表达式中的x
-            const expr = expression.replace(/x/g, `(${x})`)
-                                  .replace(/sin/g, 'Math.sin')
-                                  .replace(/cos/g, 'Math.cos')
-                                  .replace(/tan/g, 'Math.tan')
-                                  .replace(/abs/g, 'Math.abs')
-                                  .replace(/exp/g, 'Math.exp')
-                                  .replace(/ln/g, 'Math.log')
-                                  .replace(/log/g, 'Math.log10')
-                                  .replace(/pi/gi, 'Math.PI')
-                                  .replace(/e/g, 'Math.E')
-                                  .replace(/\^/g, '**');
-            
-            // eslint-disable-next-line no-eval
-            const result = eval(expr);
-            return result;
+            if (!this._functionParser) this._functionParser = new FunctionParser();
+            if (!this._exprAstCache) this._exprAstCache = {};
+            let ast = this._exprAstCache[expression];
+            if (ast === undefined) {
+                ast = this._functionParser.parse(expression);
+                this._exprAstCache[expression] = ast;
+            }
+            const y = this._functionParser.evaluateAst(ast, x);
+            // 仅实数且有限值参与判定（与 FunctionRenderer 保持一致）
+            if (y === null || !Number.isFinite(y)) return null;
+            return y;
         } catch (e) {
             return null;
         }
