@@ -348,6 +348,11 @@ class UIController {
             this._modalSkipCallbacks.delete(el);
         }
 
+        // 记录模态栈（最后打开的在最上层），供 ESC 关闭正确识别顶层（修复 #16–#22）
+        this._modalStack = this._modalStack || [];
+        this._modalStack = this._modalStack.filter((m) => m !== el);
+        this._modalStack.push(el);
+
         this._setModalState(el, 'entering');
         el.classList.remove('modal-exiting');
         el.style.display = display;
@@ -408,6 +413,7 @@ class UIController {
             el.classList.remove('modal-exiting');
             el.style.display = 'none';
             this._setModalState(el, 'hidden');
+            this._modalStack = (this._modalStack || []).filter((m) => m !== el);
             this._modalExitFinishers.delete(el);
             this._modalSkipCallbacks.delete(el);
             if (callback) callback();
@@ -591,8 +597,10 @@ class UIController {
         const difficulty = this.difficultySelect ? this.difficultySelect.value : 'easy';
         if (!this.modeAiBtn || !this.modeLocalBtn || !this.modeCampaignBtn || !this.modeRaceBtn || !this.modeTestBtn) return;
 
-        this.modeLocalBtn.classList.toggle('active', this.selectedMode === 'local');
-        this.modeAiBtn.classList.toggle('active', this.selectedMode === 'ai');
+        // 修复 #23：selectedMode 恒为 'battle'，子模式高亮应依据 _battleSubMode
+        const isBattle = this.selectedMode === 'battle';
+        this.modeLocalBtn.classList.toggle('active', isBattle && this._battleSubMode === 'local');
+        this.modeAiBtn.classList.toggle('active', isBattle && this._battleSubMode === 'ai');
         this.modeCampaignBtn.classList.toggle('active', this.selectedMode === 'campaign');
         this.modeRaceBtn.classList.toggle('active', this.selectedMode === 'race');
         this.modeTestBtn.classList.toggle('active', this.selectedMode === 'test');
@@ -604,7 +612,7 @@ class UIController {
             this.modeAiBtn.title = '';
         }
 
-        const lockSelectors = this.selectedMode === 'campaign' || this.selectedMode === 'test' || this.selectedMode === 'race';
+        const lockSelectors = this.selectedMode === 'campaign' || this.selectedMode === 'test' || this.selectedMode === 'race' || this.selectedMode === 'editor';
         this.setStartSelectorsEnabled(!lockSelectors);
         [this.roundStepper, this.difficultyStepper, this.timeLimitStepper].forEach(el => {
             if (!el) return;
@@ -941,6 +949,9 @@ class UIController {
         p2p.onConnected = () => {
             this._updateP2PStatus('connected', '对手已连接！');
             this.showMessage('对手已加入，游戏开始！');
+            // 记录房间码/身份，供掉线后「重试连接」复用（#25）
+            this._p2pLastRoomCode = p2p.roomCode;
+            this._p2pLastIsHost = p2p.isHost;
             // 隐藏所有模态框：P2P房间 + 开始界面
             const p2pModal = document.getElementById('p2p-room-modal');
             if (p2pModal) this.hideModal(p2pModal);
@@ -979,13 +990,17 @@ class UIController {
         p2p.onDisconnected = () => {
             console.log('[UI][P2P] onDisconnected 触发');
             this._updateP2PStatus('disconnected', '对手已断开连接');
-            this.showMessage('对手已断开连接', 'error');
+            // #25：弹出三按钮恢复框（不再仅靠 toast），提供重试/等待/返回入口
+            this._showP2PDisconnectModal();
         };
         // 错误回调
         p2p.onError = (err) => {
             console.error('[UI][P2P] onError:', err);
             this._updateP2PStatus('error', '连接错误：' + (err.message || err));
             this.showMessage('P2P连接错误：' + (err.message || err), 'error');
+            // 失败后恢复创建/加入按钮，避免永久卡死（需手动关闭弹窗才能重试）
+            const cb = document.getElementById('p2p-create-btn'); if (cb) cb.disabled = false;
+            const jb = document.getElementById('p2p-join-btn'); if (jb) jb.disabled = false;
         };
         // 游戏数据接收
         p2p.onGameAction = (action, payload) => {
@@ -1035,6 +1050,7 @@ class UIController {
                     const code = this.p2pController?.roomCode;
                     if (code) {
                         clearInterval(checkCode);
+                        this._p2pCheckCodeInterval = null;
                         const d = $('p2p-room-code-display');
                         const t = $('p2p-room-code-text');
                         if (d) d.style.display = 'flex';
@@ -1042,7 +1058,11 @@ class UIController {
                         this._updateP2PStatus('waiting', '等待对手加入...');
                     }
                 }, 200);
-                setTimeout(() => clearInterval(checkCode), 15000);
+                this._p2pCheckCodeInterval = checkCode;
+                setTimeout(() => {
+                    clearInterval(checkCode);
+                    if (this._p2pCheckCodeInterval === checkCode) this._p2pCheckCodeInterval = null;
+                }, 15000);
             };
         }
         // 加入房间
@@ -1129,6 +1149,11 @@ class UIController {
     }
 
     _cleanupP2P() {
+        // 清理创建房间时轮询房间码的定时器，避免重开弹窗后叠加残留轮询
+        if (this._p2pCheckCodeInterval) {
+            clearInterval(this._p2pCheckCodeInterval);
+            this._p2pCheckCodeInterval = null;
+        }
         this.p2pController?.disconnect();
         this.p2pController = null;
         this.isP2PMode = false;
@@ -1178,6 +1203,57 @@ class UIController {
         if (startModal) {
             this.hideModal(startModal);
         }
+    }
+
+    /**
+     * 显示启动封面（首次加载 与 「开始弹窗 ESC / 点遮罩」返回时都会调用）
+     * 复位转场状态并重新绑定「点击 / ESC / 回车 / 空格 = 进入」监听
+     */
+    showSplash() {
+        const splash = document.getElementById('splash-screen');
+        if (!splash) return;
+        splash.classList.remove('splash-exit');
+        splash.style.display = '';
+        splash._entering = false;
+        this._bindSplashEnter(splash);
+    }
+
+    // 绑定启动封面进入监听（点击 + 键盘），防止重复绑定
+    _bindSplashEnter(splash) {
+        if (splash._splashEnterBound) return;
+        splash._splashEnterBound = true;
+        const self = this;
+        const onEnter = () => self._enterFromSplash(splash);
+        splash._splashClickHandler = onEnter;
+        splash._splashKeyHandler = (e) => {
+            if (e.key === 'Enter' || e.key === 'Escape' || e.key === ' ' || e.code === 'Space') {
+                e.preventDefault();
+                self._enterFromSplash(splash);
+            }
+        };
+        splash.addEventListener('click', onEnter);
+        document.addEventListener('keydown', splash._splashKeyHandler);
+    }
+
+    // 解绑启动封面进入监听
+    _unbindSplashEnter(splash) {
+        if (splash._splashClickHandler) splash.removeEventListener('click', splash._splashClickHandler);
+        if (splash._splashKeyHandler) document.removeEventListener('keydown', splash._splashKeyHandler);
+        splash._splashEnterBound = false;
+    }
+
+    // 从启动封面进入主界面：转场动画 → 隐藏封面 → 显示开始弹窗 + 启动 BGM
+    _enterFromSplash(splash) {
+        if (!splash || splash._entering) return;
+        splash._entering = true;
+        this._unbindSplashEnter(splash);
+        // 触发转场动画（旋转 + 放大 + 虚化 → 白闪）
+        splash.classList.add('splash-exit');
+        setTimeout(() => {
+            splash.style.display = 'none';
+            this.showModal(document.getElementById('start-modal'));
+            if (window.audioManager) window.audioManager.startBgm();
+        }, 900);
     }
     
     /**
@@ -1571,6 +1647,7 @@ class UIController {
                     if (data.isNewBest) this.playRaceNewRecordIntro(() => { if (window.audioManager) window.audioManager.playRaceFanfare?.(); this.unlockNextRaceLevel(data.levelId); this.showRaceVictory(data); });
                     else { if (window.audioManager) window.audioManager.playRaceFinish?.(); this.unlockNextRaceLevel(data.levelId); this.showRaceVictory(data); }
                 } else {
+                    this.showMessage('挑战失败，请重试本关', 'error');
                     this.gameController.prepareInputPhase();
                 }
             } catch (e) {
@@ -1796,6 +1873,9 @@ class UIController {
         this.restartBtn.addEventListener('click', () => this.handleRestart());
         this.startBtn.addEventListener('click', () => this.handleStart());
         this.bindStartKeyboardSupport();
+        this._bindModalDismissals();
+        this._bindP2PDisconnectButtons();
+        this.bindGlobalEsc();
         if (this.viewReportBtn) {
             this.viewReportBtn.addEventListener('click', () => this.showGameReport());
         }
@@ -1817,6 +1897,13 @@ class UIController {
         
         // 键盘输入事件
         window.addEventListener('keydown', (e) => this.handleKeyboardInput(e), true);
+
+        // 设备切换/旋转时重建元素面板（桌面网格 ↔ 移动端内联布局不同）
+        window.addEventListener('devicechange', () => {
+            if (this.gameController && this.gameController.currentPhase) {
+                this.initDraggableElements();
+            }
+        });
         
         // 初始化拖拽元素
         this.initDraggableElements();
@@ -1854,7 +1941,8 @@ class UIController {
                 this.stepDifficulty(e.key === 'ArrowRight' ? 1 : -1);
                 return true;
             }
-            // 默认优先切换难度，方便在开始界面直接用左右键调整
+            // 默认优先切换难度，方便在开始界面直接用左右键调整（关卡编辑器下难度固定为 test，避免误触）
+            if (this.selectedMode === 'editor') return false;
             this.stepDifficulty(e.key === 'ArrowRight' ? 1 : -1);
             return true;
         }
@@ -1867,6 +1955,13 @@ class UIController {
     handleKeyboardInput(e) {
         const phase = this.gameController.currentPhase;
         const key = e.key;
+
+        // ESC 关闭退出确认气泡（优先于其他 Escape 处理）
+        if (key === 'Escape' && this.exitPopover && this.exitPopover.classList.contains('visible')) {
+            e.preventDefault();
+            this.hideExitConfirm();
+            return;
+        }
 
         if (this.gameController?.gameMode === 'race' && this._raceCountdownActive) {
             if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Backspace','Delete','Enter','Escape'].includes(key)) {
@@ -2724,11 +2819,19 @@ class UIController {
         
         // 人机模式下，如果当前是AI的回合，禁用悬停效果
         if (this.gameController.gameMode === 'ai' && state.currentPlayer === 'B') {
-            this.gridSystem.canvas.style.cursor = 'not-allowed';
-            this.gridSystem.canvas.title = 'Summa 正在操作中...';
+            if (this._lastHoverKey !== 'ai-turn') {
+                this.gridSystem.canvas.style.cursor = 'not-allowed';
+                this.gridSystem.canvas.title = 'Summa 正在操作中...';
+                this._lastHoverKey = 'ai-turn';
+            }
             return;
         }
-        
+
+        // 仅当悬停目标格变化时才写 DOM，避免每像素 mousemove 都重设 title/cursor（修复 #32）
+        const key = cell ? `(${cell.x}, ${cell.y})` : 'empty';
+        if (this._lastHoverKey === key) return;
+        this._lastHoverKey = key;
+
         if (cell) {
             this.gridSystem.canvas.style.cursor = 'pointer';
             this.gridSystem.canvas.title = `(${cell.x}, ${cell.y})`;
@@ -2851,6 +2954,17 @@ class UIController {
             cursorSpan.className = 'cursor';
             cursorSpan.textContent = '|';
             this.expressionDisplay.appendChild(cursorSpan);
+        }
+
+        // 自动滚动：以光标位置为锚点保持可见（修复 #31：不再永远滚到末尾，
+        // 光标停在表达式中间插入元素时，编辑点不会被滚出视野）
+        if (this.expressionDisplay.scrollHeight > this.expressionDisplay.clientHeight) {
+            const cursorSpan = this.expressionDisplay.querySelector('.cursor');
+            if (cursorSpan && cursorSpan.scrollIntoView) {
+                cursorSpan.scrollIntoView({ block: 'nearest' });
+            } else {
+                this.expressionDisplay.scrollTop = this.expressionDisplay.scrollHeight;
+            }
         }
 
         // P2P：本地输入时防抖同步，避免高频发送 state_sync 导致乱序覆盖
@@ -3825,8 +3939,22 @@ class UIController {
      */
     showExitConfirm() {
         if (window.audioManager) window.audioManager.playClick();
-        if (this.exitPopover) {
-            this.exitPopover.classList.add('visible');
+        if (!this.exitPopover) return;
+        // 再次点击退出按钮则收起（切换）
+        if (this.exitPopover.classList.contains('visible')) {
+            this.hideExitConfirm();
+            return;
+        }
+        this.exitPopover.classList.add('visible');
+        // 点击气泡外部（且非退出按钮）自动收起
+        if (!this._exitDocHandler) {
+            this._exitDocHandler = (ev) => {
+                if (!this.exitPopover || !this.exitPopover.classList.contains('visible')) return;
+                if (!this.exitPopover.contains(ev.target) && !ev.target.closest('#exit-btn')) {
+                    this.hideExitConfirm();
+                }
+            };
+            document.addEventListener('mousedown', this._exitDocHandler);
         }
     }
 
@@ -3909,6 +4037,11 @@ class UIController {
      * 退出测试模式
      */
     exitTestMode() {
+        // ★ 关卡编辑器以 test 难度运行，退出时必须先清理其 UI（移除编辑器面板、恢复输入框/确认按钮、重建常规元素）
+        if (this.levelEditor && this.levelEditor.isActive) {
+            this.levelEditor.deactivate();
+        }
+
         // 隐藏消息面板
         if (this.messagePanel) this.messagePanel.classList.remove('visible');
         
@@ -3984,13 +4117,191 @@ class UIController {
         if (this._startKeyBound) return;
         this._startKeyBound = true;
         document.addEventListener('keydown', (e) => {
-            if (e.key !== 'Enter') return;
             if (!this.startModal || this.startModal.style.display === 'none') return;
             const targetTag = e.target && e.target.tagName ? e.target.tagName.toLowerCase() : '';
             if (['input', 'textarea', 'select'].includes(targetTag)) return;
-            e.preventDefault();
-            this.handleStart();
+            // ESC：关闭开始弹窗，返回启动封面（修复 #11）
+            if (e.key === 'Escape') {
+                // 若有更上层弹窗打开（如音乐设置/战报等），先让上层处理，避免误关开始弹窗
+                if (this._modalStackTopVisible() !== this.startModal) return;
+                e.preventDefault();
+                this.hideStartModal();
+                this.showSplash();
+                return;
+            }
+            // 回车：开始游戏
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                this.handleStart();
+            }
         });
+        // 点击遮罩（弹窗外部空白处）关闭并返回启动封面（修复 #11）
+        this.startModal.addEventListener('click', (e) => {
+            if (e.target === this.startModal) {
+                this.hideStartModal();
+                this.showSplash();
+            }
+        });
+    }
+
+    // ─────────────────────────────────────────────────────────
+    // 统一弹窗「ESC / 点遮罩关闭」能力（修复 #16–#22）
+    // ─────────────────────────────────────────────────────────
+
+    /**
+     * 为指定弹窗注册「点遮罩(外部空白)关闭」能力与「ESC 关闭」能力（两者可不同）。
+     * - onDismiss：点遮罩(外部空白)时触发；省略则默认 hideModal。
+     * - onEsc：按 ESC 时触发；省略则回退为 onDismiss（即 ESC 与遮罩行为一致）。
+     * ESC 关闭由全局 bindGlobalEsc 统一处理（依据模态栈顶层判断，避免弹窗叠放误判）。
+     */
+    bindModalDismiss(modal, onDismiss, onEsc) {
+        if (!modal || modal._dismissBound) return;
+        modal._dismissBound = true;
+        modal._onMaskDismiss = typeof onDismiss === 'function' ? onDismiss : null;
+        modal._onEscDismiss = typeof onEsc === 'function' ? onEsc : modal._onMaskDismiss;
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                if (typeof modal._onMaskDismiss === 'function') {
+                    modal._onMaskDismiss();
+                } else {
+                    this.hideModal(modal);
+                }
+            }
+        });
+    }
+
+    /**
+     * 返回模态栈中「最上层且可见」的弹窗（叠放时用于判断 ESC 应关闭谁）
+     */
+    _modalStackTopVisible() {
+        const stack = this._modalStack || [];
+        for (let i = stack.length - 1; i >= 0; i--) {
+            const m = stack[i];
+            if (m && m.style.display !== 'none') return m;
+        }
+        return null;
+    }
+
+    /**
+     * 全局 ESC 关闭：关闭模态栈最上层的弹窗（start-modal 交由自身 ESC 处理）
+     */
+    bindGlobalEsc() {
+        if (this._globalEscBound) return;
+        this._globalEscBound = true;
+        document.addEventListener('keydown', (e) => {
+            if (e.key !== 'Escape') return;
+            const top = this._modalStackTopVisible();
+            if (!top || top === this.startModal) return;
+            // 仅处理显式注册为「可关闭」的弹窗，避免误关未注册弹窗（如关卡选择）
+            if (!top._dismissBound) return;
+            e.preventDefault();
+            if (typeof top._onEscDismiss === 'function') {
+                top._onEscDismiss();
+            } else if (typeof top._onMaskDismiss === 'function') {
+                top._onMaskDismiss();
+            } else {
+                this.hideModal(top);
+            }
+        });
+    }
+
+    /**
+     * 竞速模式总关数（不再硬编码 30，修复 #34）
+     */
+    _raceTotalLevels() {
+        return (this.raceLevels && this.raceLevels.length) ? this.raceLevels.length : 30;
+    }
+
+    /**
+     * 注册所有「可 ESC / 点遮罩关闭」的弹窗
+     * - 信息/设置类：ESC 或点遮罩 = 关闭弹窗
+     * - 结果类：ESC 或点遮罩 = 触发既有「返回」按钮行为
+     */
+    _bindModalDismissals() {
+        this.bindModalDismiss(this.bgmModal);
+        this.bindModalDismiss(this.reportModal);
+        this.bindModalDismiss(this.summaDialog);
+
+        const p2pRoom = document.getElementById('p2p-room-modal');
+        if (p2pRoom) {
+            this.bindModalDismiss(p2pRoom, () => {
+                this.hideModal(p2pRoom);
+                if (typeof this._cleanupP2P === 'function') this._cleanupP2P();
+            });
+        }
+
+        this.bindModalDismiss(this.gameOverModal, () => this.handleRestart());
+        // #19 用户选定：闯关通关弹窗 ESC=回选关页，点遮罩=直接打下一关
+        this.bindModalDismiss(this.campaignVictoryModal, () => this.goToNextCampaignLevel(), () => this.returnToCampaignLevelSelect());
+        // #20 用户选定：竞速通关弹窗 ESC=回选关页，点遮罩=直接进下一关
+        this.bindModalDismiss(this.raceVictoryModal, () => this.goToNextRaceLevel(), () => this.backToRaceLevelListFromVictory());
+    }
+
+    // ─────────────────────────────────────────────────────────
+    // #25 联机对手掉线恢复（三按钮：重试连接 / 等对手回来 / 返回主菜单）
+    // ─────────────────────────────────────────────────────────
+
+    /** 绑定掉线框与等待横幅的按钮 */
+    _bindP2PDisconnectButtons() {
+        const retry = document.getElementById('p2p-disc-retry-btn');
+        const wait = document.getElementById('p2p-disc-wait-btn');
+        const menu = document.getElementById('p2p-disc-menu-btn');
+        const bannerRetry = document.getElementById('p2p-wait-retry-btn');
+        const bannerMenu = document.getElementById('p2p-wait-menu-btn');
+        const onRetry = () => this._retryP2P();
+        const onMenu = () => this._p2pReturnToMenu();
+        if (retry) retry.onclick = () => this.playUIButtonSound(onRetry);
+        if (wait) wait.onclick = () => this.playUIButtonSound(() => this._p2pWaitForOpponent());
+        if (menu) menu.onclick = () => this.playUIButtonSound(onMenu);
+        if (bannerRetry) bannerRetry.onclick = () => this.playUIButtonSound(onRetry);
+        if (bannerMenu) bannerMenu.onclick = () => this.playUIButtonSound(onMenu);
+    }
+
+    /** 弹出掉线恢复框（强制选择，ESC/点遮罩不关闭） */
+    _showP2PDisconnectModal() {
+        const disc = document.getElementById('p2p-disconnect-modal');
+        if (disc) this.showModal(disc);
+    }
+
+    /** 用记录的房间码重新建立连接 */
+    _retryP2P() {
+        const code = this._p2pLastRoomCode;
+        if (!code || !this.p2pController) {
+            this.showMessage('缺少房间码，无法重连，请返回主菜单', 'error');
+            return;
+        }
+        const disc = document.getElementById('p2p-disconnect-modal');
+        if (disc) this.hideModal(disc);
+        this._hideP2PWaitBanner();
+        this._updateP2PStatus('connecting', '正在重连...');
+        this.showMessage('正在重连...');
+        if (this._p2pLastIsHost) {
+            this.p2pController.createRoomWithCode(code);
+        } else {
+            this.p2pController.joinRoom(code);
+        }
+    }
+
+    /** 彻底退出联机对局，返回主菜单 */
+    _p2pReturnToMenu() {
+        const disc = document.getElementById('p2p-disconnect-modal');
+        if (disc) this.hideModal(disc);
+        this._hideP2PWaitBanner();
+        if (typeof this._cleanupP2P === 'function') this._cleanupP2P();
+        this.handleRestart();
+    }
+
+    /** 不退出，保留棋盘并提示等待对手重连（顶部常驻横幅提供退出/重试入口） */
+    _p2pWaitForOpponent() {
+        const disc = document.getElementById('p2p-disconnect-modal');
+        if (disc) this.hideModal(disc);
+        const banner = document.getElementById('p2p-wait-banner');
+        if (banner) banner.style.display = 'flex';
+    }
+
+    _hideP2PWaitBanner() {
+        const banner = document.getElementById('p2p-wait-banner');
+        if (banner) banner.style.display = 'none';
     }
 
     /**
@@ -4624,7 +4935,7 @@ class UIController {
 
     updateRaceBattleUI(levelId, elapsedSeconds = 0) {
         this.roundElement.textContent = levelId;
-        this.totalRoundsElement.textContent = 30;
+        this.totalRoundsElement.textContent = this._raceTotalLevels();
         const badge = document.getElementById('campaign-level-badge');
         const value = document.getElementById('campaign-level-value');
         const bestTime = this.raceModeController?.getBest?.(levelId) ?? this.raceModeManager?.getBestTime?.(levelId);
@@ -4639,14 +4950,14 @@ class UIController {
     updateRaceProgressUI(data) {
         const progress = this.gameController?.getRaceProgress?.() || { cleared: 0, stars: 0 };
         this.raceCurrentLevelId = data.levelId;
-        if (this.raceLevelProgress) this.raceLevelProgress.textContent = `已通关 ${progress.cleared}/30，TT∑分：${progress.stars}`;
+        if (this.raceLevelProgress) this.raceLevelProgress.textContent = `已通关 ${progress.cleared}/${this._raceTotalLevels()}，TT∑分：${progress.stars}`;
         this.renderRaceLevelList();
     }
 
     updateRacePuzzleProgress(solved, total) {
         if (!this.raceLevelProgress) return;
         const progress = this.gameController?.getRaceProgress?.() || { cleared: 0, stars: 0 };
-        this.raceLevelProgress.textContent = `已完成 ${Number(solved) || 0}/${Number(total) || 10} 个谜题 · 已通关 ${progress.cleared}/30，TT∑分：${progress.stars}`;
+        this.raceLevelProgress.textContent = `已完成 ${Number(solved) || 0}/${Number(total) || 10} 个谜题 · 已通关 ${progress.cleared}/${this._raceTotalLevels()}，TT∑分：${progress.stars}`;
         if (this.raceLiveTimeValue) {
             const elapsed = this.gameController?.getRaceElapsedSeconds?.() || 0;
             this.raceLiveTimeValue.textContent = `${elapsed.toFixed(2)}s`;
@@ -5775,6 +6086,7 @@ class UIController {
         let hint = '';
         let confirmText = '确认';
         
+        const notMyTurn = this.isP2PMode && !this._isMyTurn();
         switch (phase) {
             case 'select_target':
                 if (state.targetCount > 1) {
@@ -5788,6 +6100,7 @@ class UIController {
             case 'set_forbidden':
                 hint = `设置禁止区 (${state.roundState.forbiddenCells.length}/${state.maxForbidden})`;
                 confirmText = '确认禁止区';
+                this.confirmBtn.disabled = false;
                 break;
             case 'set_locks':
                 if (state.difficulty === 'easy') {
@@ -5796,11 +6109,17 @@ class UIController {
                     hint = `点击下方元素锁定对方 (${state.roundState.lockedElements.length}/${state.maxLocks})`;
                 }
                 confirmText = '确认锁定';
+                this.confirmBtn.disabled = false;
                 this.initDraggableElements(); // 刷新为锁定视图
                 break;
             case 'input_function':
-                hint = '点击下方元素构建函数表达式';
+                if (notMyTurn) {
+                    hint = '等待对手构造函数…';
+                } else {
+                    hint = '点击下方元素构建函数表达式';
+                }
                 confirmText = '提交函数';
+                this.confirmBtn.disabled = notMyTurn;
                 this.initDraggableElements(); // 刷新为函数构建视图
                 break;
             case 'evaluate':
@@ -5810,12 +6129,19 @@ class UIController {
                 break;
             case 'switch_player':
                 hint = '回合切换中...';
+                this.confirmBtn.disabled = false;
                 break;
         }
         
         this.phaseHintElement.textContent = hint;
         this.confirmBtn.textContent = confirmText;
-        this.confirmBtn.disabled = false;
+
+        // AI 对手回合 / P2P 对手回合：禁用元素按钮，避免"看似可点"
+        const blockInput = notMyTurn || (this.gameController.gameMode === 'ai' && state.currentPlayer === 'B');
+        if (this.elementsContainer) {
+            this.elementsContainer.style.pointerEvents = blockInput ? 'none' : '';
+            this.elementsContainer.style.opacity = blockInput ? '0.5' : '';
+        }
         
         // 更新棋盘范围
         const rangeChanged = this.gridSystem.updateRange(state.currentRound);
@@ -5831,7 +6157,7 @@ class UIController {
      * 更新计时器显示
      */
     updateTimer(remainingTime) {
-        this.timerElement.textContent = remainingTime;
+        this.timerElement.textContent = Math.max(0, Math.round(remainingTime));
         
         if (remainingTime <= 10) {
             this.timerElement.classList.add('warning');
@@ -5856,11 +6182,15 @@ class UIController {
      * 显示消息
      */
     showMessage(message, type = 'info') {
-        // 清除之前的定时器
+        // 清除之前的定时器（含上一条消息的渐隐动画 interval，避免连续提示互相干扰，修复 #33）
         if (this.messageTimeout) {
             clearTimeout(this.messageTimeout);
         }
-        
+        if (this._fadeInterval) {
+            clearInterval(this._fadeInterval);
+            this._fadeInterval = null;
+        }
+
         this.messageElement.textContent = message;
         this.messageElement.style.opacity = '1';
         
@@ -5874,10 +6204,11 @@ class UIController {
             this.messageElement.classList.add('success');
         }
         
-        // 2秒后开始渐隐
+        // 错误/警告类消息停留更久（便于用户读完），普通信息 2 秒后渐隐
+        const duration = (type === 'error' || type === 'warning') ? 5000 : 2000;
         this.messageTimeout = setTimeout(() => {
             this.fadeOutMessage();
-        }, 2000);
+        }, duration);
     }
     
     /**
@@ -5885,10 +6216,11 @@ class UIController {
      */
     fadeOutMessage() {
         let opacity = 1;
-        const fadeInterval = setInterval(() => {
+        this._fadeInterval = setInterval(() => {
             opacity -= 0.05;
             if (opacity <= 0) {
-                clearInterval(fadeInterval);
+                clearInterval(this._fadeInterval);
+                this._fadeInterval = null;
                 this.messageElement.textContent = '';
                 this.messageElement.className = 'message';
                 this.messageElement.style.opacity = '1';

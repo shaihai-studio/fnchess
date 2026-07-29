@@ -13,7 +13,7 @@
     <div id="splash-screen">
         <div class="splash-content">
             <div class="splash-title">函数棋</div>
-            <div class="splash-hint">点击屏幕进入游戏</div>
+            <div class="splash-hint">点击屏幕 / 按 回车·空格·ESC 进入</div>
         </div>
     </div>
 
@@ -445,6 +445,28 @@
         </div>
     </div>
 
+    <!-- #25 联机对手掉线：三按钮恢复框 -->
+    <div class="modal" id="p2p-disconnect-modal" style="display:none;">
+        <div class="modal-content" style="max-width:360px;text-align:center;">
+            <h2>对手已断开连接</h2>
+            <p>联机对局已中断，你可以选择：</p>
+            <div style="display:flex;flex-direction:column;gap:10px;margin-top:16px;">
+                <button class="btn btn-primary" id="p2p-disc-retry-btn">重试连接</button>
+                <button class="btn btn-secondary" id="p2p-disc-wait-btn">等对手回来</button>
+                <button class="btn btn-secondary" id="p2p-disc-menu-btn">返回主菜单</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- #25 等待对手重连时顶部常驻横幅（含退出入口） -->
+    <div id="p2p-wait-banner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:2000;background:#2b2b40;color:#fff;padding:10px 16px;align-items:center;justify-content:space-between;box-shadow:0 2px 8px rgba(0,0,0,0.4);font-size:14px;">
+        <span>对手已掉线，等待对方重连中…（也可自行重试或退出）</span>
+        <span>
+            <button class="btn btn-small" id="p2p-wait-retry-btn" style="margin-right:8px;">重试连接</button>
+            <button class="btn btn-secondary btn-small" id="p2p-wait-menu-btn">返回主菜单</button>
+        </span>
+    </div>
+
     <!-- 加载 JavaScript 模块 -->
     <!-- 响应式布局管理器（优先加载） -->
     <script src="files/js/ResponsiveLayout.js"></script>
@@ -527,22 +549,10 @@
             uiController._battleSubmenu = document.getElementById('battle-submenu');
             uiController._currentBattleSubMode = 'local';
 
-            // ── 启动界面：点击后酷炫转场到主界面 ──
+            // ── 启动界面：点击 / ESC / 回车 / 空格 均可进入主界面 ──
             const splash = document.getElementById('splash-screen');
             if (splash) {
-                splash.addEventListener('click', function _onSplashClick() {
-                    splash.removeEventListener('click', _onSplashClick);
-                    // 触发转场动画（旋转 + 放大 + 虚化）
-                    splash.classList.add('splash-exit');
-
-                    // 动画结束后移除启动界面，显示主界面，启动BGM
-                    setTimeout(() => {
-                        splash.style.display = 'none';
-                        uiController.showModal(document.getElementById('start-modal'));
-                        if (window.audioManager) window.audioManager.startBgm();
-                    }, 900);
-                });
-                // start-modal 由启动界面接管显示时机，此处不主动 show
+                uiController.showSplash();   // 绑定「点击 + 键盘」进入监听
             } else {
                 uiController.showModal(document.getElementById('start-modal'));
             }

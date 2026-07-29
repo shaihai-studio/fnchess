@@ -44,9 +44,21 @@ class LevelEditorExtension {
     }
 
     deactivate() {
+        // 仅在编辑器曾激活、或残留编辑器面板时才做完整清理，避免重复重建
+        const wasActive = this.isActive || document.getElementById('editor-mode-switcher');
         this.isActive = false;
         const editorUI = document.getElementById('editor-mode-switcher');
         if (editorUI) editorUI.remove();
+
+        if (wasActive) {
+            // 恢复被编辑器隐藏的输入框与确认按钮可见性（编辑模式曾 _setInputUIVisible(false)）
+            const exprCard = document.getElementById('expression-display')?.closest('.panel-card');
+            const btnCard = document.getElementById('confirm-btn')?.closest('.panel-card');
+            if (exprCard) exprCard.style.display = '';
+            if (btnCard) btnCard.style.display = '';
+            // 重建常规元素面板（编辑器曾把 elements-container 替换为锁元素编辑器）
+            this.uiController?.initDraggableElements();
+        }
 
         this.gameController.campaignState = { active: false, levelPack: null, totalLevels: 0, currentLevelId: 1 };
         this.gameController.difficulty = 'normal';
