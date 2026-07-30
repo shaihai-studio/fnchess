@@ -6,10 +6,6 @@ if (typeof UIController === 'undefined') {
 
 // showP2PRoomModal
     UIController.prototype.showP2PRoomModal = function() {
-        if (typeof Peer === 'undefined') {
-            this.showMessage('联机模块加载失败，请检查网络连接后刷新页面重试', 'error');
-            return;
-        }
         if (typeof P2PController === 'undefined') {
             this.showMessage('P2P模块未加载', 'error');
             return;
@@ -27,7 +23,8 @@ if (typeof UIController === 'undefined') {
         this._updateP2PStatus('idle', '准备就绪');
         this.showModal(document.getElementById('p2p-room-modal'));
         this._bindP2PRoomEvents();
-    };
+    }
+;
 
 // _setupP2PCallbacks
     UIController.prototype._setupP2PCallbacks = function() {
@@ -126,7 +123,8 @@ if (typeof UIController === 'undefined') {
             this.showMessage('对手请求再战，准备新对局...');
             this.startP2PGame();
         };
-    };
+    }
+;
 
 // _bindP2PRoomEvents
     UIController.prototype._bindP2PRoomEvents = function() {
@@ -208,7 +206,8 @@ if (typeof UIController === 'undefined') {
                 this._cleanupP2P();
             };
         }
-    };
+    }
+;
 
 // _updateP2PStatus
     UIController.prototype._updateP2PStatus = function(state, message) {
@@ -220,7 +219,8 @@ if (typeof UIController === 'undefined') {
             dot.className = 'p2p-status-dot ' + state;
         }
         if (text) text.textContent = message;
-    };
+    }
+;
 
 // startP2PGame
     UIController.prototype.startP2PGame = function() {
@@ -241,7 +241,8 @@ if (typeof UIController === 'undefined') {
             const difficulty = this.getSelectedDifficulty();
             this.gameController.initGame(rounds, difficulty, 'p2p');
         }
-    };
+    }
+;
 
 // _cleanupP2P
     UIController.prototype._cleanupP2P = function() {
@@ -262,14 +263,16 @@ if (typeof UIController === 'undefined') {
         if (this.gameController && typeof this.gameController.bumpStateVersion === 'function') {
             this.gameController._syncHook = null;
         }
-    };
+    }
+;
 
 // _p2pSendConfirmed
     UIController.prototype._p2pSendConfirmed = function(action, payload) {
         if (this.isP2PMode && this.p2pController && this.p2pController.isConnected) {
             this.p2pController.sendGameAction(action, payload);
         }
-    };
+    }
+;
 
 // _bindP2PDisconnectButtons
     UIController.prototype._bindP2PDisconnectButtons = function() {
@@ -285,13 +288,15 @@ if (typeof UIController === 'undefined') {
         if (menu) menu.onclick = () => this.playUIButtonSound(onMenu);
         if (bannerRetry) bannerRetry.onclick = () => this.playUIButtonSound(onRetry);
         if (bannerMenu) bannerMenu.onclick = () => this.playUIButtonSound(onMenu);
-    };
+    }
+;
 
 // _showP2PDisconnectModal
     UIController.prototype._showP2PDisconnectModal = function() {
         const disc = document.getElementById('p2p-disconnect-modal');
         if (disc) this.showModal(disc);
-    };
+    }
+;
 
 // _retryP2P
     UIController.prototype._retryP2P = function() {
@@ -310,7 +315,8 @@ if (typeof UIController === 'undefined') {
         } else {
             this.p2pController.joinRoom(code);
         }
-    };
+    }
+;
 
 // _p2pReturnToMenu
     UIController.prototype._p2pReturnToMenu = function() {
@@ -319,7 +325,8 @@ if (typeof UIController === 'undefined') {
         this._hideP2PWaitBanner();
         if (typeof this._cleanupP2P === 'function') this._cleanupP2P();
         this.handleRestart();
-    };
+    }
+;
 
 // _p2pWaitForOpponent
     UIController.prototype._p2pWaitForOpponent = function() {
@@ -327,11 +334,13 @@ if (typeof UIController === 'undefined') {
         if (disc) this.hideModal(disc);
         const banner = document.getElementById('p2p-wait-banner');
         if (banner) banner.style.display = 'flex';
-    };
+    }
+;
 
 // _hideP2PWaitBanner
     UIController.prototype._hideP2PWaitBanner = function() {
         const banner = document.getElementById('p2p-wait-banner');
         if (banner) banner.style.display = 'none';
-    };
+    }
+;
 

@@ -35,7 +35,8 @@ if (typeof UIController === 'undefined') {
         this.bindStepperButtons();
         this.refreshStartSelectorDisplay();
         this.syncStartSelectionState();
-    };
+    }
+;
 
 // bindStepperButtons
     UIController.prototype.bindStepperButtons = function() {
@@ -49,7 +50,8 @@ if (typeof UIController === 'undefined') {
         bind('time-limit-next', () => this.stepTimeLimit(1));
         bind('difficulty-prev', () => this.stepDifficulty(-1));
         bind('difficulty-next', () => this.stepDifficulty(1));
-    };
+    }
+;
 
 // applySelectedTimeLimitMode
     UIController.prototype.applySelectedTimeLimitMode = function() {
@@ -58,7 +60,8 @@ if (typeof UIController === 'undefined') {
         if (this.gameController) {
             this.gameController.timeLimitMode = mode;
         }
-    };
+    }
+;
 
 // playSelectorChangeFeedback
     UIController.prototype.playSelectorChangeFeedback = function(host) {
@@ -69,7 +72,8 @@ if (typeof UIController === 'undefined') {
         host.classList.add('selector-change');
         clearTimeout(this._selectorChangeTimeout);
         this._selectorChangeTimeout = setTimeout(() => host.classList.remove('selector-change'), 220);
-    };
+    }
+;
 
 // refreshStartSelectorDisplay
     UIController.prototype.refreshStartSelectorDisplay = function() {
@@ -101,7 +105,8 @@ if (typeof UIController === 'undefined') {
             this.difficultyHint.textContent = '';
         }
         this.applyStartModeLayout();
-    };
+    }
+;
 
 // syncStartSelectionState
     UIController.prototype.syncStartSelectionState = function() {
@@ -109,7 +114,8 @@ if (typeof UIController === 'undefined') {
         this.applySelectedTimeLimitMode();
         this.refreshStartSelectorDisplay();
         this.applyStartModeLayout();
-    };
+    }
+;
 
 // syncModeButtonsFromDifficulty
     UIController.prototype.syncModeButtonsFromDifficulty = function() {
@@ -118,11 +124,14 @@ if (typeof UIController === 'undefined') {
 
         // 修复 #23：selectedMode 恒为 'battle'，子模式高亮应依据 _battleSubMode
         const isBattle = this.selectedMode === 'battle';
+        this.modeBattleBtn.classList.toggle('active', isBattle);
         this.modeLocalBtn.classList.toggle('active', isBattle && this._battleSubMode === 'local');
         this.modeAiBtn.classList.toggle('active', isBattle && this._battleSubMode === 'ai');
+        if (this.modeP2PBtn) this.modeP2PBtn.classList.toggle('active', isBattle && this._battleSubMode === 'p2p');
         this.modeCampaignBtn.classList.toggle('active', this.selectedMode === 'campaign');
         this.modeRaceBtn.classList.toggle('active', this.selectedMode === 'race');
         this.modeTestBtn.classList.toggle('active', this.selectedMode === 'test');
+        if (this.modeEditorBtn) this.modeEditorBtn.classList.toggle('active', this.selectedMode === 'editor');
 
         if (this.modeAiBtn) {
             this.modeAiBtn.disabled = false;
@@ -137,7 +146,8 @@ if (typeof UIController === 'undefined') {
             if (!el) return;
             el.classList.toggle('disabled', lockSelectors);
         });
-    };
+    }
+;
 
 // applyStartModeLayout
     UIController.prototype.applyStartModeLayout = function() {
@@ -149,7 +159,8 @@ if (typeof UIController === 'undefined') {
         layout.style.flexDirection = isNarrow ? 'column' : 'row';
         left.style.flexBasis = isNarrow ? 'auto' : '170px';
         right.style.flexBasis = isNarrow ? 'auto' : '1';
-    };
+    }
+;
 
 // setStartSelectorsEnabled
     UIController.prototype.setStartSelectorsEnabled = function(enabled) {
@@ -162,7 +173,8 @@ if (typeof UIController === 'undefined') {
         if (this.roundSelect) this.roundSelect.disabled = !enabled;
         if (this.difficultySelect) this.difficultySelect.disabled = !enabled;
         if (this.timeLimitStepper) this.timeLimitStepper.classList.toggle('disabled', !enabled);
-    };
+    }
+;
 
 // applyStepperColors
     UIController.prototype.applyStepperColors = function(kind, value) {
@@ -213,7 +225,8 @@ if (typeof UIController === 'undefined') {
             valueEl.style.borderColor = t.fg;
             valueEl.style.boxShadow = `0 0 18px ${t.shadow}`;
         }
-    };
+    }
+;
 
 // selectMode
     UIController.prototype.selectMode = function(mode) {
@@ -299,7 +312,8 @@ if (typeof UIController === 'undefined') {
             this.setStartSelectorsEnabled(false);
             return;
         }
-    };
+    }
+;
 
 // getSelectedTimeLimitMode
     UIController.prototype.getSelectedTimeLimitMode = function() {
@@ -312,7 +326,8 @@ if (typeof UIController === 'undefined') {
             '超快棋': 'super_fast'
         };
         return map[timeLimitText] || 'normal';
-    };
+    }
+;
 
 // handleStartButtonClick
     UIController.prototype.handleStartButtonClick = function() {
@@ -341,7 +356,8 @@ if (typeof UIController === 'undefined') {
                 this.startNormalGame();
                 break;
         }
-    };
+    }
+;
 
 // startNormalGame
     UIController.prototype.startNormalGame = function() {
@@ -355,7 +371,8 @@ if (typeof UIController === 'undefined') {
         this.gameController.initGame(rounds, difficulty, effectiveMode);
         this.hideStartModal();
         this.showMessage(`开始${this.getModeName(effectiveMode)}模式`);
-    };
+    }
+;
 
 // getModeName
     UIController.prototype.getModeName = function(mode) {
@@ -369,7 +386,8 @@ if (typeof UIController === 'undefined') {
             'editor': '关卡编辑'
         };
         return map[mode] || mode;
-    };
+    }
+;
 
 // handleStartSelectorKeys
     UIController.prototype.handleStartSelectorKeys = function(e) {
@@ -393,14 +411,16 @@ if (typeof UIController === 'undefined') {
             return true;
         }
         return false;
-    };
+    }
+;
 
 // getTestModeColor
     UIController.prototype.getTestModeColor = function() {
         const colors = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#ffeaa7', '#dfe6e9', '#fd79a8', '#a29bfe'];
         const functions = this.gameController.getTestModeFunctions();
         return colors[functions.length % colors.length];
-    };
+    }
+;
 
 // exitTestMode
     UIController.prototype.exitTestMode = function() {
@@ -478,7 +498,8 @@ if (typeof UIController === 'undefined') {
         this.showModal(this.startModal);
         this.showMessage('');
         this.refreshStartSelectorDisplay();
-    };
+    }
+;
 
 // handleStart
     UIController.prototype.handleStart = async function() {
@@ -623,7 +644,8 @@ if (typeof UIController === 'undefined') {
         if (this.gameController.isTestMode()) {
             this.initTestModeUI();
         }
-    };
+    }
+;
 
 // initTestModeUI
     UIController.prototype.initTestModeUI = function() {
@@ -686,7 +708,8 @@ if (typeof UIController === 'undefined') {
         
         // 初始化元素选择
         this.initDraggableElements();
-    };
+    }
+;
 
 // handleRestart
     UIController.prototype.handleRestart = function() {
@@ -709,5 +732,6 @@ if (typeof UIController === 'undefined') {
             // 返回主页
             this.showModal(this.startModal);
         });
-    };
+    }
+;
 

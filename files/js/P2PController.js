@@ -47,6 +47,23 @@ class P2PController {
             debug: 0
         };
 
+    // ─── 懒加载 PeerJS（仅首次联机时拉取，避免阻塞开局加载） ───
+    static ensurePeerJs() {
+        if (typeof window.Peer !== 'undefined') return Promise.resolve();
+        if (P2PController._peerJsPromise) return P2PController._peerJsPromise;
+        P2PController._peerJsPromise = new Promise((resolve, reject) => {
+            const s = document.createElement('script');
+            s.src = 'https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js';
+            s.async = true;
+            s.onload = () => (typeof window.Peer !== 'undefined'
+                ? resolve()
+                : reject(new Error('PeerJS 加载完成但全局 Peer 未定义')));
+            s.onerror = () => reject(new Error('无法加载 PeerJS（请检查网络）'));
+            document.head.appendChild(s);
+        });
+        return P2PController._peerJsPromise;
+    }
+
     constructor() {
         // 连接状态
         this.peer = null;
@@ -120,6 +137,12 @@ class P2PController {
     // ─── 连接 ────────────────────────────────────────────────
 
     async createRoom() {
+        try {
+            await P2PController.ensurePeerJs();
+        } catch (err) {
+            this._notifyStatus('error', '联机模块加载失败，请检查网络后刷新重试');
+            return;
+        }
         if (this.isConnecting || this.isConnected) {
             this._notifyStatus('error', '已有进行中的连接');
             return;
@@ -166,6 +189,12 @@ class P2PController {
 
     /** 用大厅分配的 roomCode 创建房间（跳过随机生成） */
     async createRoomWithCode(code) {
+        try {
+            await P2PController.ensurePeerJs();
+        } catch (err) {
+            this._notifyStatus('error', '联机模块加载失败，请检查网络后刷新重试');
+            return;
+        }
         if (this.isConnecting || this.isConnected) {
             this._notifyStatus('error', '已有进行中的连接');
             return;
@@ -208,6 +237,12 @@ class P2PController {
     }
 
     async joinRoom(roomCode) {
+        try {
+            await P2PController.ensurePeerJs();
+        } catch (err) {
+            this._notifyStatus('error', '联机模块加载失败，请检查网络后刷新重试');
+            return;
+        }
         if (this.isConnecting || this.isConnected) {
             this._notifyStatus('error', '已有进行中的连接');
             return;

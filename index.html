@@ -6,7 +6,6 @@
     <title>函数棋 - Function Chess</title>
     <link rel="stylesheet" href="files/css/style.css">
     <link rel="stylesheet" href="files/css/shaihai-theme.css">
-    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 </head>
 <body>
     <!-- 启动界面（仅首次加载时显示） -->
@@ -188,16 +187,16 @@
                     <div class="mode-select start-modes-right">
                         <div class="mode-toggle mode-toggle-vertical">
                             <button class="mode-btn active" id="mode-battle" data-mode="battle">对战模式</button>
+                            <!-- 对战子菜单 -->
+                            <div class="battle-submenu" id="battle-submenu" style="display:none;">
+                                <button class="mode-btn mode-btn-sub" id="mode-local" data-mode="local">本地对战</button>
+                                <button class="mode-btn mode-btn-sub" id="mode-ai" data-mode="ai">人机对战</button>
+                                <button class="mode-btn mode-btn-sub" id="mode-p2p" data-mode="p2p">联机对战</button>
+                            </div>
                             <button class="mode-btn" id="mode-campaign" data-mode="campaign">闯关模式</button>
                             <button class="mode-btn" id="mode-race" data-mode="race">竞速模式</button>
                             <button class="mode-btn" id="mode-test" data-mode="test">测试模式</button>
                             <button class="mode-btn" id="mode-editor" data-mode="editor">关卡编辑器</button>
-                        </div>
-                        <!-- 对战子菜单 -->
-                        <div class="battle-submenu" id="battle-submenu" style="display:none;">
-                            <button class="mode-btn mode-btn-sub" id="mode-local" data-mode="local">本地对战</button>
-                            <button class="mode-btn mode-btn-sub" id="mode-ai" data-mode="ai">人机对战</button>
-                            <button class="mode-btn mode-btn-sub" id="mode-p2p" data-mode="p2p">联机对战</button>
                         </div>
                         <small id="mode-hint" style="display: block; margin-top: 5px; opacity: 0.7;">选择对战模式</small>
                     </div>

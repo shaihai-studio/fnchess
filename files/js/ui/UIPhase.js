@@ -216,6 +216,7 @@ if (typeof UIController === 'undefined') {
                 confirmText = '提交函数';
                 this.confirmBtn.disabled = notMyTurn;
                 this.initDraggableElements(); // 刷新为函数构建视图
+                this.updateExpressionDisplay(); // 重绘已保留的解析式（开关开启时不清空）
                 break;
             case 'evaluate':
             case 'init':

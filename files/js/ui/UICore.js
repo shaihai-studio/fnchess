@@ -34,6 +34,9 @@ if (typeof UIController === 'undefined') {
         this.confirmBtn = document.getElementById('confirm-btn');
         this.clearBtn = document.getElementById('clear-btn');
         this.exitBtn = document.getElementById('exit-btn');
+
+        // 「提交失败后保留解析式」开关
+        this.keepExprToggle = document.getElementById('keep-expr-toggle');
         
         // 退出气泡框元素
         this.exitPopover = document.getElementById('exit-confirm-popover');
@@ -179,7 +182,6 @@ if (typeof UIController === 'undefined') {
             this.modeLocalBtn.addEventListener('click', () => {
                 this._battleSubMode = 'local';
                 this.selectMode('battle');
-                if (this._battleSubmenu) this._battleSubmenu.style.display = 'none';
                 this.modeHint.textContent = '本地对战：两位玩家轮流操作';
             });
         }
@@ -187,7 +189,6 @@ if (typeof UIController === 'undefined') {
             this.modeAiBtn.addEventListener('click', () => {
                 this._battleSubMode = 'ai';
                 this.selectMode('battle');
-                if (this._battleSubmenu) this._battleSubmenu.style.display = 'none';
                 this.modeHint.textContent = '人机对战：你将对抗AI Summa';
             });
         }
@@ -195,10 +196,7 @@ if (typeof UIController === 'undefined') {
             this.modeP2PBtn.addEventListener('click', () => {
                 this._battleSubMode = 'p2p';
                 this.selectMode('battle');
-                if (this._battleSubmenu) this._battleSubmenu.style.display = 'none';
                 this.modeHint.textContent = '联机对战：与远方好友同台竞技';
-                this.setStartSelectorsEnabled(false);
-                setTimeout(() => this.showP2PRoomModal(), 100);
             });
         }
         if (this.modeEditorBtn) {
@@ -374,6 +372,7 @@ if (typeof UIController === 'undefined') {
             this.gridSystem.usedCells = [];
             this._lastRemoteExpr = null;
             this.clearExpression();
+            this._syncKeepExprToggleVisibility();
             this.updateScoreboard();
             this.roundElement.textContent = data.currentRound;
             this.totalRoundsElement.textContent = data.totalRounds;
@@ -474,8 +473,15 @@ if (typeof UIController === 'undefined') {
         });
 
         // 统一的输入阶段准备：只做 UI 侧清理（模型清理由 GameController.prepareInputPhase() 负责）
-        this.gameController.on('prepareInputPhase', () => {
-            this.clearExpression();
+        this.gameController.on('prepareInputPhase', (data) => {
+            // 「提交失败后保留解析式」开关——仅闯关/竞速模式生效
+            const isCampaignOrRace = this.gameController.gameMode === 'campaign' ||
+                                     this.gameController.gameMode === 'race';
+            const keepExpr = (data && data.clearExpression === false) ||
+                             (isCampaignOrRace && this.keepExprToggle && this.keepExprToggle.checked);
+            if (!keepExpr) {
+                this.clearExpression();
+            }
         });
         
         this.gameController.on('targetSelected', (data) => {
@@ -775,7 +781,12 @@ if (typeof UIController === 'undefined') {
                 
                 // 2. 清空当前回合的目标格和禁区（但保留usedCells）
                 this.gridSystem.clearAll();
-                this.clearExpression();
+                // 保留解析式开关——仅闯关/竞速模式生效，对战/P2P/AI 模式始终清空
+                const isCampaignOrRace = this.gameController.gameMode === 'campaign' ||
+                                         this.gameController.gameMode === 'race';
+                if (!(isCampaignOrRace && this.keepExprToggle && this.keepExprToggle.checked)) {
+                    this.clearExpression();
+                }
                 
                 // 3. 显示消息
                 this.showMessage(`第 ${data.currentRound - 1} 回合结束`);
@@ -1342,10 +1353,18 @@ if (typeof UIController === 'undefined') {
         }
         const roundDisplay = document.getElementById('round-display');
         if (roundDisplay) roundDisplay.style.display = 'none';
+        this._syncKeepExprToggleVisibility();
     }
 ;
 
 // restoreBattleUI
+    UIController.prototype._syncKeepExprToggleVisibility = function() {
+        const toggleWrap = document.getElementById('keep-expr-toggle-wrap');
+        if (!toggleWrap) return;
+        const mode = this.gameController && this.gameController.gameMode;
+        toggleWrap.style.display = (mode === 'campaign' || mode === 'race') ? '' : 'none';
+    };
+
     UIController.prototype.restoreBattleUI = function() {
         this.battleUiHidden = false;
         this.updateCampaignDrawDelayToggleVisibility();
@@ -1363,6 +1382,7 @@ if (typeof UIController === 'undefined') {
         if (roundDisplay) roundDisplay.style.display = '';
         const badge = document.getElementById('campaign-level-badge');
         if (badge) badge.style.display = 'none';
+        this._syncKeepExprToggleVisibility();
     }
 ;
 
