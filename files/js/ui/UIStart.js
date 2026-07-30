@@ -172,7 +172,10 @@ if (typeof UIController === 'undefined') {
         });
         if (this.roundSelect) this.roundSelect.disabled = !enabled;
         if (this.difficultySelect) this.difficultySelect.disabled = !enabled;
-        if (this.timeLimitStepper) this.timeLimitStepper.classList.toggle('disabled', !enabled);
+        [this.roundStepper, this.difficultyStepper, this.timeLimitStepper].forEach(el => {
+            if (!el) return;
+            el.classList.toggle('disabled', !enabled);
+        });
     }
 ;
 
@@ -205,9 +208,10 @@ if (typeof UIController === 'undefined') {
             prev = document.getElementById('difficulty-prev');
             next = document.getElementById('difficulty-next');
             valueEl = this.difficultyValue;
-            theme = {
-                easy: { bg: 'rgba(34, 197, 94, 0.12)', fg: '#6b9f6e', shadow: 'rgba(34,197,94,0.10)' },
-                normal: { bg: 'rgba(59, 130, 246, 0.12)', fg: '#6b84a8', shadow: 'rgba(59,130,246,0.10)' },
+                theme = {
+                    easy: { bg: 'rgba(34, 197, 94, 0.12)', fg: '#6b9f6e', shadow: 'rgba(34,197,94,0.10)' },
+                    fraction: { bg: 'rgba(20, 184, 166, 0.12)', fg: '#14b8a6', shadow: 'rgba(20,184,166,0.25)' },
+                    normal: { bg: 'rgba(59, 130, 246, 0.12)', fg: '#6b84a8', shadow: 'rgba(59,130,246,0.10)' },
                 expert: { bg: 'rgba(245, 158, 11, 0.12)', fg: '#b8944a', shadow: 'rgba(245,158,11,0.10)' },
                 test: { bg: 'rgba(168, 85, 247, 0.12)', fg: '#8b7bb0', shadow: 'rgba(168,85,247,0.10)' }
             };
@@ -243,6 +247,11 @@ if (typeof UIController === 'undefined') {
         
         this.selectedMode = mode;
         
+        // 切换模式时关闭关卡编辑器
+        if (mode !== 'editor' && this.levelEditor?.isActive) {
+            this.levelEditor.deactivate();
+        }
+
         // 更新按钮状态
         const isCampaign = mode === 'campaign';
         const isTest = mode === 'test';

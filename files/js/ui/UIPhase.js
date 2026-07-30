@@ -21,6 +21,7 @@ if (typeof UIController === 'undefined') {
     UIController.prototype.getDifficultyColor = function(value) {
         const map = {
             easy: '#6b9f6e',
+            fraction: '#14b8a6',
             normal: '#6b84a8',
             expert: '#b8944a',
             test: '#8b7bb0'

@@ -29,18 +29,17 @@ class LevelEditorExtension {
         this.solutionVerified = false;
         this.solutionTokens = 0;
 
-        // 备份 parser 原锁定集合，退出编辑器时恢复（P13）
         this._originalLockedElements = this.uiController?.parser?.lockedElements
             ? [...this.uiController.parser.lockedElements]
             : [];
 
-        // difficulty 用 'test' 复用测试模式 UI，gameMode 用合法值 'local'（P12）
         this.gameController.initGame(1, 'test', 'local');
+        this.uiController.hideBattleUI?.();
+        this.uiController.hideRaceUI?.();
+        this.uiController.hideStartModal?.();
 
-        setTimeout(() => {
-            this._buildEditorUI();
-            this._switchToEditMode();
-        }, 150);
+        this._buildEditorUI();
+        this._switchToEditMode();
     }
 
     deactivate() {
@@ -62,6 +61,9 @@ class LevelEditorExtension {
 
         this.gameController.campaignState = { active: false, levelPack: null, totalLevels: 0, currentLevelId: 1 };
         this.gameController.difficulty = 'normal';
+        this._setInputUIVisible(true);
+        this.uiController.restoreBattleUI?.();
+        this.uiController.showModal?.(document.getElementById('start-modal'));
 
         // 恢复 parser 原锁定集合，避免污染后续对局（P13）
         if (this.uiController?.parser) {
@@ -76,7 +78,12 @@ class LevelEditorExtension {
         const phaseCard = document.getElementById('phase-hint')?.closest('.panel-card');
         if (!phaseCard) return;
 
-        const div = document.createElement('div');
+        const controlPanel = document.querySelector('.control-panel');
+        if (!controlPanel) return;
+
+        let div = document.getElementById('editor-mode-switcher');
+        if (div) div.remove();
+        div = document.createElement('div');
         div.id = 'editor-mode-switcher';
         div.className = 'panel-card';
         div.innerHTML = `
@@ -90,7 +97,7 @@ class LevelEditorExtension {
                 <button class="btn btn-secondary btn-small" id="editor-import-btn">导入种子</button>
                 <button class="btn btn-exit btn-small" id="editor-exit-btn">退出编辑器</button>
             </div>`;
-        phaseCard.parentNode.insertBefore(div, phaseCard);
+        controlPanel.appendChild(div);
 
         document.getElementById('editor-edit-btn').addEventListener('click', () => this._switchToEditMode());
         document.getElementById('editor-verify-btn').addEventListener('click', () => this._switchToVerifyMode());
@@ -102,7 +109,38 @@ class LevelEditorExtension {
             this._refreshHint();
         });
         document.getElementById('editor-import-btn').addEventListener('click', () => this._showImportDialog());
-        document.getElementById('editor-exit-btn').addEventListener('click', () => this.uiController.handleExitClick());
+        document.getElementById('editor-exit-btn').addEventListener('click', () => this._showExitConfirm());
+    }
+
+    _showExitConfirm() {
+        if (document.getElementById('editor-exit-confirm-popover')) return;
+        if (window.audioManager) window.audioManager.playClick();
+
+        const popover = document.createElement('div');
+        popover.id = 'editor-exit-confirm-popover';
+        popover.className = 'exit-confirm-popover';
+        popover.innerHTML = `
+            <p>确定要退出关卡编辑器吗？</p>
+            <div class="popover-buttons">
+                <button class="btn btn-small btn-confirm-exit" id="editor-confirm-exit-btn">确认退出</button>
+                <button class="btn btn-small btn-cancel" id="editor-cancel-exit-btn">取消</button>
+            </div>`;
+        document.body.appendChild(popover);
+        requestAnimationFrame(() => popover.classList.add('visible'));
+
+        popover.querySelector('#editor-confirm-exit-btn').addEventListener('click', () => {
+            if (window.audioManager) window.audioManager.playClick();
+            this._hideExitConfirm();
+            this.deactivate();
+        });
+        popover.querySelector('#editor-cancel-exit-btn').addEventListener('click', () => {
+            if (window.audioManager) window.audioManager.playClick();
+            this._hideExitConfirm();
+        });
+    }
+
+    _hideExitConfirm() {
+        document.getElementById('editor-exit-confirm-popover')?.remove();
     }
 
     _switchToEditMode() {
@@ -216,7 +254,7 @@ class LevelEditorExtension {
         const elems = document.getElementById('elements-container');
         if (exprCard) exprCard.style.display = v ? '' : 'none';
         if (btnCard) btnCard.style.display = v ? '' : 'none';
-        if (elems) elems.style.display = v ? 'flex' : 'none';
+        if (elems) elems.style.display = (v || this.editMode === 'edit') ? 'flex' : 'none';
     }
 
     _renderLockEditor() {
@@ -232,6 +270,7 @@ class LevelEditorExtension {
             { key: 'operators', label: '其他运算符' },
             { key: 'functions', label: '函数' }
         ];
+        const protectedTokens = new Set(['x', '(', ')']);
 
         container.innerHTML = '';
         for (const cat of categories) {
@@ -245,14 +284,15 @@ class LevelEditorExtension {
             itemsDiv.className = 'element-items';
             for (const item of elements[cat.key]) {
                 const btn = document.createElement('button');
+                const isProtected = protectedTokens.has(item.value);
                 const isLocked = this.lockedElements.includes(item.value);
-                btn.className = 'element-btn' + (isLocked ? ' locked' : '');
+                btn.className = 'element-btn' + (isLocked ? ' locked' : '') + (isProtected ? ' protected' : '');
                 btn.textContent = this.uiController.getDisplaySymbol(item.value);
                 if (isLocked) btn.innerHTML += ' <span class="lock-icon">🔒</span>';
-                btn.title = isLocked ? '点击解锁' : '点击禁用';
+                btn.title = isProtected ? '该元素不能被禁用' : (isLocked ? '点击解锁' : '点击禁用');
                 btn.addEventListener('click', () => {
-                    if (item.value === '(' || item.value === ')') {
-                        this.uiController?.showMessage('括号不能被禁用', 'error');
+                    if (isProtected) {
+                        this.uiController?.showMessage(item.value === 'x' ? 'x 不能被禁用' : '括号不能被禁用', 'error');
                         return;
                     }
                     const idx = this.lockedElements.indexOf(item.value);

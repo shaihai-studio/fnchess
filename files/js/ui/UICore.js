@@ -224,6 +224,7 @@ if (typeof UIController === 'undefined') {
         bind('campaign-back-btn', () => this.playUIButtonSound(() => this.showCampaignDifficulty()));
         bind('campaign-reset-btn', () => this.playUIButtonSound(() => this.resetCampaignProgress()));
         bind('race-reset-btn', () => this.playUIButtonSound(() => this.resetRaceProgress()));
+        bind('campaign-diff-fraction', () => this.playUIButtonSound(() => this.openCampaignLevels('fraction')));
         bind('campaign-diff-easy', () => this.playUIButtonSound(() => this.openCampaignLevels('easy')));
         bind('campaign-return-difficulty-btn', () => this.playUIButtonSound(() => this.returnCampaignToDifficulty()));
         bind('campaign-home-btn', () => this.playUIButtonSound(() => this.returnToCampaignLevelSelect()));
@@ -1430,6 +1431,7 @@ if (typeof UIController === 'undefined') {
         if (diff === 'easy') return { start: 1, end: 29, cls: 'easy', label: '简单（1-29）' };
         if (diff === 'normal') return { start: 30, end: 53, cls: 'normal', label: '普通（30-53）' };
         if (diff === 'hard') return { start: 54, end: 69, cls: 'hard', label: '困难（54-69）' };
+        if (diff === 'fraction') return { start: 82, end: 90, cls: 'unsolvable', label: '分数关' };
         if (diff === 'expert') return { start: 70, end: 81, cls: 'expert', label: '专家（70-81）' };
         return { start: 82, end: 90, cls: 'unsolvable', label: '无解（82-90）' };
     }
