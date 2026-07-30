@@ -131,7 +131,6 @@ if (typeof UIController === 'undefined') {
         this.modeCampaignBtn.classList.toggle('active', this.selectedMode === 'campaign');
         this.modeRaceBtn.classList.toggle('active', this.selectedMode === 'race');
         this.modeTestBtn.classList.toggle('active', this.selectedMode === 'test');
-        if (this.modeEditorBtn) this.modeEditorBtn.classList.toggle('active', this.selectedMode === 'editor');
 
         if (this.modeAiBtn) {
             this.modeAiBtn.disabled = false;
@@ -140,7 +139,7 @@ if (typeof UIController === 'undefined') {
             this.modeAiBtn.title = '';
         }
 
-        const lockSelectors = this.selectedMode === 'campaign' || this.selectedMode === 'test' || this.selectedMode === 'race' || this.selectedMode === 'editor';
+        const lockSelectors = this.selectedMode === 'campaign' || this.selectedMode === 'test' || this.selectedMode === 'race';
         this.setStartSelectorsEnabled(!lockSelectors);
         [this.roundStepper, this.difficultyStepper, this.timeLimitStepper].forEach(el => {
             if (!el) return;
@@ -247,11 +246,6 @@ if (typeof UIController === 'undefined') {
         
         this.selectedMode = mode;
         
-        // 切换模式时关闭关卡编辑器
-        if (mode !== 'editor' && this.levelEditor?.isActive) {
-            this.levelEditor.deactivate();
-        }
-
         // 更新按钮状态
         const isCampaign = mode === 'campaign';
         const isTest = mode === 'test';
@@ -259,7 +253,7 @@ if (typeof UIController === 'undefined') {
         if (this.roundStepper) this.roundStepper.classList.remove('selector-change');
         if (this.difficultyStepper) this.difficultyStepper.classList.remove('selector-change');
         // 闯关模式、测试模式、竞速模式、关卡编辑器禁用回合数与难度选择
-        const lockSelectors = isCampaign || isTest || isRace || mode === 'editor';
+        const lockSelectors = isCampaign || isTest || isRace;
         if (this.roundStepper) {
             this.roundStepper.classList.toggle('disabled', lockSelectors);
         }
@@ -275,7 +269,7 @@ if (typeof UIController === 'undefined') {
         this.updateCampaignDrawDelayToggleVisibility();
 
         // 重置所有模式按钮的高亮
-        const allModeBtns = [this.modeBattleBtn, this.modeCampaignBtn, this.modeRaceBtn, this.modeTestBtn, this.modeEditorBtn];
+        const allModeBtns = [this.modeBattleBtn, this.modeCampaignBtn, this.modeRaceBtn, this.modeTestBtn];
         allModeBtns.forEach(btn => { if (btn) btn.classList.remove('active'); });
 
         if (mode === 'battle') {
@@ -312,14 +306,6 @@ if (typeof UIController === 'undefined') {
             this.hideRaceUI();
             this.setStartSelectorsEnabled(false);
             this.restoreBattleUI();
-        } else if (mode === 'editor') {
-            this.modeEditorBtn.classList.add('active');
-            if (this._battleSubmenu) this._battleSubmenu.style.display = 'none';
-            this.modeHint.textContent = '关卡编辑器：创建并验证自定义关卡';
-            if (this.campaignPanel) this.campaignPanel.style.display = 'none';
-            this.hideRaceUI();
-            this.setStartSelectorsEnabled(false);
-            return;
         }
     }
 ;
@@ -344,10 +330,6 @@ if (typeof UIController === 'undefined') {
         // 对战模式：提取子模式
         const battleMode = mode === 'battle' ? this._battleSubMode : mode;
         switch (battleMode) {
-            case 'editor':
-                // 激活关卡编辑器
-                this.activateLevelEditor();
-                break;
             case 'p2p':
                 // P2P触发房间弹窗
                 this.showP2PRoomModal();
@@ -374,8 +356,6 @@ if (typeof UIController === 'undefined') {
         const difficulty = this.getSelectedDifficulty();
         // 对战模式使用子模式名
         const effectiveMode = this.selectedMode === 'battle' ? this._battleSubMode : this.selectedMode;
-        // 退出可能残留的关卡编辑器 UI
-        if (this.levelEditor) this.levelEditor.deactivate();
         this._markGameActive();
         this.gameController.initGame(rounds, difficulty, effectiveMode);
         this.hideStartModal();
@@ -391,8 +371,7 @@ if (typeof UIController === 'undefined') {
             'campaign': '闯关',
             'race': '竞速',
             'test': '测试',
-            'p2p': '联机对战',
-            'editor': '关卡编辑'
+            'p2p': '联机对战'
         };
         return map[mode] || mode;
     }
@@ -414,8 +393,7 @@ if (typeof UIController === 'undefined') {
                 this.stepDifficulty(e.key === 'ArrowRight' ? 1 : -1);
                 return true;
             }
-            // 默认优先切换难度，方便在开始界面直接用左右键调整（关卡编辑器下难度固定为 test，避免误触）
-            if (this.selectedMode === 'editor') return false;
+            // 默认优先切换难度，方便在开始界面直接用左右键调整
             this.stepDifficulty(e.key === 'ArrowRight' ? 1 : -1);
             return true;
         }
@@ -433,11 +411,6 @@ if (typeof UIController === 'undefined') {
 
 // exitTestMode
     UIController.prototype.exitTestMode = function() {
-        // ★ 关卡编辑器以 test 难度运行，退出时必须先清理其 UI（移除编辑器面板、恢复输入框/确认按钮、重建常规元素）
-        if (this.levelEditor && this.levelEditor.isActive) {
-            this.levelEditor.deactivate();
-        }
-
         // 隐藏消息面板
         if (this.messagePanel) this.messagePanel.classList.remove('visible');
         
@@ -529,14 +502,6 @@ if (typeof UIController === 'undefined') {
         // 竞速模式：与闯关逻辑一致，先等开始按钮/Enter 再进入等级界面
         if (this.selectedMode === 'race') {
             this.openRaceUI();
-            return;
-        }
-
-        // 关卡编辑器：独立模式，隐藏开始面板后激活
-        if (this.selectedMode === 'editor') {
-            this._markGameActive();
-            this.hideStartModal();
-            this.activateLevelEditor();
             return;
         }
 

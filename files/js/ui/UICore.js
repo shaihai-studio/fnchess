@@ -199,11 +199,7 @@ if (typeof UIController === 'undefined') {
                 this.modeHint.textContent = '联机对战：与远方好友同台竞技';
             });
         }
-        if (this.modeEditorBtn) {
-            this.modeEditorBtn.addEventListener('click', () => {
-                this.selectMode('editor');
-            });
-        }
+        // modeEditorBtn 现为指向 level-editor.html 的 <a> 链接，不需要 JS 事件绑定
         if (this.raceBackBtn) this.raceBackBtn.addEventListener('click', () => this.showRaceLevelList());
         if (this.raceCloseBtn) this.raceCloseBtn.addEventListener('click', () => this.closeRaceUI());
 
@@ -606,15 +602,10 @@ if (typeof UIController === 'undefined') {
 
         // 闯关：关卡结果与自动进入下一关/重试
         this.gameController.on('campaignLevelResult', (data) => {
-            // ★ 编辑器验证模式拦截：交给 LevelEditor 处理，不进入闯关流程
-            if (this.levelEditor && this.levelEditor.isActive &&
-                this.gameController.campaignState?.isEditorVerify) {
-                this.levelEditor.handleResult({ pass: data.pass });
-                return;
-            }
-
             this.refreshCampaignStartUI();
-            const levelId = Number(data.levelId || this.campaignCurrentLevelId || 1);
+            const rawLevelId = data.levelId || this.campaignCurrentLevelId || 1;
+            const isFraction = typeof rawLevelId === 'string' && String(rawLevelId).includes('/');
+            const levelId = isFraction ? String(rawLevelId) : Number(rawLevelId || 1);
             let isNewRecord = false;
             let previousBest = this.getCampaignLevelBestRecord(levelId);
             if (data.pass) {
@@ -631,19 +622,39 @@ if (typeof UIController === 'undefined') {
                 if (isNewRecord) {
                     const gainedStars = Math.max(1, Math.min(5, Number(data.score) || 1));
                     const previousStars = this.getCampaignLevelBestStars(levelId);
-                    // 只在获得更高星星时更新总数
                     if (gainedStars > previousStars) {
                         const currentStars = this.getCampaignCollectedStars();
                         this.setCampaignCollectedStars(currentStars + (gainedStars - previousStars));
                         this.setCampaignLevelBestStars(levelId, gainedStars);
                     }
                     this.setCampaignLevelBestRecord(levelId, length);
+                    // 分数关：更新独立进度
+                    if (isFraction) {
+                        const denom = parseInt(String(rawLevelId).split('/')[1]) || 2;
+                        if (typeof this.setCampaignFractionClearedMax === 'function') {
+                            this.setCampaignFractionClearedMax(Math.max(
+                                (typeof this.getCampaignFractionClearedMax === 'function' ? this.getCampaignFractionClearedMax() : denom - 1),
+                                denom
+                            ));
+                        }
+                    }
                     setTimeout(() => {
-                        if (this.campaignCurrentLevelId === levelId) {
+                        if (this.campaignCurrentLevelId === levelId || String(this.campaignCurrentLevelId) === String(levelId)) {
                             this.campaignCurrentLevelBestRecord = length;
                             this.updateCampaignGlobalProgressText(this.getCampaignCollectedStars());
                         }
                     }, 0);
+                } else if (data.pass && typeof previousBest === 'number' && previousBest > 0) {
+                    // 非新记录但通关了：也更新分数关进度
+                    if (isFraction) {
+                        const denom = parseInt(String(rawLevelId).split('/')[1]) || 2;
+                        if (typeof this.setCampaignFractionClearedMax === 'function') {
+                            this.setCampaignFractionClearedMax(Math.max(
+                                (typeof this.getCampaignFractionClearedMax === 'function' ? this.getCampaignFractionClearedMax() : denom - 1),
+                                denom
+                            ));
+                        }
+                    }
                 }
             }
             setTimeout(() => {
@@ -1413,13 +1424,25 @@ if (typeof UIController === 'undefined') {
 ;
 
 // calculateLRSigma
-    UIController.prototype.calculateLRSigma = function(cleared) {
+    UIController.prototype.calculateLRSigma = function(cleared, difficulty) {
         if (!cleared || cleared <= 0) return 0;
         let sum = 0;
+        // 整数关卡 1..cleared
         for (let i = 1; i <= cleared; i++) {
             const best = this.getCampaignLevelBestRecord(i);
             if (best !== null && best > 0) {
                 sum += 100 / (10 + best);
+            }
+        }
+        // 分数关卡（1/2..1/20）
+        if (difficulty === 'fraction' || (typeof this.getCampaignFractionClearedMax === 'function')) {
+            const fracMax = typeof this.getCampaignFractionClearedMax === 'function'
+                ? this.getCampaignFractionClearedMax() : 0;
+            for (let denom = 2; denom <= fracMax && denom <= 20; denom++) {
+                const best = this.getCampaignLevelBestRecord(`1/${denom}`);
+                if (best !== null && best > 0) {
+                    sum += 100 / (10 + best);
+                }
             }
         }
         return sum;
@@ -1431,7 +1454,7 @@ if (typeof UIController === 'undefined') {
         if (diff === 'easy') return { start: 1, end: 29, cls: 'easy', label: '简单（1-29）' };
         if (diff === 'normal') return { start: 30, end: 53, cls: 'normal', label: '普通（30-53）' };
         if (diff === 'hard') return { start: 54, end: 69, cls: 'hard', label: '困难（54-69）' };
-        if (diff === 'fraction') return { start: 82, end: 90, cls: 'unsolvable', label: '分数关' };
+        if (diff === 'fraction') return { start: 2, end: 20, cls: 'fraction', label: '分数关（1/2-1/20）' };
         if (diff === 'expert') return { start: 70, end: 81, cls: 'expert', label: '专家（70-81）' };
         return { start: 82, end: 90, cls: 'unsolvable', label: '无解（82-90）' };
     }
@@ -1440,12 +1463,20 @@ if (typeof UIController === 'undefined') {
 // refreshUnsovableDifficultyVisibility
     UIController.prototype.refreshUnsovableDifficultyVisibility = function() {
         const grid = document.getElementById('campaign-difficulty-grid');
-        const btn = document.getElementById('campaign-diff-unsolvable');
-        if (!grid || !btn) return;
+        if (!grid) return;
         const cleared = this.getCampaignClearedMax();
-        const shouldShow = cleared >= 81;
-        btn.style.display = shouldShow ? '' : 'none';
-        grid.style.gridTemplateColumns = shouldShow ? 'repeat(5, minmax(0, 1fr))' : 'repeat(4, minmax(0, 1fr))';
+        const fractionCleared = (typeof this.getCampaignFractionClearedMax === 'function')
+            ? this.getCampaignFractionClearedMax() : 0;
+        const fractionBtn = document.getElementById('campaign-diff-fraction');
+        const unsolvableBtn = document.getElementById('campaign-diff-unsolvable');
+        const showFraction = fractionCleared >= 1 || cleared >= 1;
+        const showUnsolvable = cleared >= 81;
+        if (fractionBtn) fractionBtn.style.display = showFraction ? '' : 'none';
+        if (unsolvableBtn) unsolvableBtn.style.display = showUnsolvable ? '' : 'none';
+        let visibleCount = 4; // easy / normal / hard / expert 始终可见
+        if (showFraction) visibleCount++;
+        if (showUnsolvable) visibleCount++;
+        grid.style.gridTemplateColumns = `repeat(${visibleCount}, minmax(0, 1fr))`;
     }
 ;
 
@@ -1632,6 +1663,7 @@ if (typeof UIController === 'undefined') {
             'easy': '简单',
             'normal': '普通',
             'hard': '困难',
+            'fraction': '分数关',
             'expert': '专家',
             'unsolvable': '无解',
             'test': '测试'

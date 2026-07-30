@@ -190,6 +190,17 @@ body::before {
 #campaign-diff-hard { background: linear-gradient(135deg, #b8944a, #8c6e3a); }
 #campaign-diff-expert { background: linear-gradient(135deg, #b87a4e, #9a5e38); }
 #campaign-diff-unsolvable { background: linear-gradient(135deg, #ef4444, #b91c1c); }
+/* 分数关：黑底+青色边框+青色字，与徽章/关卡网格的teal一致 */
+#campaign-diff-fraction {
+    background: linear-gradient(135deg, #0d1f23, #050b0d);
+    border: 2px solid #14b8a6;
+    color: #14b8a6;
+}
+#campaign-diff-fraction:hover:not(:disabled) {
+    background: linear-gradient(135deg, #102b30, #0a1416);
+    box-shadow: 0 0 0 2px rgba(20, 184, 166, 0.4) inset;
+    color: #5eead4;
+}
 .campaign-level-badge.easy { color: #5b9e6e; }
 .campaign-level-badge.normal { color: #7a9e3a; }
 .campaign-level-badge.hard { color: #b8944a; }

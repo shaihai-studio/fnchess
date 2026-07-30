@@ -13,7 +13,8 @@ if (typeof UIController === 'undefined') {
         } catch (e) {
             return 0;
         }
-    };
+    }
+;
 
 // setCampaignDrawDelaySetting
     UIController.prototype.setCampaignDrawDelaySetting = function(value) {
@@ -23,7 +24,8 @@ if (typeof UIController === 'undefined') {
             localStorage.setItem('function_chess_campaign_draw_delay', String(next));
         } catch (e) { }
         this.updateCampaignDrawDelayToggle();
-    };
+    }
+;
 
 // addCampaignDrawDelayToggle
     UIController.prototype.addCampaignDrawDelayToggle = function() {
@@ -65,14 +67,16 @@ if (typeof UIController === 'undefined') {
         });
         host.appendChild(wrap);
         this.updateCampaignDrawDelayToggle();
-    };
+    }
+;
 
 // updateCampaignDrawDelayToggleVisibility
     UIController.prototype.updateCampaignDrawDelayToggleVisibility = function() {
         const wrap = document.getElementById('campaign-draw-delay-toggle');
         if (!wrap) return;
         wrap.style.display = (this.gameController?.gameMode === 'campaign') ? 'inline-flex' : 'none';
-    };
+    }
+;
 
 // updateCampaignDrawDelayToggle
     UIController.prototype.updateCampaignDrawDelayToggle = function() {
@@ -84,14 +88,16 @@ if (typeof UIController === 'undefined') {
             btn.style.color = active ? '#fff' : '#e5e7eb';
             btn.style.boxShadow = active ? '0 0 0 1px rgba(255,255,255,0.18) inset' : 'none';
         });
-    };
+    }
+;
 
 // loadCampaignPack
     UIController.prototype.loadCampaignPack = async function() {
         if (this.campaignPack) return this.campaignPack;
         this.campaignPack = window.CAMPAIGN_LEVEL_PACK || null;
         return this.campaignPack;
-    };
+    }
+;
 
 // getCampaignClearedMax
     UIController.prototype.getCampaignClearedMax = function() {
@@ -102,7 +108,8 @@ if (typeof UIController === 'undefined') {
         } catch (e) {
             return 0;
         }
-    };
+    }
+;
 
 // getCampaignCollectedStars
     UIController.prototype.getCampaignCollectedStars = function() {
@@ -113,7 +120,8 @@ if (typeof UIController === 'undefined') {
         } catch (e) {
             return 0;
         }
-    };
+    }
+;
 
 // getCampaignLevelBestStars
     UIController.prototype.getCampaignLevelBestStars = function(levelId) {
@@ -124,21 +132,24 @@ if (typeof UIController === 'undefined') {
         } catch (e) {
             return 0;
         }
-    };
+    }
+;
 
 // setCampaignLevelBestStars
     UIController.prototype.setCampaignLevelBestStars = function(levelId, stars) {
         try {
             localStorage.setItem(`function_chess_campaign_best_stars_${levelId}`, String(Math.max(0, Number(stars) || 0)));
         } catch (e) { }
-    };
+    }
+;
 
 // setCampaignCollectedStars
     UIController.prototype.setCampaignCollectedStars = function(stars) {
         try {
             localStorage.setItem('function_chess_campaign_stars', String(Math.max(0, Number(stars) || 0)));
         } catch (e) { }
-    };
+    }
+;
 
 // renderCampaignStarProgress
     UIController.prototype.renderCampaignStarProgress = function(starCount) {
@@ -154,7 +165,8 @@ if (typeof UIController === 'undefined') {
             </div>
             <span class="star-count">${filled}/${totalSlots}${starSvg}</span>
         `;
-    };
+    }
+;
 
 // refreshCampaignStartUI
     UIController.prototype.refreshCampaignStartUI = async function() {
@@ -184,7 +196,8 @@ if (typeof UIController === 'undefined') {
         } catch (e) {
             this.campaignProgressText.textContent = '关卡加载失败，请确认关卡数据已内置。';
         }
-    };
+    }
+;
 
 // startCampaign
     UIController.prototype.startCampaign = async function(startLevelId) {
@@ -194,7 +207,9 @@ if (typeof UIController === 'undefined') {
             this.openCampaignUI();
             return;
         }
-        const safeStart = Number(startLevelId) || 1;
+        // 分数关 levelId 为字符串（e.g. "1/2"），整数关为数字
+        const isFractionLevel = typeof startLevelId === 'string' && String(startLevelId).includes('/');
+        const safeStart = isFractionLevel ? String(startLevelId) : (Number(startLevelId) || 1);
         this.campaignCurrentLevelId = safeStart;
         this.campaignCurrentLevelBestRecord = this.getCampaignLevelBestRecord(safeStart);
         this._markGameActive();
@@ -202,16 +217,19 @@ if (typeof UIController === 'undefined') {
         if (this.gridSystem && this.gridSystem.setCampaignFixedRange) {
             this.gridSystem.setCampaignFixedRange(true);
         }
-    };
+    }
+;
 
 // showCampaignVictory
     UIController.prototype.showCampaignVictory = function(data) {
         if (!this.campaignVictoryModal) return;
         this.campaignCurrentLevelId = data.levelId || this.campaignCurrentLevelId;
-        const levelId = Number(this.campaignCurrentLevelId || data.levelId || 1);
+        const rawLevelId = this.campaignCurrentLevelId || data.levelId || 1;
+        const isFraction = typeof rawLevelId === 'string' && String(rawLevelId).includes('/');
+        const levelId = isFraction ? String(rawLevelId) : Number(rawLevelId || 1);
         const bestRecord = Number.isFinite(Number(this.campaignCurrentLevelBestRecord)) ? Number(this.campaignCurrentLevelBestRecord) : null;
         const length = Number.isFinite(Number(data.expressionLength)) ? Number(data.expressionLength) : this.getCurrentExpressionLength();
-        const levelText = `第 ${levelId} 关`;
+        const levelText = isFraction ? `分数关 ${levelId}` : `第 ${levelId} 关`;
         if (this.campaignVictoryText) {
             if (bestRecord === null || !Number.isFinite(bestRecord)) {
                 this.campaignVictoryText.innerHTML = `${levelText} 记录：<span style="color:#fff">${length}</span>`;
@@ -233,13 +251,16 @@ if (typeof UIController === 'undefined') {
         this.campaignVictoryModal.dataset.difficulty = data.difficulty || this.campaignDifficulty || '';
         this.campaignVictoryModal.dataset.stars = String(starCount);
         this.campaignVictoryModal.dataset.length = String(length);
+        this.campaignVictoryModal.dataset.isFraction = isFraction ? '1' : '0';
         this.showModal(this.campaignVictoryModal);
-    };
+    }
+;
 
 // hideCampaignVictory
     UIController.prototype.hideCampaignVictory = function() {
         if (this.campaignVictoryModal) this.hideModal(this.campaignVictoryModal);
-    };
+    }
+;
 
 // getCampaignLevelBestRecord
     UIController.prototype.getCampaignLevelBestRecord = function(levelId) {
@@ -250,14 +271,16 @@ if (typeof UIController === 'undefined') {
         } catch (e) {
             return null;
         }
-    };
+    }
+;
 
 // setCampaignLevelBestRecord
     UIController.prototype.setCampaignLevelBestRecord = function(levelId, length) {
         try {
             localStorage.setItem(`function_chess_campaign_best_${levelId}`, String(length));
         } catch (e) { }
-    };
+    }
+;
 
 // renderCampaignVictoryStars
     UIController.prototype.renderCampaignVictoryStars = function(count) {
@@ -279,30 +302,47 @@ if (typeof UIController === 'undefined') {
             svg.innerHTML = '<path d="M60 14c3.1 0 5.6 1.6 6.9 4.3l11.3 22.9 25.3 3.7c3 .5 5.5 2.5 6.5 5.4 1 2.9.3 6-1.9 8.2L90 74.5l4.5 25.1c.5 3.1-.7 6.2-3.1 8-2.5 1.8-5.8 2.1-8.5.7L60 96.1 37.1 108.3c-2.7 1.4-6 .1-8.5-.7-2.4-1.8-3.6-4.9-3.1-8L30 74.5 12.9 54.5c-2.2-2.2-2.9-5.3-1.9-8.2 1-2.9 3.5-4.9 6.5-5.4l25.3-3.7L54.1 18.3C55.4 15.6 57.9 14 61 14Z"/>';
             stars.appendChild(svg);
         }
-    };
+    }
+;
 
 // retryCampaignLevel
     UIController.prototype.retryCampaignLevel = function() {
         if (!this.campaignPack) return;
-        const levelId = Number(this.campaignCurrentLevelId || this.campaignVictoryModal?.dataset.levelId || 1);
+        const rawId = this.campaignCurrentLevelId || this.campaignVictoryModal?.dataset.levelId || 1;
+        const isFraction = typeof rawId === 'string' && String(rawId).includes('/');
+        const levelId = isFraction ? String(rawId) : Number(rawId || 1);
         this.hideCampaignVictory();
         this.startCampaign(levelId);
-    };
+    }
+;
 
 // goToNextCampaignLevel
     UIController.prototype.goToNextCampaignLevel = async function() {
         if (!this.campaignPack) return;
-        const current = Number(this.campaignCurrentLevelId || this.campaignVictoryModal?.dataset.levelId || 1);
-        const nextId = current + 1;
+        const rawId = this.campaignCurrentLevelId || this.campaignVictoryModal?.dataset.levelId || 1;
+        const isFraction = typeof rawId === 'string' && String(rawId).includes('/');
         const total = this.campaignPack && Array.isArray(this.campaignPack.levels) ? this.campaignPack.levels.length : 0;
         this.hideCampaignVictory();
-        if (nextId > total) {
-            this.showMessage('✅ 已经是最后一关', 'success');
-            this.openCampaignUI();
-            return;
+        if (isFraction) {
+            const currentDenom = parseInt(String(rawId).split('/')[1]) || 2;
+            if (currentDenom >= 20) {
+                this.showMessage('已完成所有分数关卡', 'success');
+                this.openCampaignUI();
+                return;
+            }
+            this.startCampaign(`1/${currentDenom + 1}`);
+        } else {
+            const current = Number(rawId || 1);
+            const nextId = current + 1;
+            if (nextId > total) {
+                this.showMessage('已经是最后一关', 'success');
+                this.openCampaignUI();
+                return;
+            }
+            this.startCampaign(nextId);
         }
-        this.startCampaign(nextId);
-    };
+    }
+;
 
 // returnToCampaignLevelSelect
     UIController.prototype.returnToCampaignLevelSelect = function() {
@@ -310,7 +350,8 @@ if (typeof UIController === 'undefined') {
         if (this.campaignModal) this.showModal(this.campaignModal);
         this.showCampaignDifficulty();
         this.refreshCampaignStartUI();
-    };
+    }
+;
 
 // returnCampaignToDifficulty
     UIController.prototype.returnCampaignToDifficulty = function() {
@@ -327,7 +368,8 @@ if (typeof UIController === 'undefined') {
         this.restoreBattleUI();
         const badge = document.getElementById('campaign-level-badge');
         if (badge) badge.style.display = 'none';
-    };
+    }
+;
 
 // openCampaignUI
     UIController.prototype.openCampaignUI = function() {
@@ -339,7 +381,8 @@ if (typeof UIController === 'undefined') {
         this.updateCampaignDrawDelayToggleVisibility();
         // 尝试静默加载一次（服务器环境可直接成功）
         this.loadCampaignPack().then(() => this.updateCampaignGlobalProgressText());
-    };
+    }
+;
 
 // closeCampaignUI
     UIController.prototype.closeCampaignUI = function() {
@@ -356,7 +399,8 @@ if (typeof UIController === 'undefined') {
         this.campaignDifficulty = null;
         this.campaignCurrentLevelId = null;
         this.campaignCurrentLevelBestRecord = null;
-    };
+    }
+;
 
 // showCampaignDifficulty
     UIController.prototype.showCampaignDifficulty = function() {
@@ -366,7 +410,8 @@ if (typeof UIController === 'undefined') {
         if (badge) badge.style.display = 'none';
         this.campaignDifficulty = null;
         this.updateCampaignGlobalProgressText();
-    };
+    }
+;
 
 // updateCampaignGlobalProgressText
     UIController.prototype.updateCampaignGlobalProgressText = function(stars = null) {
@@ -383,7 +428,8 @@ if (typeof UIController === 'undefined') {
         }
         // 更新LRΣ显示
         this.updateCampaignLRSigmaDisplay(cleared);
-    };
+    }
+;
 
 // updateCampaignLRSigmaDisplay
     UIController.prototype.updateCampaignLRSigmaDisplay = function(cleared = null) {
@@ -406,7 +452,8 @@ if (typeof UIController === 'undefined') {
         const intPart = Math.floor(lrSigma);
         const decPart = (lrSigma - intPart).toFixed(6).substring(1); // 去掉前导0
         display.innerHTML = `<span class="lrsigma-label">LRΣ =</span> <span class="lrsigma-int">${intPart}</span><span class="lrsigma-dec">${decPart}</span>`;
-    };
+    }
+;
 
 // resetCampaignProgress
     UIController.prototype.resetCampaignProgress = async function() {
@@ -437,10 +484,15 @@ if (typeof UIController === 'undefined') {
             if (!secondConfirm) return;
 
             localStorage.removeItem('function_chess_campaign_cleared');
+            localStorage.removeItem('function_chess_campaign_fraction_cleared');
             localStorage.removeItem('function_chess_campaign_stars');
             for (let i = 1; i <= 90; i++) {
                 localStorage.removeItem(`function_chess_campaign_best_${i}`);
                 localStorage.removeItem(`function_chess_campaign_best_stars_${i}`);
+            }
+            for (let d = 2; d <= 20; d++) {
+                localStorage.removeItem(`function_chess_campaign_best_1/${d}`);
+                localStorage.removeItem(`function_chess_campaign_best_stars_1/${d}`);
             }
             this.campaignCurrentLevelBestRecord = null;
             this.showMessage('✅ 闯关进度已重置', 'success');
@@ -449,7 +501,8 @@ if (typeof UIController === 'undefined') {
         } catch (e) {
             this.showMessage('❌ 重置失败', 'error');
         }
-    };
+    }
+;
 
 // openCampaignLevels
     UIController.prototype.openCampaignLevels = function(diff) {
@@ -457,7 +510,8 @@ if (typeof UIController === 'undefined') {
         if (this.campaignStepDifficulty) this.campaignStepDifficulty.style.display = 'none';
         if (this.campaignStepLevels) this.campaignStepLevels.style.display = 'block';
         this.renderCampaignLevelGrid();
-    };
+    }
+;
 
 // updateCampaignLevelBadge
     UIController.prototype.updateCampaignLevelBadge = function(levelId = null, totalLevels = null, difficulty = null) {
@@ -472,12 +526,18 @@ if (typeof UIController === 'undefined') {
         }
 
         const range = this.getDifficultyRange(diff);
-        const currentLevelId = Number(levelId ?? this.campaignCurrentLevelId ?? range.start);
+        const rawLevelId = levelId ?? this.campaignCurrentLevelId ?? range.start;
+        const isFraction = typeof rawLevelId === 'string' && String(rawLevelId).includes('/');
+        const currentLevelId = isFraction ? String(rawLevelId) : Number(rawLevelId || range.start);
         const bestRecord = this.getCampaignLevelBestRecord(currentLevelId);
 
         // 根据关卡号确定颜色，而不是根据 difficulty
         let color, bgColor, borderColor;
-        if (currentLevelId >= 82) { // 无解（82-90）
+        if (isFraction) {
+            color = '#14b8a6';
+            bgColor = 'rgba(20, 184, 166, 0.15)';
+            borderColor = 'rgba(20, 184, 166, 0.5)';
+        } else if (Number(currentLevelId) >= 82) { // 无解（82-90）
             color = '#ef4444';
             bgColor = 'rgba(239, 68, 68, 0.15)';
             borderColor = 'rgba(239, 68, 68, 0.5)';
@@ -510,7 +570,8 @@ if (typeof UIController === 'undefined') {
             value.textContent = `Lv. ${currentLevelId}`;
         }
         badge.style.display = 'inline-flex';
-    };
+    }
+;
 
 // renderCampaignLevelGrid
     UIController.prototype.renderCampaignLevelGrid = function() {
@@ -520,52 +581,137 @@ if (typeof UIController === 'undefined') {
 
         const cleared = this.getCampaignClearedMax();
         const total = this.campaignPack && Array.isArray(this.campaignPack.levels) ? this.campaignPack.levels.length : 0;
-        const unlockedMax = Math.min(total, cleared + 1);
-        this.campaignLevelProgress.textContent = `已通关 ${cleared}/${total}，当前可进入 ≤ ${unlockedMax}`;
+        const isFraction = this.campaignDifficulty === 'fraction';
 
-        this.campaignLevelGrid.innerHTML = '';
-        for (let id = range.start; id <= range.end; id++) {
+        // 分数关用独立进度。但允许：整数关通关后（≥1 关）就解锁分数关 1/2 作为入口，
+        // 否则仅看分数关自身进度——避免"整数关打通了分数关却因分数关自身零进度而整页锁死"。
+        const fracCleared = isFraction
+            ? (typeof this.getCampaignFractionClearedMax === 'function' ? this.getCampaignFractionClearedMax() : 0)
+            : 0;
+        const fracOwnUnlocked = typeof this.getCampaignFractionUnlockedMax === 'function'
+            ? this.getCampaignFractionUnlockedMax() : 2;
+        const fracUnlocked = isFraction
+            ? Math.max(fracOwnUnlocked, cleared >= 1 ? 2 : 1)
+            : 2;
+
+        if (isFraction) {
+            const enterHint = fracCleared >= 1
+                ? `当前可进入 1/${fracUnlocked}`
+                : (cleared >= 1 ? `当前可进入 1/2（从整数关解锁）` : `当前可进入 1/${fracUnlocked}`);
+            this.campaignLevelProgress.textContent = `已通关 ${fracCleared}/19，${enterHint}`;
+        } else {
+            const unlockedMax = Math.min(total, cleared + 1);
+            this.campaignLevelProgress.textContent = `已通关 ${cleared}/${total}，当前可进入 ≤ ${unlockedMax}`;
+        }
+
+        const makeCell = (id, locked, isCleared, label, level) => {
             const cell = document.createElement('div');
             cell.className = `campaign-level-cell ${range.cls}`;
-
-            const locked = id > unlockedMax;
             if (locked) cell.classList.add('locked');
-            if (id <= cleared) cell.classList.add('cleared');
+            if (isCleared) cell.classList.add('cleared');
 
-            // 检查通关后获得的星星
-            const stars = this.getCampaignLevelBestStars(id);
-            const hasStars = id <= cleared && stars > 0;
-
-            // 创建星星显示区
-            {
-                const starsContainer = document.createElement('div');
-                starsContainer.className = 'campaign-cell-stars';
-                for (let i = 1; i <= 5; i++) {
-                    const star = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-                    star.setAttribute('viewBox', '0 0 120 120');
-                    star.setAttribute('aria-hidden', 'true');
-                    star.classList.add('star');
-                    if (hasStars && i <= stars) star.classList.add('filled');
-                    star.innerHTML = '<path d="M60 14c3.1 0 5.6 1.6 6.9 4.3l11.3 22.9 25.3 3.7c3 .5 5.5 2.5 6.5 5.4 1 2.9.3 6-1.9 8.2L90 74.5l4.5 25.1c.5 3.1-.7 6.2-3.1 8-2.5 1.8-5.8 2.1-8.5.7L60 96.1 37.1 108.3c-2.7 1.4-6 .1-8.5-.7-2.4-1.8-3.6-4.9-3.1-8L30 74.5 12.9 54.5c-2.2-2.2-2.9-5.3-1.9-8.2 1-2.9 3.5-4.9 6.5-5.4l25.3-3.7L54.1 18.3C55.4 15.6 57.9 14 61 14Z"/>';
-                    starsContainer.appendChild(star);
-                }
-                cell.appendChild(starsContainer);
+            // 星星
+            const stars = isFraction ? 0 : this.getCampaignLevelBestStars(id);
+            const hasStars = isCleared && stars > 0;
+            const starsContainer = document.createElement('div');
+            starsContainer.className = 'campaign-cell-stars';
+            for (let i = 1; i <= 5; i++) {
+                const star = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                star.setAttribute('viewBox', '0 0 120 120');
+                star.setAttribute('aria-hidden', 'true');
+                star.classList.add('star');
+                if (hasStars && i <= stars) star.classList.add('filled');
+                star.innerHTML = '<path d="M60 14c3.1 0 5.6 1.6 6.9 4.3l11.3 22.9 25.3 3.7c3 .5 5.5 2.5 6.5 5.4 1 2.9.3 6-1.9 8.2L90 74.5l4.5 25.1c.5 3.1-.7 6.2-3.1 8-2.5 1.8-5.8 2.1-8.5.7L60 96.1 37.1 108.3c-2.7 1.4-6 .1-8.5-.7-2.4-1.8-3.6-4.9-3.1-8L30 74.5 12.9 54.5c-2.2-2.2-2.9-5.3-1.9-8.2 1-2.9 3.5-4.9 6.5-5.4l25.3-3.7L54.1 18.3C55.4 15.6 57.9 14 61 14Z"/>';
+                starsContainer.appendChild(star);
             }
+            cell.appendChild(starsContainer);
 
-            // 创建关卡数字
             const numberSpan = document.createElement('span');
             numberSpan.className = 'campaign-cell-number';
-            numberSpan.textContent = String(id);
+            numberSpan.textContent = label;
             cell.appendChild(numberSpan);
 
             cell.addEventListener('click', async () => {
                 if (locked) return;
                 if (window.audioManager) window.audioManager.playClick();
-                // 进入游戏界面
                 if (this.campaignModal) this.hideModal(this.campaignModal);
                 this.startCampaign(id).catch(err => console.error('[Campaign] startCampaign failed:', err));
             });
             this.campaignLevelGrid.appendChild(cell);
+        };
+
+        this.campaignLevelGrid.innerHTML = '';
+
+        if (isFraction) {
+            // 渲染分数关卡 1/2 ~ 1/20
+            for (let denom = 2; denom <= 20; denom++) {
+                const id = `1/${denom}`;
+                const locked = denom > fracUnlocked;
+                const isCleared = denom <= fracCleared;
+                const level = this.campaignPack && Array.isArray(this.campaignPack.levels)
+                    ? this.campaignPack.levels.find(l => String(l.id) === id) : null;
+                makeCell(id, locked, isCleared, `1/${denom}`, level);
+            }
+        } else {
+            // 整数关卡
+            const unlockedMax = Math.min(total, cleared + 1);
+            for (let id = range.start; id <= range.end; id++) {
+                const locked = id > unlockedMax;
+                const isCleared = id <= cleared;
+                makeCell(id, locked, isCleared, String(id), null);
+            }
         }
-    };
+    }
+
+// ─── 分数关辅助函数 ────────────────────────────────────
+
+// getCampaignFractionClearedMax — 读取已通过的最大分数关分母（localStorage）
+    UIController.prototype.getCampaignFractionClearedMax = function() {
+        try {
+            const raw = localStorage.getItem('function_chess_campaign_fraction_cleared');
+            const v = raw ? Number(raw) : 0;
+            return Number.isFinite(v) ? v : 0;
+        } catch (e) {
+            return 0;
+        }
+    }
+
+// setCampaignFractionClearedMax
+    UIController.prototype.setCampaignFractionClearedMax = function(n) {
+        try {
+            const v = Number(n);
+            if (!Number.isFinite(v) || v <= 0) return;
+            localStorage.setItem('function_chess_campaign_fraction_cleared', String(v));
+        } catch (e) { }
+    }
+
+// getCampaignFractionUnlockedMax — 已通过的最大分母 + 1，上限 20
+    UIController.prototype.getCampaignFractionUnlockedMax = function() {
+        const cleared = this.getCampaignFractionClearedMax();
+        return Math.min(20, cleared + 1);
+    }
+
+// _getFractionLevelNumber — 从 id "1/n" 提取 n
+    UIController.prototype._getFractionLevelNumber = function(id) {
+        const s = String(id || '');
+        const parts = s.split('/');
+        if (parts.length === 2) {
+            const n = Number(parts[1]);
+            if (Number.isFinite(n) && n > 0) return n;
+        }
+        return null;
+    }
+
+// _isFractionLevelUnlocked
+    UIController.prototype._isFractionLevelUnlocked = function(id) {
+        const n = this._getFractionLevelNumber(id);
+        if (n === null) return false;
+        return n <= this.getCampaignFractionUnlockedMax();
+    }
+
+// _renderCampaignBranchTree — 分数关分支树（预留）
+    UIController.prototype._renderCampaignBranchTree = function(parentDiv) {
+        // 占位：目前分数关为线性 1/2 → 1/3 → ... → 1/20，无需分支树
+    }
+;
 
