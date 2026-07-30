@@ -483,6 +483,8 @@ class P2PController {
     }
 
     _handleDisconnect() {
+        // 主动断开（disconnect() 已设置 _disconnecting = true），跳过 UI 弹窗
+        if (this._disconnecting) { this._disconnecting = false; return; }
         const wasConnected = this.isConnected;
         this.isConnected = false;
         this.isConnecting = false;

@@ -139,7 +139,7 @@ if (typeof UIController === 'undefined') {
             this.modeAiBtn.title = '';
         }
 
-        const lockSelectors = this.selectedMode === 'campaign' || this.selectedMode === 'test' || this.selectedMode === 'race';
+        const lockSelectors = this.selectedMode === 'campaign' || this.selectedMode === 'test' || this.selectedMode === 'race' || (this.selectedMode === 'battle' && this._battleSubMode === 'p2p');
         this.setStartSelectorsEnabled(!lockSelectors);
         [this.roundStepper, this.difficultyStepper, this.timeLimitStepper].forEach(el => {
             if (!el) return;
@@ -252,8 +252,8 @@ if (typeof UIController === 'undefined') {
         const isRace = mode === 'race';
         if (this.roundStepper) this.roundStepper.classList.remove('selector-change');
         if (this.difficultyStepper) this.difficultyStepper.classList.remove('selector-change');
-        // 闯关模式、测试模式、竞速模式、关卡编辑器禁用回合数与难度选择
-        const lockSelectors = isCampaign || isTest || isRace;
+        // 闯关模式、测试模式、竞速模式、联机对战模式禁用回合数/难度/时间选择
+        const lockSelectors = isCampaign || isTest || isRace || (mode === 'battle' && this._battleSubMode === 'p2p');
         if (this.roundStepper) {
             this.roundStepper.classList.toggle('disabled', lockSelectors);
         }
@@ -274,7 +274,7 @@ if (typeof UIController === 'undefined') {
 
         if (mode === 'battle') {
             this.modeBattleBtn.classList.add('active');
-            if (this._battleSubmenu) this._battleSubmenu.style.display = 'block';
+            if (this._battleSubmenu) this._battleSubmenu.style.display = '';
             this.modeHint.textContent = 
                 this._battleSubMode === 'local' ? '本地对战：两位玩家轮流操作' :
                 this._battleSubMode === 'ai' ? '人机对战：你将对抗AI Summa' :

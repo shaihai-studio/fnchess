@@ -21,6 +21,8 @@ if (typeof UIController === 'undefined') {
         const d = $('p2p-room-code-display'); if (d) d.style.display = 'none';
         const inp = $('p2p-room-input'); if (inp) inp.value = '';
         this._updateP2PStatus('idle', '准备就绪');
+        this._initP2PSelectors();
+        this._bindP2PStepperButtons();
         this.showModal(document.getElementById('p2p-room-modal'));
         this._bindP2PRoomEvents();
     }
@@ -38,9 +40,6 @@ if (typeof UIController === 'undefined') {
         p2p.onConnected = () => {
             this._updateP2PStatus('connected', '对手已连接！');
             this.showMessage('对手已加入，游戏开始！');
-            // 记录房间码/身份，供掉线后「重试连接」复用（#25）
-            this._p2pLastRoomCode = p2p.roomCode;
-            this._p2pLastIsHost = p2p.isHost;
             // 隐藏所有模态框：P2P房间 + 开始界面
             const p2pModal = document.getElementById('p2p-room-modal');
             if (p2pModal) this.hideModal(p2pModal);
@@ -48,14 +47,19 @@ if (typeof UIController === 'undefined') {
             this.startP2PGame();
             // 房主发送游戏初始化给访客
             if (p2p.isHost && this.gameController) {
-                const rounds = parseInt(this.roundValue?.textContent) || 8;
-                const difficulty = this.getSelectedDifficulty();
-                p2p.sendGameInit({ rounds, difficulty });
+                const rounds = this._getP2PRounds();
+                const difficulty = this._getP2PDifficulty();
+                const timeLimitMode = this._getP2PTimeLimitMode();
+                p2p.sendGameInit({ rounds, difficulty, timeLimitMode });
             }
         };
         // 收到游戏初始化（访客端）
         p2p.onGameInit = (config) => {
             this.gameController.setP2PController(p2p);
+            // 应用对手共享的时间限制模式
+            if (config?.timeLimitMode && this.gameController) {
+                this.gameController.timeLimitMode = config.timeLimitMode;
+            }
             this.gameController.initGame(config.rounds || 8, config.difficulty || 'normal', 'p2p');
             this.showMessage('收到对手游戏配置，开始对战！');
         };
@@ -79,7 +83,6 @@ if (typeof UIController === 'undefined') {
         p2p.onDisconnected = () => {
             console.log('[UI][P2P] onDisconnected 触发');
             this._updateP2PStatus('disconnected', '对手已断开连接');
-            // #25：弹出三按钮恢复框（不再仅靠 toast），提供重试/等待/返回入口
             this._showP2PDisconnectModal();
         };
         // 错误回调
@@ -193,6 +196,11 @@ if (typeof UIController === 'undefined') {
                     document.querySelectorAll('.p2p-tab-content').forEach(c => c.style.display = 'none');
                     tab.classList.add('active');
                     content.style.display = 'block';
+                    // 切换到「加入房间」时隐藏左侧三选项，「创建房间」时恢复
+                    const leftCol = document.querySelector('.p2p-selectors-left');
+                    if (leftCol) {
+                        leftCol.style.display = tabId === 'p2p-tab-create' ? 'flex' : 'none';
+                    }
                 });
             }
         };
@@ -237,10 +245,185 @@ if (typeof UIController === 'undefined') {
         this._lastSyncTime = 0;
         // 房主在这里初始化游戏（访客在 onGameInit 中初始化）
         if (p2p.isHost) {
-            const rounds = parseInt(this.roundValue?.textContent) || 8;
-            const difficulty = this.getSelectedDifficulty();
+            const rounds = this._getP2PRounds();
+            const difficulty = this._getP2PDifficulty();
+            const timeLimitMode = this._getP2PTimeLimitMode();
+            if (this.gameController) this.gameController.timeLimitMode = timeLimitMode;
             this.gameController.initGame(rounds, difficulty, 'p2p');
         }
+    }
+;
+
+// _initP2PSelectors
+    UIController.prototype._initP2PSelectors = function() {
+        // 取一次 stepper 元素引用（懒加载，DOM 在 showP2PRoomModal 时已存在）
+        this.p2pRoundStepper = document.getElementById('p2p-round-stepper');
+        this.p2pRoundValue = document.getElementById('p2p-round-value');
+        this.p2pDifficultyStepper = document.getElementById('p2p-difficulty-stepper');
+        this.p2pDifficultyValue = document.getElementById('p2p-difficulty-value');
+        this.p2pTimeLimitStepper = document.getElementById('p2p-time-limit-stepper');
+        this.p2pTimeLimitValue = document.getElementById('p2p-time-limit-value');
+        if (!this.p2pRoundValue) return;
+        // 以主页三选项的当前值为初值；未选择过则用默认
+        this.p2pCurrentRoundIndex = this.currentRoundIndex ?? 0;
+        this.p2pCurrentDifficultyIndex = this.currentDifficultyIndex ?? 0;
+        this.p2pCurrentTimeLimitIndex = this.currentTimeLimitIndex ?? 2;
+        if (!this.roundOptions || !this.roundOptions.length) return;
+        if (this.p2pCurrentRoundIndex < 0 || this.p2pCurrentRoundIndex >= this.roundOptions.length) this.p2pCurrentRoundIndex = 0;
+        if (this.p2pCurrentDifficultyIndex < 0 || this.p2pCurrentDifficultyIndex >= this.difficultyOptions.length) this.p2pCurrentDifficultyIndex = 0;
+        if (this.p2pCurrentTimeLimitIndex < 0 || this.p2pCurrentTimeLimitIndex >= this.timeLimitOptions.length) this.p2pCurrentTimeLimitIndex = 2;
+        this._refreshP2PStepperDisplay();
+    }
+;
+
+// _refreshP2PStepperDisplay
+    UIController.prototype._refreshP2PStepperDisplay = function() {
+        if (!this.p2pRoundValue) return;
+        const theme = {
+            round: {
+                8:  { bg: 'rgba(96, 165, 250, 0.14)', fg: '#7a9bb5', shadow: 'rgba(96,165,250,0.18)' },
+                12: { bg: 'rgba(52, 211, 153, 0.14)', fg: '#6b9f8e', shadow: 'rgba(52,211,153,0.18)' },
+                16: { bg: 'rgba(251, 191, 36, 0.14)', fg: '#b8944a', shadow: 'rgba(251,191,36,0.18)' },
+                20: { bg: 'rgba(249, 115, 22, 0.14)', fg: '#b87a4e', shadow: 'rgba(249,115,22,0.18)' },
+                24: { bg: 'rgba(244, 63, 94, 0.14)', fg: '#b06e6e', shadow: 'rgba(244,63,94,0.18)' }
+            },
+            difficulty: {
+                easy:    { bg: 'rgba(34, 197, 94, 0.14)', fg: '#6b9f6e', shadow: 'rgba(34,197,94,0.18)' },
+                fraction:{ bg: 'rgba(20, 184, 166, 0.14)', fg: '#14b8a6', shadow: 'rgba(20,184,166,0.25)' },
+                normal:  { bg: 'rgba(59, 130, 246, 0.14)', fg: '#6b84a8', shadow: 'rgba(59,130,246,0.18)' },
+                expert:  { bg: 'rgba(245, 158, 11, 0.14)', fg: '#b8944a', shadow: 'rgba(245,158,11,0.18)' },
+                test:    { bg: 'rgba(168, 85, 247, 0.14)', fg: '#8b7bb0', shadow: 'rgba(168,85,247,0.18)' }
+            },
+            time: {
+                super_slow: { bg: 'rgba(253, 186, 116, 0.14)', fg: '#d4a373', shadow: 'rgba(253,186,116,0.18)' },
+                slow:       { bg: 'rgba(250, 204, 21, 0.14)',  fg: '#c9a227', shadow: 'rgba(250,204,21,0.18)' },
+                normal:     { bg: 'rgba(59, 130, 246, 0.14)',  fg: '#6b84a8', shadow: 'rgba(59,130,246,0.18)' },
+                fast:       { bg: 'rgba(34, 197, 94, 0.14)',   fg: '#6b9f6e', shadow: 'rgba(34,197,94,0.18)' },
+                super_fast: { bg: 'rgba(168, 85, 247, 0.14)',  fg: '#8b7bb0', shadow: 'rgba(168,85,247,0.18)' }
+            }
+        };
+
+        const applyArrowTheme = (idPrev, idNext, valueEl, t) => {
+            const prev = document.getElementById(idPrev);
+            const next = document.getElementById(idNext);
+            [prev, next].forEach(btn => {
+                if (!btn) return;
+                btn.style.background = t.bg;
+                btn.style.color = t.fg;
+                btn.style.boxShadow = `0 0 14px ${t.shadow}`;
+            });
+            if (valueEl) {
+                valueEl.style.transition = 'transform 0.18s ease, color 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease';
+                valueEl.style.color = t.fg;
+                valueEl.style.borderColor = t.fg;
+                valueEl.style.boxShadow = `0 0 18px ${t.shadow}`;
+            }
+        };
+
+        const roundOpt = this.roundOptions[this.p2pCurrentRoundIndex];
+        if (roundOpt) {
+            this.p2pRoundValue.textContent = roundOpt.label;
+            this.p2pRoundValue.dataset.value = String(roundOpt.value);
+            const t = theme.round[roundOpt.value] || theme.round[8];
+            applyArrowTheme('p2p-round-prev', 'p2p-round-next', this.p2pRoundValue, t);
+        }
+        const diffOpt = this.difficultyOptions[this.p2pCurrentDifficultyIndex];
+        if (diffOpt) {
+            this.p2pDifficultyValue.textContent = diffOpt.label;
+            this.p2pDifficultyValue.dataset.value = diffOpt.value;
+            const t = theme.difficulty[diffOpt.value] || theme.difficulty.easy;
+            applyArrowTheme('p2p-difficulty-prev', 'p2p-difficulty-next', this.p2pDifficultyValue, t);
+        }
+        const timeOpt = this.timeLimitOptions[this.p2pCurrentTimeLimitIndex];
+        if (timeOpt) {
+            this.p2pTimeLimitValue.textContent = timeOpt.label;
+            this.p2pTimeLimitValue.dataset.value = timeOpt.value;
+            const t = theme.time[timeOpt.value] || theme.time.normal;
+            applyArrowTheme('p2p-time-limit-prev', 'p2p-time-limit-next', this.p2pTimeLimitValue, t);
+        }
+    }
+;
+
+// _bindP2PStepperButtons
+    UIController.prototype._bindP2PStepperButtons = function() {
+        const bind = (id, fn) => {
+            const el = document.getElementById(id);
+            if (el) el.addEventListener('click', fn);
+        };
+        bind('p2p-round-prev', () => this._stepP2PRound(-1));
+        bind('p2p-round-next', () => this._stepP2PRound(1));
+        bind('p2p-difficulty-prev', () => this._stepP2PDifficulty(-1));
+        bind('p2p-difficulty-next', () => this._stepP2PDifficulty(1));
+        bind('p2p-time-limit-prev', () => this._stepP2PTimeLimit(-1));
+        bind('p2p-time-limit-next', () => this._stepP2PTimeLimit(1));
+    }
+;
+
+// _stepP2PRound
+    UIController.prototype._stepP2PRound = function(direction) {
+        if (!this.roundOptions || !this.roundOptions.length) return;
+        const len = this.roundOptions.length;
+        const next = ((this.p2pCurrentRoundIndex ?? 0) + direction + len) % len;
+        this.p2pCurrentRoundIndex = next;
+        this._refreshP2PStepperDisplay();
+        this._playP2PStepperFeedback('round');
+    }
+;
+
+// _stepP2PDifficulty
+    UIController.prototype._stepP2PDifficulty = function(direction) {
+        if (!this.difficultyOptions || !this.difficultyOptions.length) return;
+        const len = this.difficultyOptions.length;
+        const next = ((this.p2pCurrentDifficultyIndex ?? 0) + direction + len) % len;
+        this.p2pCurrentDifficultyIndex = next;
+        this._refreshP2PStepperDisplay();
+        this._playP2PStepperFeedback('difficulty');
+    }
+;
+
+// _stepP2PTimeLimit
+    UIController.prototype._stepP2PTimeLimit = function(direction) {
+        if (!this.timeLimitOptions || !this.timeLimitOptions.length) return;
+        const len = this.timeLimitOptions.length;
+        const next = ((this.p2pCurrentTimeLimitIndex ?? 2) + direction + len) % len;
+        this.p2pCurrentTimeLimitIndex = next;
+        this._refreshP2PStepperDisplay();
+        this._playP2PStepperFeedback('time-limit');
+    }
+;
+
+// _playP2PStepperFeedback
+    UIController.prototype._playP2PStepperFeedback = function(kind) {
+        if (window.audioManager) window.audioManager.playRaceAlert?.();
+        const hostMap = { round: this.p2pRoundStepper, difficulty: this.p2pDifficultyStepper, 'time-limit': this.p2pTimeLimitStepper };
+        const host = hostMap[kind];
+        if (!host) return;
+        host.classList.remove('selector-change');
+        void host.offsetWidth;
+        host.classList.add('selector-change');
+        clearTimeout(this._p2pSelectorChangeTimeout);
+        this._p2pSelectorChangeTimeout = setTimeout(() => host.classList.remove('selector-change'), 220);
+    }
+;
+
+// _getP2PRounds
+    UIController.prototype._getP2PRounds = function() {
+        const opt = this.roundOptions?.[this.p2pCurrentRoundIndex ?? 0];
+        return opt ? Number(opt.value) || 8 : 8;
+    }
+;
+
+// _getP2PDifficulty
+    UIController.prototype._getP2PDifficulty = function() {
+        const opt = this.difficultyOptions?.[this.p2pCurrentDifficultyIndex ?? 0];
+        return opt ? opt.value : 'normal';
+    }
+;
+
+// _getP2PTimeLimitMode
+    UIController.prototype._getP2PTimeLimitMode = function() {
+        const opt = this.timeLimitOptions?.[this.p2pCurrentTimeLimitIndex ?? 2];
+        return opt ? opt.value : 'normal';
     }
 ;
 
@@ -276,18 +459,8 @@ if (typeof UIController === 'undefined') {
 
 // _bindP2PDisconnectButtons
     UIController.prototype._bindP2PDisconnectButtons = function() {
-        const retry = document.getElementById('p2p-disc-retry-btn');
-        const wait = document.getElementById('p2p-disc-wait-btn');
         const menu = document.getElementById('p2p-disc-menu-btn');
-        const bannerRetry = document.getElementById('p2p-wait-retry-btn');
-        const bannerMenu = document.getElementById('p2p-wait-menu-btn');
-        const onRetry = () => this._retryP2P();
-        const onMenu = () => this._p2pReturnToMenu();
-        if (retry) retry.onclick = () => this.playUIButtonSound(onRetry);
-        if (wait) wait.onclick = () => this.playUIButtonSound(() => this._p2pWaitForOpponent());
-        if (menu) menu.onclick = () => this.playUIButtonSound(onMenu);
-        if (bannerRetry) bannerRetry.onclick = () => this.playUIButtonSound(onRetry);
-        if (bannerMenu) bannerMenu.onclick = () => this.playUIButtonSound(onMenu);
+        if (menu) menu.onclick = () => this.playUIButtonSound(() => this._p2pReturnToMenu());
     }
 ;
 
@@ -298,49 +471,12 @@ if (typeof UIController === 'undefined') {
     }
 ;
 
-// _retryP2P
-    UIController.prototype._retryP2P = function() {
-        const code = this._p2pLastRoomCode;
-        if (!code || !this.p2pController) {
-            this.showMessage('缺少房间码，无法重连，请返回主菜单', 'error');
-            return;
-        }
-        const disc = document.getElementById('p2p-disconnect-modal');
-        if (disc) this.hideModal(disc);
-        this._hideP2PWaitBanner();
-        this._updateP2PStatus('connecting', '正在重连...');
-        this.showMessage('正在重连...');
-        if (this._p2pLastIsHost) {
-            this.p2pController.createRoomWithCode(code);
-        } else {
-            this.p2pController.joinRoom(code);
-        }
-    }
-;
-
 // _p2pReturnToMenu
     UIController.prototype._p2pReturnToMenu = function() {
         const disc = document.getElementById('p2p-disconnect-modal');
         if (disc) this.hideModal(disc);
-        this._hideP2PWaitBanner();
         if (typeof this._cleanupP2P === 'function') this._cleanupP2P();
         this.handleRestart();
-    }
-;
-
-// _p2pWaitForOpponent
-    UIController.prototype._p2pWaitForOpponent = function() {
-        const disc = document.getElementById('p2p-disconnect-modal');
-        if (disc) this.hideModal(disc);
-        const banner = document.getElementById('p2p-wait-banner');
-        if (banner) banner.style.display = 'flex';
-    }
-;
-
-// _hideP2PWaitBanner
-    UIController.prototype._hideP2PWaitBanner = function() {
-        const banner = document.getElementById('p2p-wait-banner');
-        if (banner) banner.style.display = 'none';
     }
 ;
 

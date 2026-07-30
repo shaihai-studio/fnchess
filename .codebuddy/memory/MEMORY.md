@@ -13,5 +13,6 @@
 - i、e、π 是合法输入常量。
 
 ## 重大架构决策
+- 2026-07-30 P2P 联机对战 UI 整改：① 断线弹窗只剩"返回主菜单"按钮，已移除三按钮/等待横幅和 `_retryP2P/_p2pWaitForOpponent/_hideP2PWaitBanner` 三个方法；② P2P 子模式下主页三 stepper 视觉禁用（lockSelectors 条件新增）；③ P2P 弹窗加左侧独立三选项（难度/回合数/时间限制），独立索引 `_p2pCurrent*Index`，初值同步自主页当前值，发给访客的 `sendGameInit` payload 多带一个 `timeLimitMode`，guest 在 onGameInit 中赋值给 `gameController.timeLimitMode`。
 - 2026-07-29: 抽取统一 prepareInputPhase() 方法，消除两套表达式清理机制分叉。GameController 统一管理模型清理+事件通知+阶段切换，UIController 只做 UI 侧 clearExpression()。forceClearExpression 事件已废弃移除。
 - 2026-07-29: UIController.js 模块化拆分。原 6405 行巨类拆为瘦壳 `files/js/UIController.js`（仅 class 定义+constructor+字段/箭头字段+getter/setter）+ 10 个原型扩展模块 `files/js/ui/*.js`（UIModals/UIStart/UIInput/UICanvas/UIPhase/UICampaign/UIRace/UIP2P/UILevelEditor/UICore，共 222 个方法）。机制：每个模块用 `UIController.prototype.x = function(){...}` 把方法挂回原型，浏览器经典脚本共享词法全局，行为与单文件完全一致。加载顺序：index.html 中 `UIController.js` 之后、内联 `new UIController()` 实例化之前，按顺序插入 10 个 ui 模块 script 标签。注意：项目无打包器/无 ES Module，勿改用 import/export；若需重新拆分，必须先 `git checkout` 还原原 UIController.js（脚本对瘦壳重跑会出错）。原文件有 2 对重复方法名（startRaceElapsedTimer/stopRaceElapsedTimer 各定义两次，后者覆盖前者），属历史遗留，拆分时原样保留。

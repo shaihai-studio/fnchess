@@ -195,8 +195,10 @@
                             </div>
                             <button class="mode-btn" id="mode-campaign" data-mode="campaign">闯关模式</button>
                             <button class="mode-btn" id="mode-race" data-mode="race">竞速模式</button>
-                            <button class="mode-btn" id="mode-test" data-mode="test">测试模式</button>
-                            <a class="mode-btn" id="mode-editor" href="level-editor.html" target="_blank" style="text-decoration:none;display:block;width:100%;box-sizing:border-box;">关卡编辑器</a>
+                            <div class="mode-toggle-row">
+                                <button class="mode-btn" id="mode-test" data-mode="test">测试模式</button>
+                                <a class="mode-btn" id="mode-editor" href="level-editor.html" target="_blank" style="text-decoration:none;">关卡编辑器</a>
+                            </div>
                         </div>
                         <small id="mode-hint" style="display: block; margin-top: 5px; opacity: 0.7;">选择对战模式</small>
                     </div>
@@ -415,60 +417,78 @@
     
     <!-- P2P 联机对战模态框 -->
     <div class="modal" id="p2p-room-modal" style="display:none;">
-        <div class="modal-content p2p-room-content">
+        <div class="modal-content p2p-room-content" style="max-width: 760px;">
             <h2>联机对战</h2>
-            <div class="p2p-status" id="p2p-status">
-                <span class="p2p-status-dot"></span>
-                <span class="p2p-status-text">准备就绪</span>
-            </div>
-            <div class="p2p-tabs">
-                <button class="p2p-tab active" id="p2p-tab-create">创建房间</button>
-                <button class="p2p-tab" id="p2p-tab-join">加入房间</button>
-            </div>
-            <div class="p2p-tab-content" id="p2p-tab-create-content">
-                <p class="p2p-desc">创建房间后将获得一个6位房间码，分享给对手即可开始对战</p>
-                <div class="p2p-room-code-display" id="p2p-room-code-display" style="display:none;">
-                    <span class="p2p-label">房间码</span>
-                    <span class="p2p-room-code" id="p2p-room-code-text">------</span>
-                    <button class="btn btn-small p2p-copy-btn" id="p2p-copy-btn">复制</button>
+            <div class="p2p-content-layout" style="display:flex; gap:24px; align-items:flex-start; text-align:left;">
+                <!-- 左侧：难度/回合/速度 三个选项 -->
+                <div class="p2p-selectors-left" style="flex:0 0 220px; display:flex; flex-direction:column; gap:14px; padding-right:16px; border-right:1px solid rgba(255,255,255,0.08);">
+                    <div class="selector-row">
+                        <div class="stepper-selector" id="p2p-difficulty-stepper">
+                            <button type="button" class="stepper-arrow" id="p2p-difficulty-prev" aria-label="切换难度">←</button>
+                            <div class="stepper-value" id="p2p-difficulty-value">简单 - 1个目标格</div>
+                            <button type="button" class="stepper-arrow" id="p2p-difficulty-next" aria-label="切换难度">→</button>
+                        </div>
+                    </div>
+                    <div class="selector-row">
+                        <div class="stepper-selector" id="p2p-round-stepper" tabindex="0">
+                            <button type="button" class="stepper-arrow" id="p2p-round-prev" aria-label="调整回合数">←</button>
+                            <div class="stepper-value" id="p2p-round-value" tabindex="0">8 回合（快速对战）</div>
+                            <button type="button" class="stepper-arrow" id="p2p-round-next" aria-label="调整回合数">→</button>
+                        </div>
+                    </div>
+                    <div class="selector-row">
+                        <div class="stepper-selector" id="p2p-time-limit-stepper" tabindex="0">
+                            <button type="button" class="stepper-arrow" id="p2p-time-limit-prev" aria-label="调整时间限制">←</button>
+                            <div class="stepper-value" id="p2p-time-limit-value" tabindex="0">普通棋</div>
+                            <button type="button" class="stepper-arrow" id="p2p-time-limit-next" aria-label="调整时间限制">→</button>
+                        </div>
+                    </div>
                 </div>
-                <button class="btn btn-primary p2p-action-btn" id="p2p-create-btn">创建房间</button>
-            </div>
-            <div class="p2p-tab-content" id="p2p-tab-join-content" style="display:none;">
-                <p class="p2p-desc">输入对手分享的6位房间码加入对战</p>
-                <div class="p2p-input-group">
-                    <input type="text" id="p2p-room-input" class="p2p-room-input" maxlength="6" placeholder="输入6位房间码" autocomplete="off">
+                <!-- 右侧：原有房间 UI -->
+                <div class="p2p-selectors-right" style="flex:1; min-width:0;">
+                    <div class="p2p-status" id="p2p-status">
+                        <span class="p2p-status-dot"></span>
+                        <span class="p2p-status-text">准备就绪</span>
+                    </div>
+                    <div class="p2p-tabs">
+                        <button class="p2p-tab active" id="p2p-tab-create">创建房间</button>
+                        <button class="p2p-tab" id="p2p-tab-join">加入房间</button>
+                    </div>
+                    <div class="p2p-tab-content" id="p2p-tab-create-content">
+                        <p class="p2p-desc">创建房间后将获得一个6位房间码，分享给对手即可开始对战</p>
+                        <div class="p2p-room-code-display" id="p2p-room-code-display" style="display:none;">
+                            <span class="p2p-label">房间码</span>
+                            <span class="p2p-room-code" id="p2p-room-code-text">------</span>
+                            <button class="btn btn-small p2p-copy-btn" id="p2p-copy-btn">复制</button>
+                        </div>
+                        <button class="btn btn-primary p2p-action-btn" id="p2p-create-btn">创建房间</button>
+                    </div>
+                    <div class="p2p-tab-content" id="p2p-tab-join-content" style="display:none;">
+                        <p class="p2p-desc">输入对手分享的6位房间码加入对战</p>
+                        <div class="p2p-input-group">
+                            <input type="text" id="p2p-room-input" class="p2p-room-input" maxlength="6" placeholder="输入6位房间码" autocomplete="off">
+                        </div>
+                        <button class="btn btn-primary p2p-action-btn" id="p2p-join-btn">加入房间</button>
+                    </div>
+                    <div class="p2p-battle-hint">
+                        <small>房主为<strong>玩家A</strong>，访客为<strong>玩家B</strong></small><br>
+                        <small>双方轮流操作，玩法与本地对战一致</small>
+                    </div>
+                    <button class="btn btn-secondary p2p-back-btn" id="p2p-back-btn" style="width:100%;margin-top:8px;">返回</button>
                 </div>
-                <button class="btn btn-primary p2p-action-btn" id="p2p-join-btn">加入房间</button>
             </div>
-            <div class="p2p-battle-hint">
-                <small>房主为<strong>玩家A</strong>，访客为<strong>玩家B</strong></small><br>
-                <small>双方轮流操作，玩法与本地对战一致</small>
-            </div>
-            <button class="btn btn-secondary p2p-back-btn" id="p2p-back-btn" style="width:100%;margin-top:8px;">返回</button>
         </div>
     </div>
 
-    <!-- #25 联机对手掉线：三按钮恢复框 -->
+    <!-- 联机对手掉线：仅返回主菜单 -->
     <div class="modal" id="p2p-disconnect-modal" style="display:none;">
         <div class="modal-content" style="max-width:360px;text-align:center;">
             <h2>对手已断开连接</h2>
-            <p>联机对局已中断，你可以选择：</p>
+            <p>联机对局已中断</p>
             <div style="display:flex;flex-direction:column;gap:10px;margin-top:16px;">
-                <button class="btn btn-primary" id="p2p-disc-retry-btn">重试连接</button>
-                <button class="btn btn-secondary" id="p2p-disc-wait-btn">等对手回来</button>
-                <button class="btn btn-secondary" id="p2p-disc-menu-btn">返回主菜单</button>
+                <button class="btn btn-primary" id="p2p-disc-menu-btn">返回主菜单</button>
             </div>
         </div>
-    </div>
-
-    <!-- #25 等待对手重连时顶部常驻横幅（含退出入口） -->
-    <div id="p2p-wait-banner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:2000;background:#2b2b40;color:#fff;padding:10px 16px;align-items:center;justify-content:space-between;box-shadow:0 2px 8px rgba(0,0,0,0.4);font-size:14px;">
-        <span>对手已掉线，等待对方重连中…（也可自行重试或退出）</span>
-        <span>
-            <button class="btn btn-small" id="p2p-wait-retry-btn" style="margin-right:8px;">重试连接</button>
-            <button class="btn btn-secondary btn-small" id="p2p-wait-menu-btn">返回主菜单</button>
-        </span>
     </div>
 
     <!-- 加载 JavaScript 模块 -->
