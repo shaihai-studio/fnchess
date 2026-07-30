@@ -1092,8 +1092,13 @@ if (typeof UIController === 'undefined') {
         this._applyingRemote = true;
         try {
             const applied = this.gameController.loadStateSnapshot(s.gc);
-            this.expressionElements = (s.expr || []).slice();
-            this.cursorIndex = (typeof s.cursorIndex === 'number') ? s.cursorIndex : this.expressionElements.length;
+            // 以操作方为基准：轮到本方的回合内，不覆盖本方的表达式输入（避免吞字符）
+            const isMyTurn = this.p2pController && this.gameController &&
+                this.gameController.currentPlayer === this.p2pController.myPlayerId;
+            if (!isMyTurn) {
+                this.expressionElements = (s.expr || []).slice();
+                this.cursorIndex = (typeof s.cursorIndex === 'number') ? s.cursorIndex : this.expressionElements.length;
+            }
             // 只有真正应用了新的状态才执行完整重绘，避免旧/重复快照触发不必要的重绘
             if (applied) this._renderFromState();
         } finally {
@@ -1133,6 +1138,12 @@ if (typeof UIController === 'undefined') {
         
         // 提交函数
         this.gameController.submitFunction(expression);
+        
+        // P2P：突破 50ms 节流，立刻推送表达式给对手（让对手同步绘制）
+        if (this.isP2PMode && this.p2pController && this.p2pController.isConnected) {
+            this._lastSyncTime = 0;  // 清除节流
+            this._syncToPeer();
+        }
         
         // 绘制函数并检测碰撞
         this.renderAndEvaluate(expression);

@@ -282,10 +282,10 @@ if (typeof UIController === 'undefined') {
         if (expr === this._lastRemoteExpr) return; // 表达式未变则跳过重绘
         this._lastRemoteExpr = expr;
         try {
-            // _renderFromState 已调用 gridSystem.draw() 完成棋盘重绘，这里直接叠加函数曲线
-            await this.renderer.drawFunction(expr, false);
+            // 带动画绘制函数曲线，让对手看到与提交方相同的绘制过程
+            await this.renderer.drawFunction(expr, true);
         } catch (e) {
-            // 远端函数绘制失败时静默处理，避免噪声日志
+            // 远端函数绘制失败时静默处理
         }
     }
 ;
