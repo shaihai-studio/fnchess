@@ -289,6 +289,7 @@ class UIController {
         bind('campaign-back-btn', () => this.playUIButtonSound(() => this.showCampaignDifficulty()));
         bind('campaign-reset-btn', () => this.playUIButtonSound(() => this.resetCampaignProgress()));
         bind('race-reset-btn', () => this.playUIButtonSound(() => this.resetRaceProgress()));
+        bind('campaign-diff-fraction', () => this.playUIButtonSound(() => this.openCampaignLevels('fraction')));
         bind('campaign-diff-easy', () => this.playUIButtonSound(() => this.openCampaignLevels('easy')));
         bind('campaign-return-difficulty-btn', () => this.playUIButtonSound(() => this.returnCampaignToDifficulty()));
         bind('campaign-home-btn', () => this.playUIButtonSound(() => this.returnToCampaignLevelSelect()));
@@ -632,7 +633,10 @@ class UIController {
         });
         if (this.roundSelect) this.roundSelect.disabled = !enabled;
         if (this.difficultySelect) this.difficultySelect.disabled = !enabled;
-        if (this.timeLimitStepper) this.timeLimitStepper.classList.toggle('disabled', !enabled);
+        [this.roundStepper, this.difficultyStepper, this.timeLimitStepper].forEach(el => {
+            if (!el) return;
+            el.classList.toggle('disabled', !enabled);
+        });
     }
 
     applyStepperColors(kind, value) {
@@ -665,6 +669,7 @@ class UIController {
             valueEl = this.difficultyValue;
             theme = {
                 easy: { bg: 'rgba(34, 197, 94, 0.12)', fg: '#6b9f6e', shadow: 'rgba(34,197,94,0.10)' },
+                fraction: { bg: 'rgba(20, 184, 166, 0.12)', fg: '#14b8a6', shadow: 'rgba(20,184,166,0.10)' },
                 normal: { bg: 'rgba(59, 130, 246, 0.12)', fg: '#6b84a8', shadow: 'rgba(59,130,246,0.10)' },
                 expert: { bg: 'rgba(245, 158, 11, 0.12)', fg: '#b8944a', shadow: 'rgba(245,158,11,0.10)' },
                 test: { bg: 'rgba(168, 85, 247, 0.12)', fg: '#8b7bb0', shadow: 'rgba(168,85,247,0.10)' }
@@ -699,6 +704,7 @@ class UIController {
     getDifficultyColor(value) {
         const map = {
             easy: '#6b9f6e',
+            fraction: '#14b8a6',
             normal: '#6b84a8',
             expert: '#b8944a',
             test: '#8b7bb0'
@@ -732,6 +738,10 @@ class UIController {
             window.audioManager.startBgm();
         }
         
+        if (mode !== 'editor' && this.levelEditor?.isActive) {
+            this.levelEditor.deactivate();
+        }
+
         this.selectedMode = mode;
         
         // 更新按钮状态
@@ -777,6 +787,7 @@ class UIController {
             if (this.campaignPanel) this.campaignPanel.style.display = 'none';
             this.hideRaceUI();
             this.setStartSelectorsEnabled(false);
+            this.refreshUnsovableDifficultyVisibility();
             return;
         } else if (mode === 'race') {
             this.modeRaceBtn.classList.add('active');
@@ -801,6 +812,7 @@ class UIController {
             if (this.campaignPanel) this.campaignPanel.style.display = 'none';
             this.hideRaceUI();
             this.setStartSelectorsEnabled(false);
+            this.restoreBattleUI();
             return;
         }
     }
@@ -881,6 +893,8 @@ class UIController {
                 this.gridSystem
             );
         }
+        this.hideBattleUI();
+        this.hideStartModal();
         this.levelEditor.activate();
         this.showMessage('关卡编辑器已激活，左键选择目标格，右键选择禁止格');
     }
@@ -1407,7 +1421,7 @@ class UIController {
             }
 
             this.refreshCampaignStartUI();
-            const levelId = Number(data.levelId || this.campaignCurrentLevelId || 1);
+            const levelId = String(data.levelId || this.campaignCurrentLevelId || 1);
             let isNewRecord = false;
             let previousBest = this.getCampaignLevelBestRecord(levelId);
             if (data.pass) {
@@ -1421,23 +1435,35 @@ class UIController {
                 data.expressionLength = length;
                 data.isNewRecord = isNewRecord;
                 data.previousBest = previousBest;
-                if (isNewRecord) {
-                    const gainedStars = Math.max(1, Math.min(5, Number(data.score) || 1));
-                    const previousStars = this.getCampaignLevelBestStars(levelId);
-                    // 只在获得更高星星时更新总数
-                    if (gainedStars > previousStars) {
-                        const currentStars = this.getCampaignCollectedStars();
-                        this.setCampaignCollectedStars(currentStars + (gainedStars - previousStars));
-                        this.setCampaignLevelBestStars(levelId, gainedStars);
-                    }
-                    this.setCampaignLevelBestRecord(levelId, length);
-                    setTimeout(() => {
-                        if (this.campaignCurrentLevelId === levelId) {
-                            this.campaignCurrentLevelBestRecord = length;
-                            this.updateCampaignGlobalProgressText(this.getCampaignCollectedStars());
-                        }
-                    }, 0);
+                const gainedStars = Math.max(1, Math.min(5, Number(data.score) || 1));
+                const previousStars = this.getCampaignLevelBestStars(levelId);
+                // 只在获得更高星星时更新总数
+                if (gainedStars > previousStars) {
+                    const currentStars = this.getCampaignCollectedStars();
+                    this.setCampaignCollectedStars(currentStars + (gainedStars - previousStars));
+                    this.setCampaignLevelBestStars(levelId, gainedStars);
                 }
+                if (isNewRecord) {
+                    this.setCampaignLevelBestRecord(levelId, length);
+                }
+
+                const isFractionLevel = String(data.difficulty) === 'fraction' || String(levelId).includes('/');
+                if (isFractionLevel) {
+                    const currentFrac = this._getFractionLevelNumber(levelId);
+                    const unlocked = Math.max(this.getCampaignFractionUnlockedMax(), Math.min(20, currentFrac + 1));
+                    this.setCampaignFractionClearedMax(unlocked);
+                }
+
+                setTimeout(() => {
+                    if (this.campaignCurrentLevelId === levelId) {
+                        this.campaignCurrentLevelBestRecord = length;
+                        this.updateCampaignGlobalProgressText(this.getCampaignCollectedStars());
+                        this.refreshCampaignStartUI();
+                        if (this.campaignDifficulty === 'fraction' && this.campaignStepLevels?.style.display !== 'none') {
+                            this.renderCampaignLevelGrid();
+                        }
+                    }
+                }, 0);
             }
             setTimeout(() => {
                 try {
@@ -3791,6 +3817,11 @@ class UIController {
      * 处理退出按钮点击（根据模式决定是否显示气泡框）
      */
     handleExitClick() {
+        // 编辑器模式直接返回主界面，不显示气泡框
+        if (this.levelEditor?.isActive) {
+            this.levelEditor.deactivate();
+            return;
+        }
         // 测试模式直接退出，不显示气泡框
         if (this.gameController.isTestMode()) {
             this.handleExit();
@@ -4140,6 +4171,26 @@ class UIController {
         }
     }
 
+    getCampaignFractionClearedMax() {
+        try {
+            const raw = localStorage.getItem('function_chess_campaign_fraction_cleared');
+            const v = raw ? Number(raw) : 2;
+            return Number.isFinite(v) ? Math.max(2, Math.min(20, v)) : 2;
+        } catch (e) {
+            return 2;
+        }
+    }
+
+    setCampaignFractionClearedMax(v) {
+        try {
+            localStorage.setItem('function_chess_campaign_fraction_cleared', String(Math.max(2, Math.min(20, Number(v) || 2))));
+        } catch (e) { }
+    }
+
+    getCampaignFractionUnlockedMax() {
+        return this.getCampaignFractionClearedMax();
+    }
+
     // 获取单个关卡的最高星星数
     getCampaignLevelBestStars(levelId) {
         try {
@@ -4203,6 +4254,11 @@ class UIController {
             }
             const fixed = Math.min(Math.max(1, current), unlockedMax || 1);
             this.campaignLevelSelect.value = String(fixed);
+
+            const fractionUnlocked = this.getCampaignFractionUnlockedMax();
+            if (fractionUnlocked >= 2 && this.campaignDifficulty === 'fraction') {
+                this.campaignLevelProgress.textContent = `已通关 ${cleared}/${total}，当前可进入 1/2-${Math.max(2, fractionUnlocked) === 20 ? '1/20' : `1/${Math.max(2, fractionUnlocked)}`}`;
+            }
         } catch (e) {
             this.campaignProgressText.textContent = '关卡加载失败，请确认关卡数据已内置。';
         }
@@ -4215,7 +4271,12 @@ class UIController {
             this.openCampaignUI();
             return;
         }
-        const safeStart = Number(startLevelId) || 1;
+        const safeStart = startLevelId;
+        const exists = pack.levels?.some(level => String(level.id) === String(safeStart));
+        if (!exists) {
+            this.showMessage('该关卡不存在', 'error');
+            return;
+        }
         this.campaignCurrentLevelId = safeStart;
         this.campaignCurrentLevelBestRecord = this.getCampaignLevelBestRecord(safeStart);
         this._markGameActive();
@@ -4286,6 +4347,21 @@ class UIController {
         }
     }
 
+    _getFractionLevelNumber(levelId) {
+        const n = Number(String(levelId).split('/')[1]);
+        return Number.isFinite(n) ? n : 2;
+    }
+
+    _isFractionLevelUnlocked(n, cleared) {
+        return n >= 2 && n <= Math.max(2, Math.min(20, cleared));
+    }
+
+    _renderCampaignBranchTree() {
+        return `29
+├─ 30-90
+└─ 1/2-1/20`;
+    }
+
     setCampaignLevelBestRecord(levelId, length) {
         try {
             localStorage.setItem(`function_chess_campaign_best_${levelId}`, String(length));
@@ -4322,11 +4398,12 @@ class UIController {
 
     async goToNextCampaignLevel() {
         if (!this.campaignPack) return;
-        const current = Number(this.campaignCurrentLevelId || this.campaignVictoryModal?.dataset.levelId || 1);
-        const nextId = current + 1;
+        const current = this.campaignCurrentLevelId || this.campaignVictoryModal?.dataset.levelId || 1;
+        const currentLevel = this.campaignPack.levels.find(level => String(level.id) === String(current));
+        const nextId = currentLevel?.nextId ?? (Number.isFinite(Number(current)) ? Number(current) + 1 : current);
         const total = this.campaignPack && Array.isArray(this.campaignPack.levels) ? this.campaignPack.levels.length : 0;
         this.hideCampaignVictory();
-        if (nextId > total) {
+        if (!this.campaignPack.levels.some(level => String(level.id) === String(nextId))) {
             this.showMessage('✅ 已经是最后一关', 'success');
             this.openCampaignUI();
             return;
@@ -5007,6 +5084,8 @@ class UIController {
         const badge = document.getElementById('campaign-level-badge');
         if (badge) badge.style.display = 'none';
         this.campaignDifficulty = null;
+        this.refreshDifficultyUnlockState();
+        this.refreshUnsovableDifficultyVisibility();
         this.updateCampaignGlobalProgressText();
     }
 
@@ -5088,10 +5167,21 @@ class UIController {
     calculateLRSigma(cleared) {
         if (!cleared || cleared <= 0) return 0;
         let sum = 0;
+        const fractionMax = this.getCampaignFractionUnlockedMax();
+
         for (let i = 1; i <= cleared; i++) {
             const best = this.getCampaignLevelBestRecord(i);
             if (best !== null && best > 0) {
                 sum += 100 / (10 + best);
+            }
+        }
+
+        if (cleared >= 29) {
+            for (let n = 2; n <= fractionMax; n++) {
+                const best = this.getCampaignLevelBestRecord(`1/${n}`);
+                if (best !== null && best > 0) {
+                    sum += 100 / (10 + best);
+                }
             }
         }
         return sum;
@@ -5148,10 +5238,15 @@ class UIController {
             if (!secondConfirm) return;
 
             localStorage.removeItem('function_chess_campaign_cleared');
+            localStorage.removeItem('function_chess_campaign_fraction_cleared');
             localStorage.removeItem('function_chess_campaign_stars');
             for (let i = 1; i <= 90; i++) {
                 localStorage.removeItem(`function_chess_campaign_best_${i}`);
                 localStorage.removeItem(`function_chess_campaign_best_stars_${i}`);
+            }
+            for (let i = 2; i <= 20; i++) {
+                localStorage.removeItem(`function_chess_campaign_best_1/${i}`);
+                localStorage.removeItem(`function_chess_campaign_best_stars_1/${i}`);
             }
             this.campaignCurrentLevelBestRecord = null;
             this.showMessage('✅ 闯关进度已重置', 'success');
@@ -5163,6 +5258,7 @@ class UIController {
     }
 
     getDifficultyRange(diff) {
+        if (diff === 'fraction') return { start: '1/2', end: '1/20', cls: 'fraction', label: '分数（1/2-1/20）' };
         if (diff === 'easy') return { start: 1, end: 29, cls: 'easy', label: '简单（1-29）' };
         if (diff === 'normal') return { start: 30, end: 53, cls: 'normal', label: '普通（30-53）' };
         if (diff === 'hard') return { start: 54, end: 69, cls: 'hard', label: '困难（54-69）' };
@@ -5180,11 +5276,25 @@ class UIController {
     refreshUnsovableDifficultyVisibility() {
         const grid = document.getElementById('campaign-difficulty-grid');
         const btn = document.getElementById('campaign-diff-unsolvable');
+        const fractionBtn = document.getElementById('campaign-diff-fraction');
         if (!grid || !btn) return;
         const cleared = this.getCampaignClearedMax();
-        const shouldShow = cleared >= 81;
-        btn.style.display = shouldShow ? '' : 'none';
-        grid.style.gridTemplateColumns = shouldShow ? 'repeat(5, minmax(0, 1fr))' : 'repeat(4, minmax(0, 1fr))';
+        const shouldShowUnsolvable = cleared >= 81;
+        const shouldShowFraction = cleared >= 29;
+        btn.style.display = shouldShowUnsolvable ? '' : 'none';
+        if (fractionBtn) {
+            fractionBtn.style.display = shouldShowFraction ? '' : 'none';
+            fractionBtn.style.background = 'linear-gradient(135deg, rgba(20,184,166,0.95), rgba(45,212,191,0.85))';
+            fractionBtn.style.color = '#ffffff';
+            fractionBtn.style.border = '1px solid rgba(45,212,191,0.95)';
+            fractionBtn.style.boxShadow = '0 0 16px rgba(20,184,166,0.45)';
+            fractionBtn.style.textShadow = '0 1px 2px rgba(0,0,0,0.35)';
+        }
+        grid.style.gridTemplateColumns = shouldShowUnsolvable ? 'repeat(6, minmax(0, 1fr))' : shouldShowFraction ? 'repeat(5, minmax(0, 1fr))' : 'repeat(4, minmax(0, 1fr))';
+    }
+
+    refreshDifficultyUnlockState() {
+        void this.refreshCampaignStartUI();
     }
 
     updateCampaignLevelBadge(levelId = null, totalLevels = null, difficulty = null) {
@@ -5199,24 +5309,28 @@ class UIController {
         }
 
         const range = this.getDifficultyRange(diff);
-        const currentLevelId = Number(levelId ?? this.campaignCurrentLevelId ?? range.start);
+        const currentLevelId = levelId ?? this.campaignCurrentLevelId ?? range.start;
         const bestRecord = this.getCampaignLevelBestRecord(currentLevelId);
 
         // 根据关卡号确定颜色，而不是根据 difficulty
         let color, bgColor, borderColor;
-        if (currentLevelId >= 82) { // 无解（82-90）
+        if (String(currentLevelId).startsWith('1/')) { // 分数（1/2-1/20）
+            color = '#14b8a6';
+            bgColor = 'rgba(20, 184, 166, 0.15)';
+            borderColor = 'rgba(20, 184, 166, 0.45)';
+        } else if (Number(currentLevelId) >= 82) { // 无解（82-90）
             color = '#ef4444';
             bgColor = 'rgba(239, 68, 68, 0.15)';
             borderColor = 'rgba(239, 68, 68, 0.5)';
-        } else if (currentLevelId >= 70) { // 专家（70-81）
+        } else if (Number(currentLevelId) >= 70) { // 专家（70-81）
             color = '#b87a4e';
             bgColor = 'rgba(249, 115, 22, 0.10)';
             borderColor = 'rgba(249, 115, 22, 0.3)';
-        } else if (currentLevelId >= 54) { // 困难（54-69）
+        } else if (Number(currentLevelId) >= 54) { // 困难（54-69）
             color = '#b8944a';
             bgColor = 'rgba(234, 179, 8, 0.10)';
             borderColor = 'rgba(234, 179, 8, 0.3)';
-        } else if (currentLevelId >= 30) { // 普通（30-53）
+        } else if (Number(currentLevelId) >= 30) { // 普通（30-53）
             color = '#7a9e3a';
             bgColor = 'rgba(132, 204, 22, 0.10)';
             borderColor = 'rgba(132, 204, 22, 0.3)';
@@ -5247,9 +5361,49 @@ class UIController {
         const cleared = this.getCampaignClearedMax();
         const total = this.campaignPack && Array.isArray(this.campaignPack.levels) ? this.campaignPack.levels.length : 0;
         const unlockedMax = Math.min(total, cleared + 1);
-        this.campaignLevelProgress.textContent = `已通关 ${cleared}/${total}，当前可进入 ≤ ${unlockedMax}`;
+        this.campaignLevelProgress.textContent = range.cls === 'fraction'
+            ? `已通关 ${cleared}/${total}，当前可进入 1/2-1/20`
+            : `已通关 ${cleared}/${total}，当前可进入 ≤ ${unlockedMax}`;
 
         this.campaignLevelGrid.innerHTML = '';
+        if (range.cls === 'fraction') {
+            const unlockedMax = this.getCampaignFractionUnlockedMax();
+            this.campaignLevelProgress.textContent = `已通关 ${cleared}/${total}，当前可进入 1/2-${Math.min(20, unlockedMax) === 20 ? '1/20' : `1/${Math.min(20, unlockedMax)}`}`;
+            for (let n = 2; n <= 20; n++) {
+                const id = `1/${n}`;
+                const cell = document.createElement('div');
+                cell.className = `campaign-level-cell ${range.cls}`;
+                const locked = n > unlockedMax;
+                if (locked) cell.classList.add('locked');
+                if (!locked && n < unlockedMax) cell.classList.add('cleared');
+                const stars = this.getCampaignLevelBestStars(id);
+                const hasStars = stars > 0;
+                const starsContainer = document.createElement('div');
+                starsContainer.className = 'campaign-cell-stars';
+                for (let i = 1; i <= 5; i++) {
+                    const star = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                    star.setAttribute('viewBox', '0 0 120 120');
+                    star.setAttribute('aria-hidden', 'true');
+                    star.classList.add('star');
+                    if (hasStars && i <= stars) star.classList.add('filled');
+                    star.innerHTML = '<path d="M60 14c3.1 0 5.6 1.6 6.9 4.3l11.3 22.9 25.3 3.7c3 .5 5.5 2.5 6.5 5.4 1 2.9.3 6-1.9 8.2L90 74.5l4.5 25.1c.5 3.1-.7 6.2-3.1 8-2.5 1.8-5.8 2.1-8.5.7L60 96.1 37.1 108.3c-2.7 1.4-6 .1-8.5-.7-2.4-1.8-3.6-4.9-3.1-8L30 74.5 12.9 54.5c-2.2-2.2-2.9-5.3-1.9-8.2 1-2.9 3.5-4.9 6.5-5.4l25.3-3.7L54.1 18.3C55.4 15.6 57.9 14 61 14Z"/>';
+                    starsContainer.appendChild(star);
+                }
+                cell.appendChild(starsContainer);
+                const numberSpan = document.createElement('span');
+                numberSpan.className = 'campaign-cell-number';
+                numberSpan.textContent = id;
+                cell.appendChild(numberSpan);
+                cell.addEventListener('click', async () => {
+                    if (locked) return;
+                    if (window.audioManager) window.audioManager.playClick();
+                    if (this.campaignModal) this.hideModal(this.campaignModal);
+                    this.startCampaign(id).catch(err => console.error('[Campaign] startCampaign failed:', err));
+                });
+                this.campaignLevelGrid.appendChild(cell);
+            }
+            return;
+        }
         for (let id = range.start; id <= range.end; id++) {
             const cell = document.createElement('div');
             cell.className = `campaign-level-cell ${range.cls}`;

@@ -239,19 +239,20 @@ class GameController {
      */
     loadCampaignLevel(levelId) {
         if (!this.campaignState.active || !this.campaignState.levelPack) return false;
-        const id = Number(levelId);
-        const level = this.campaignState.levelPack.levels.find(l => Number(l.id) === id);
+        const id = levelId;
+        const level = this.campaignState.levelPack.levels.find(l => String(l.id) === String(id));
         if (!level) return false;
 
         this.campaignState.currentLevelId = id;
         this.currentRound = id;
         this.totalRounds = this.campaignState.totalLevels;
 
-        // 难度按编号区间映射
-        if (id >= 1 && id <= 29) this.difficulty = 'easy';
-        else if (id >= 30 && id <= 53) this.difficulty = 'normal';
-        else if (id >= 54 && id <= 69) this.difficulty = 'hard';
-        else if (id >= 70 && id <= 81) this.difficulty = 'expert';
+        // 闯关难度由关卡本身标记决定；旧数字关卡沿用原区间映射
+        if (level.difficulty === 'fraction') this.difficulty = 'fraction';
+        else if (Number(id) >= 1 && Number(id) <= 29) this.difficulty = 'easy';
+        else if (Number(id) >= 30 && Number(id) <= 53) this.difficulty = 'normal';
+        else if (Number(id) >= 54 && Number(id) <= 69) this.difficulty = 'hard';
+        else if (Number(id) >= 70 && Number(id) <= 81) this.difficulty = 'expert';
         else this.difficulty = 'expert';
 
         // 闯关：目标格数量按关卡数据
@@ -663,7 +664,9 @@ class GameController {
 
     advanceCampaignLevel() {
         if (!this.campaignState.active) return false;
-        const nextId = this.campaignState.currentLevelId + 1;
+        const currentId = this.campaignState.currentLevelId;
+        const currentLevel = this.campaignState.levelPack?.levels?.find(l => String(l.id) === String(currentId));
+        const nextId = currentLevel?.nextId ?? (Number.isFinite(Number(currentId)) ? Number(currentId) + 1 : currentId);
         return this.loadCampaignLevel(nextId);
     }
     
