@@ -1076,6 +1076,16 @@ if (typeof UIController === 'undefined') {
     }
 ;
 
+// _p2pSyncNow
+    // 绕过节流立即同步一次：用于棋盘点选/锁定等低频但要求"每点击一次同步一次"的操作
+    UIController.prototype._p2pSyncNow = function() {
+        if (this._applyingRemote) return;
+        if (!this.isP2PMode || !this.p2pController || !this.p2pController.isConnected) return;
+        this._lastSyncTime = 0;
+        this._syncToPeer();
+    }
+;
+
 // buildSyncSnapshot
     UIController.prototype.buildSyncSnapshot = function() {
         return {

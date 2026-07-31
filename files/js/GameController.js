@@ -1050,6 +1050,8 @@ class GameController {
             
             // 更新兼容字段
             this.roundState.targetCell = this.roundState.targetCells[0] || null;
+            // P2P：每次点选/取消都递增版本号，确保对手立即应用本次变更（而非被同版本快照过滤掉）
+            this.bumpStateVersion();
             this._maybeSync();
             return true;
         }
@@ -1065,6 +1067,8 @@ class GameController {
         this.roundState.targetCells.push(cell);
         this.roundState.targetCell = this.roundState.targetCells[0]; // 兼容旧代码
         this.emit('targetSelected', { cell, count: this.roundState.targetCells.length, total: this.targetCount });
+        // P2P：每次点选/取消都递增版本号，确保对手立即应用本次变更
+        this.bumpStateVersion();
         this._maybeSync();
         return true;
     }
@@ -1110,6 +1114,8 @@ class GameController {
             // 点击已存在的禁止区，取消选择
             const removedCell = this.roundState.forbiddenCells.splice(existsIndex, 1)[0];
             this.emit('forbiddenRemoved', { cell: removedCell, count: this.roundState.forbiddenCells.length });
+            // P2P：每次点选/取消都递增版本号，确保对手立即应用本次变更
+            this.bumpStateVersion();
             this._maybeSync();
             return true;
         }
@@ -1126,6 +1132,8 @@ class GameController {
         // 添加新的禁止区
         this.roundState.forbiddenCells.push(cell);
         this.emit('forbiddenAdded', { cell, count: this.roundState.forbiddenCells.length });
+        // P2P：每次点选/取消都递增版本号，确保对手立即应用本次变更
+        this.bumpStateVersion();
         this._maybeSync();
         
         return true;
@@ -1172,6 +1180,8 @@ class GameController {
         
         this.roundState.lockedElements.push(element);
         this.emit('elementLocked', { element, count: this.roundState.lockedElements.length });
+        // P2P：每次锁定都递增版本号，确保对手立即应用本次变更
+        this.bumpStateVersion();
         this._maybeSync();
         
         // 不再自动进入下一阶段，需要点击确认按钮
@@ -1740,9 +1750,11 @@ class GameController {
                     const remoteRound = payload?.currentRound ?? this.currentRound;
                     // 已处理过（状态快照可能先到），忽略
                     if (remoteRound < this.currentRound) return true;
-                    // 本地落后，请求一次完整状态重同步
+                    // 本地落后：以操作方（当前玩家方）为基准，请求对手发送完整快照
                     if (remoteRound > this.currentRound) {
-                        this._maybeSync();
+                        if (this.p2pActionSender && typeof this.p2pActionSender.sendSyncRequest === 'function') {
+                            this.p2pActionSender.sendSyncRequest();
+                        }
                         return true;
                     }
                     if (this.currentPhase !== this.phases.EVALUATE) return true;

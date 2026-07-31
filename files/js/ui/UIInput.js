@@ -437,6 +437,10 @@ if (typeof UIController === 'undefined') {
             const index = alreadyLocked.indexOf(element);
             if (index > -1) {
                 alreadyLocked.splice(index, 1);
+                // 解锁分支不经 GameController，需手动递增版本号，确保对手能应用本次同步
+                if (this.gameController && typeof this.gameController.bumpStateVersion === 'function') {
+                    this.gameController.bumpStateVersion();
+                }
             }
             btn.classList.remove('selected');
             btn.style.background = '';
@@ -461,8 +465,9 @@ if (typeof UIController === 'undefined') {
         // 更新标签
         this.initLockElementsView();
 
-        // 锁定状态变化后同步给对手（解锁分支不经 GameController，需手动同步）
-        this._syncToPeer();
+        // 锁定状态变化后同步给对手（解锁分支不经 GameController，需手动同步）；
+        // 绕过节流，保证每次点击锁定/解锁都立即同步
+        this._p2pSyncNow();
     }
 ;
 

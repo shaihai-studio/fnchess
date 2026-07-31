@@ -196,6 +196,8 @@ if (typeof UIController === 'undefined') {
         } else if (phase === 'set_forbidden') {
             this.gameController.addForbiddenCell(cell);
         }
+        // P2P：每次点选/取消都立即同步，让对手实时看到当前选择（绕过节流）
+        this._p2pSyncNow();
     }
 ;
 
