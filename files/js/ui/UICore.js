@@ -38,6 +38,16 @@ if (typeof UIController === 'undefined') {
         // 「提交失败后保留解析式」开关
         this.keepExprToggle = document.getElementById('keep-expr-toggle');
         
+        // 「反三角函数」开关（开始界面，需通关全部分数关解锁）
+        this.inverseTrigToggle = document.getElementById('inverse-trig-toggle');
+        this.inverseTrigToggleWrap = document.getElementById('inverse-trig-toggle-wrap');
+        if (this.inverseTrigToggle) {
+            this.inverseTrigToggle.addEventListener('change', () => {
+                this.setInverseTrigEnabled(this.inverseTrigToggle.checked);
+            });
+        }
+        this.refreshInverseTrigToggle();
+        
         // 退出气泡框元素
         this.exitPopover = document.getElementById('exit-confirm-popover');
         this.cancelExitBtn = document.getElementById('cancel-exit-btn');
@@ -408,6 +418,9 @@ if (typeof UIController === 'undefined') {
             } else if (window.summaCharacter) {
                 window.summaCharacter.show('local'); // Hides summa
             }
+
+            // 按当前难度重渲染元素面板（简单难度/分数关隐藏反三角函数）
+            this.initDraggableElements();
         });
         
         this.gameController.on('phaseChange', (data) => {
@@ -628,14 +641,11 @@ if (typeof UIController === 'undefined') {
                         this.setCampaignLevelBestStars(levelId, gainedStars);
                     }
                     this.setCampaignLevelBestRecord(levelId, length);
-                    // 分数关：更新独立进度
+                    // 分数关：更新独立进度（首次全通时弹出解锁提示）
                     if (isFraction) {
                         const denom = parseInt(String(rawLevelId).split('/')[1]) || 2;
-                        if (typeof this.setCampaignFractionClearedMax === 'function') {
-                            this.setCampaignFractionClearedMax(Math.max(
-                                (typeof this.getCampaignFractionClearedMax === 'function' ? this.getCampaignFractionClearedMax() : denom - 1),
-                                denom
-                            ));
+                        if (typeof this._updateFractionClearedAndNotify === 'function') {
+                            this._updateFractionClearedAndNotify(denom);
                         }
                     }
                     setTimeout(() => {
@@ -645,14 +655,11 @@ if (typeof UIController === 'undefined') {
                         }
                     }, 0);
                 } else if (data.pass && typeof previousBest === 'number' && previousBest > 0) {
-                    // 非新记录但通关了：也更新分数关进度
+                    // 非新记录但通关了：也更新分数关进度（首次全通时弹出解锁提示）
                     if (isFraction) {
                         const denom = parseInt(String(rawLevelId).split('/')[1]) || 2;
-                        if (typeof this.setCampaignFractionClearedMax === 'function') {
-                            this.setCampaignFractionClearedMax(Math.max(
-                                (typeof this.getCampaignFractionClearedMax === 'function' ? this.getCampaignFractionClearedMax() : denom - 1),
-                                denom
-                            ));
+                        if (typeof this._updateFractionClearedAndNotify === 'function') {
+                            this._updateFractionClearedAndNotify(denom);
                         }
                     }
                 }

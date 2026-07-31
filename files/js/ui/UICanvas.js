@@ -53,6 +53,12 @@ if (typeof UIController === 'undefined') {
             return;
         }
         for (const item of catElements) {
+            // 反三角函数：简单难度/分数关或开关关闭时直接不显示
+            const isInverseTrig = Array.isArray(this.inverseTrigElements) && this.inverseTrigElements.includes(item.value);
+            if (isInverseTrig && this.shouldHideInverseTrigElement()) {
+                continue;
+            }
+
             const btn = document.createElement('button');
             btn.className = 'element-btn';
             const displayValue = catKey === 'functions' && funcDisplayNames[item.value]
@@ -60,6 +66,16 @@ if (typeof UIController === 'undefined') {
                 : this.getDisplaySymbol(item.value);
             btn.textContent = displayValue;
             btn.dataset.value = item.value;
+
+            // 反三角函数未解锁：锁定样式但保持可点击，点击弹出解锁提示
+            if (isInverseTrig && !this.isInverseTrigUnlocked()) {
+                btn.classList.add('locked', 'inverse-trig-locked');
+                btn.innerHTML = `${displayValue} <span class="lock-icon">🔒</span>`;
+                btn.title = '需通关全部分数关解锁';
+                btn.addEventListener('click', () => this.showInverseTrigLockedDialog());
+                this.inlineElementsBody.appendChild(btn);
+                continue;
+            }
 
             const isLockedThisRound = roundLockedElements.includes(item.value);
             const isLockedPreviously = item.locked;

@@ -181,6 +181,12 @@
                                 <button type="button" class="stepper-arrow" id="time-limit-next" aria-label="增加时间限制">→</button>
                             </div>
                         </div>
+
+                        <!-- 反三角函数开关（解锁后可用，默认开启） -->
+                        <label class="inverse-trig-toggle" id="inverse-trig-toggle-wrap" title="需通关全部分数关（1/2~1/20）后解锁">
+                            <input type="checkbox" id="inverse-trig-toggle">
+                            <span>对战使用反三角函数（arcsin / arccos / arctan）</span>
+                        </label>
                     </div>
                 </div>
 
@@ -353,6 +359,15 @@
                 <div class="bgm-hint">BGM 会在每首结束后随机切换到下一首</div>
             </div>
             <button class="btn btn-primary" id="bgm-close-btn" style="width:100%;">关闭</button>
+        </div>
+    </div>
+
+    <!-- 反三角函数提示弹窗（未解锁提示 / 解锁通知共用） -->
+    <div class="modal" id="inverse-trig-modal" style="display:none;">
+        <div class="modal-content inverse-trig-modal-content">
+            <h2 id="inverse-trig-modal-title">提示</h2>
+            <div class="inverse-trig-modal-body" id="inverse-trig-modal-body"></div>
+            <button class="btn btn-primary" id="inverse-trig-modal-close" style="width:100%;">知道了</button>
         </div>
     </div>
 

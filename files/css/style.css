@@ -4278,3 +4278,56 @@ body.device-mobile {
         word-break: keep-all;
     }
 }
+
+/* ============================================
+   反三角函数解锁机制
+   ============================================ */
+/* 开始界面「反三角函数」开关 */
+.inverse-trig-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #94a3b8;
+    font-size: 13px;
+    cursor: pointer;
+    user-select: none;
+    padding: 6px 2px;
+    flex-shrink: 0;
+}
+.inverse-trig-toggle input {
+    width: 16px;
+    height: 16px;
+    accent-color: #3b82f6;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+.inverse-trig-toggle.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+.inverse-trig-toggle.disabled input {
+    cursor: not-allowed;
+}
+
+/* 反三角函数未解锁按钮：保持锁定外观但可点击（弹出解锁提示） */
+.element-btn.inverse-trig-locked {
+    cursor: pointer;
+}
+.element-btn.inverse-trig-locked:hover {
+    background: rgba(107, 114, 128, 0.35);
+    border-color: rgba(107, 114, 128, 0.55);
+    transform: none;
+    box-shadow: none;
+}
+
+/* 反三角函数提示弹窗 */
+#inverse-trig-modal .modal-content {
+    max-width: 460px;
+}
+.inverse-trig-modal-body {
+    color: #94a3b8;
+    line-height: 1.8;
+    font-size: 15px;
+    margin-bottom: 22px;
+    text-align: left;
+}

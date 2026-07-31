@@ -715,3 +715,116 @@ if (typeof UIController === 'undefined') {
     }
 ;
 
+// ─── 反三角函数解锁机制 ─────────────────────────────────────────
+
+// 反三角函数元素集合（解锁后可在普通及以上难度/对战中使用）
+    UIController.prototype.inverseTrigElements = ['arcsin', 'arccos', 'arctan'];
+
+// isInverseTrigUnlocked — 是否解锁：分数关全部通关（1/2~1/20，即 fracCleared >= 20）
+    UIController.prototype.isInverseTrigUnlocked = function() {
+        return (typeof this.getCampaignFractionClearedMax === 'function')
+            && this.getCampaignFractionClearedMax() >= 20;
+    }
+
+// getInverseTrigEnabled — 显式开关（解锁后默认开启，可手动关闭）
+    UIController.prototype.getInverseTrigEnabled = function() {
+        try {
+            const raw = localStorage.getItem('function_chess_inverse_trig_enabled');
+            if (raw === null) return true;
+            return raw !== '0' && raw !== 'false';
+        } catch (e) {
+            return true;
+        }
+    }
+
+// setInverseTrigEnabled — 写入显式开关
+    UIController.prototype.setInverseTrigEnabled = function(v) {
+        try {
+            localStorage.setItem('function_chess_inverse_trig_enabled', v ? '1' : '0');
+        } catch (e) { }
+    }
+
+// isInverseTrigHideContext — 简单难度 或 分数关模式：不显示这三个按钮
+    UIController.prototype.isInverseTrigHideContext = function() {
+        const gc = this.gameController;
+        if (!gc) return true;
+        if (gc.difficulty === 'fraction') return true;
+        if (typeof gc.isEasyMode === 'function' && gc.isEasyMode()) return true;
+        return false;
+    }
+
+// shouldHideInverseTrigElement — 输入面板是否隐藏反三角按钮
+// 简单/分数关 → 隐藏；未解锁 → 显示锁定态；已解锁 → 仅开关开启时显示
+    UIController.prototype.shouldHideInverseTrigElement = function() {
+        if (this.isInverseTrigHideContext()) return true;
+        if (!this.isInverseTrigUnlocked()) return false;
+        return !this.getInverseTrigEnabled();
+    }
+
+// _shouldSkipInverseTrigInLockView — 锁定阶段（set_locks）是否跳过反三角
+// 简单/分数关、未解锁、开关关闭均跳过（未解锁元素不可被锁定）
+    UIController.prototype._shouldSkipInverseTrigInLockView = function() {
+        if (this.isInverseTrigHideContext()) return true;
+        if (!this.isInverseTrigUnlocked()) return true;
+        return !this.getInverseTrigEnabled();
+    }
+
+// showInverseTrigModal — 反三角函数提示弹窗（未解锁提示 / 解锁通知共用）
+    UIController.prototype.showInverseTrigModal = function(title, html) {
+        const modal = document.getElementById('inverse-trig-modal');
+        if (!modal) return;
+        const titleEl = document.getElementById('inverse-trig-modal-title');
+        const bodyEl = document.getElementById('inverse-trig-modal-body');
+        if (titleEl) titleEl.textContent = title;
+        if (bodyEl) bodyEl.innerHTML = html;
+        this.showModal(modal);
+    }
+
+// showInverseTrigLockedDialog — 点击未解锁反三角按钮时的提示弹窗
+    UIController.prototype.showInverseTrigLockedDialog = function() {
+        if (window.audioManager) window.audioManager.playError();
+        const fracCleared = (typeof this.getCampaignFractionClearedMax === 'function')
+            ? this.getCampaignFractionClearedMax() : 0;
+        const progress = Math.min(100, Math.round((fracCleared / 20) * 100));
+        this.showInverseTrigModal(
+            '反三角函数未解锁',
+            'arcsin / arccos / arctan 需要通关<b>全部分数关</b>（1/2 ~ 1/20）后解锁。<br><br>'
+            + `当前分数关进度：${fracCleared} / 19（${progress}%）`
+        );
+    }
+
+// showInverseTrigUnlockModal — 首次通关全部分数关时的解锁提示页面
+    UIController.prototype.showInverseTrigUnlockModal = function() {
+        this.showInverseTrigModal(
+            '🎉 反三角函数已解锁',
+            '恭喜你通关了全部分数关！<br><br>'
+            + 'arcsin / arccos / arctan 现已在<b>普通及以上难度</b>与<b>对战模式</b>中解锁。<br>'
+            + '可前往开始界面选择是否在面板中使用。'
+        );
+    }
+
+// _updateFractionClearedAndNotify — 更新分数关进度，并在首次全通时弹出解锁提示
+    UIController.prototype._updateFractionClearedAndNotify = function(denom) {
+        const before = (typeof this.getCampaignFractionClearedMax === 'function')
+            ? this.getCampaignFractionClearedMax() : 0;
+        this.setCampaignFractionClearedMax(Math.max(before, Number(denom) || 2));
+        const after = (typeof this.getCampaignFractionClearedMax === 'function')
+            ? this.getCampaignFractionClearedMax() : before;
+        if (after >= 20 && before < 20) {
+            setTimeout(() => this.showInverseTrigUnlockModal(), 300);
+        }
+    }
+
+// refreshInverseTrigToggle — 同步开始界面「反三角函数」开关状态与可用性
+    UIController.prototype.refreshInverseTrigToggle = function() {
+        const toggle = this.inverseTrigToggle;
+        if (!toggle) return;
+        const unlocked = this.isInverseTrigUnlocked();
+        toggle.checked = unlocked && this.getInverseTrigEnabled();
+        toggle.disabled = !unlocked;
+        if (this.inverseTrigToggleWrap) {
+            this.inverseTrigToggleWrap.classList.toggle('disabled', !unlocked);
+        }
+    }
+;
+

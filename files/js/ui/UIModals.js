@@ -7,17 +7,24 @@ if (typeof UIController === 'undefined') {
 // _getModalState
     UIController.prototype._getModalState = function(el) {
         return this._modalStates.get(el) || 'hidden';
-    };
+    }
+;
 
 // _setModalState
     UIController.prototype._setModalState = function(el, state) {
         this._modalStates.set(el, state);
-    };
+    }
+;
 
 // showModal
     UIController.prototype.showModal = function(modal, display = 'flex') {
         const el = typeof modal === 'string' ? document.getElementById(modal) : modal;
         if (!el) return;
+
+        // 打开开始界面时刷新「反三角函数」开关状态（解锁进度可能已变化）
+        if (el === this.startModal && typeof this.refreshInverseTrigToggle === 'function') {
+            this.refreshInverseTrigToggle();
+        }
 
         const state = this._getModalState(el);
         // 已在显示或正在入场 → 忽略
@@ -55,7 +62,8 @@ if (typeof UIController === 'undefined') {
             this._setModalState(el, 'visible');
         };
         el.addEventListener('animationend', onEnterEnd);
-    };
+    }
+;
 
 // hideModal
     UIController.prototype.hideModal = function(modal, callback) {
@@ -116,7 +124,8 @@ if (typeof UIController === 'undefined') {
                 doCallback();
             }
         }, 400);
-    };
+    }
+;
 
 // hideStartModal
     UIController.prototype.hideStartModal = function() {
@@ -124,7 +133,8 @@ if (typeof UIController === 'undefined') {
         if (startModal) {
             this.hideModal(startModal);
         }
-    };
+    }
+;
 
 // showSplash
     UIController.prototype.showSplash = function() {
@@ -134,7 +144,8 @@ if (typeof UIController === 'undefined') {
         splash.style.display = '';
         splash._entering = false;
         this._bindSplashEnter(splash);
-    };
+    }
+;
 
 // _bindSplashEnter
     UIController.prototype._bindSplashEnter = function(splash) {
@@ -151,14 +162,16 @@ if (typeof UIController === 'undefined') {
         };
         splash.addEventListener('click', onEnter);
         document.addEventListener('keydown', splash._splashKeyHandler);
-    };
+    }
+;
 
 // _unbindSplashEnter
     UIController.prototype._unbindSplashEnter = function(splash) {
         if (splash._splashClickHandler) splash.removeEventListener('click', splash._splashClickHandler);
         if (splash._splashKeyHandler) document.removeEventListener('keydown', splash._splashKeyHandler);
         splash._splashEnterBound = false;
-    };
+    }
+;
 
 // _enterFromSplash
     UIController.prototype._enterFromSplash = function(splash) {
@@ -172,7 +185,8 @@ if (typeof UIController === 'undefined') {
             this.showModal(document.getElementById('start-modal'));
             if (window.audioManager) window.audioManager.startBgm();
         }, 900);
-    };
+    }
+;
 
 // bindSummaDialogEvents
     UIController.prototype.bindSummaDialogEvents = function() {
@@ -199,7 +213,8 @@ if (typeof UIController === 'undefined') {
                 this.hideSummaDialog();
             }
         });
-    };
+    }
+;
 
 // showGameDialog
     UIController.prototype.showGameDialog = function(options) {
@@ -288,14 +303,16 @@ if (typeof UIController === 'undefined') {
             // 显示弹窗
             this.showModal(this.summaDialog);
         });
-    };
+    }
+;
 
 // hideSummaDialog
     UIController.prototype.hideSummaDialog = function() {
         this.hideModal(this.summaDialog, () => {
             this.summaDialogResolve = null;
         });
-    };
+    }
+;
 
 // bindBackgroundMusicControls
     UIController.prototype.bindBackgroundMusicControls = function() {
@@ -334,7 +351,8 @@ if (typeof UIController === 'undefined') {
                 if (this.bgmModal) this.hideModal(this.bgmModal);
             });
         }
-    };
+    }
+;
 
 // initBackgroundMusic
     UIController.prototype.initBackgroundMusic = function() {
@@ -353,7 +371,8 @@ if (typeof UIController === 'undefined') {
             this.sfxVolumeValue.textContent = `${this.sfxVolumeSlider.value}%`;
         }
         window.audioManager.startBgm();
-    };
+    }
+;
 
 // showExitConfirm
     UIController.prototype.showExitConfirm = function() {
@@ -375,14 +394,16 @@ if (typeof UIController === 'undefined') {
             };
             document.addEventListener('mousedown', this._exitDocHandler);
         }
-    };
+    }
+;
 
 // hideExitConfirm
     UIController.prototype.hideExitConfirm = function() {
         if (this.exitPopover) {
             this.exitPopover.classList.remove('visible');
         }
-    };
+    }
+;
 
 // bindModalDismiss
     UIController.prototype.bindModalDismiss = function(modal, onDismiss, onEsc) {
@@ -399,7 +420,8 @@ if (typeof UIController === 'undefined') {
                 }
             }
         });
-    };
+    }
+;
 
 // _modalStackTopVisible
     UIController.prototype._modalStackTopVisible = function() {
@@ -409,13 +431,25 @@ if (typeof UIController === 'undefined') {
             if (m && m.style.display !== 'none') return m;
         }
         return null;
-    };
+    }
+;
 
 // _bindModalDismissals
     UIController.prototype._bindModalDismissals = function() {
         this.bindModalDismiss(this.bgmModal);
         this.bindModalDismiss(this.reportModal);
         this.bindModalDismiss(this.summaDialog);
+
+        // 反三角函数提示弹窗：点遮罩/ESC 关闭
+        this.inverseTrigModal = document.getElementById('inverse-trig-modal');
+        if (this.inverseTrigModal) {
+            this.bindModalDismiss(this.inverseTrigModal, () => this.hideModal(this.inverseTrigModal));
+            const closeBtn = document.getElementById('inverse-trig-modal-close');
+            if (closeBtn) closeBtn.addEventListener('click', () => {
+                if (window.audioManager) window.audioManager.playClick();
+                this.hideModal(this.inverseTrigModal);
+            });
+        }
 
         const p2pRoom = document.getElementById('p2p-room-modal');
         if (p2pRoom) {
@@ -430,7 +464,8 @@ if (typeof UIController === 'undefined') {
         this.bindModalDismiss(this.campaignVictoryModal, () => this.goToNextCampaignLevel(), () => this.returnToCampaignLevelSelect());
         // #20 用户选定：竞速通关弹窗 ESC=回选关页，点遮罩=直接进下一关
         this.bindModalDismiss(this.raceVictoryModal, () => this.goToNextRaceLevel(), () => this.backToRaceLevelListFromVictory());
-    };
+    }
+;
 
 // showGameOver
     UIController.prototype.showGameOver = function(data) {
@@ -448,7 +483,8 @@ if (typeof UIController === 'undefined') {
         `;
         
         this.showModal(this.gameOverModal);
-    };
+    }
+;
 
 // showGameReport
     UIController.prototype.showGameReport = function() {
@@ -525,11 +561,13 @@ if (typeof UIController === 'undefined') {
         this.reportContentElement.style.overflowY = 'auto';
         this.reportContentElement.style.maxHeight = 'calc(90vh - 100px)';
         this.showModal(this.reportModal);
-    };
+    }
+;
 
 // hideGameReport
     UIController.prototype.hideGameReport = function() {
         if (window.audioManager) window.audioManager.playClick();
         this.hideModal(this.reportModal);
-    };
+    }
+;
 

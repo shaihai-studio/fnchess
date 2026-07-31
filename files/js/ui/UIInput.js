@@ -263,6 +263,12 @@ if (typeof UIController === 'undefined') {
             itemsDiv.className = 'element-items';
             
             for (const item of elements[cat.key]) {
+                // 反三角函数：简单难度/分数关或开关关闭时直接不显示
+                const isInverseTrig = Array.isArray(this.inverseTrigElements) && this.inverseTrigElements.includes(item.value);
+                if (isInverseTrig && this.shouldHideInverseTrigElement()) {
+                    continue;
+                }
+
                 const btn = document.createElement('button');
                 btn.className = 'element-btn';
                 // 使用数学符号显示，函数使用显示名称映射
@@ -271,6 +277,16 @@ if (typeof UIController === 'undefined') {
                     : this.getDisplaySymbol(item.value);
                 btn.textContent = displayValue;
                 btn.dataset.value = item.value;
+
+                // 反三角函数未解锁：锁定样式但保持可点击，点击弹出解锁提示
+                if (isInverseTrig && !this.isInverseTrigUnlocked()) {
+                    btn.classList.add('locked', 'inverse-trig-locked');
+                    btn.innerHTML = `${displayValue} <span class="lock-icon">🔒</span>`;
+                    btn.title = '需通关全部分数关解锁';
+                    btn.addEventListener('click', () => this.showInverseTrigLockedDialog());
+                    itemsDiv.appendChild(btn);
+                    continue;
+                }
                 
                 // 检查是否被本回合锁定
                 const isLockedThisRound = roundLockedElements.includes(item.value);
@@ -347,11 +363,15 @@ if (typeof UIController === 'undefined') {
         
         // 收集所有可锁定的元素（除了x和括号）
         // 注意：简单难度下四则运算也会显示，但处于保护状态
+        // 反三角函数：简单/分数关、未解锁、开关关闭时均不参与锁定视图
         const allElements = [
             ...elements.numbers.map(e => e.value),  // 包含 π, e, i
             ...elements.basicOperators.map(e => e.value),
             ...elements.operators.filter(e => e.value !== 'x' && e.value !== '(' && e.value !== ')').map(e => e.value),
-            ...elements.functions.map(e => e.value)
+            ...elements.functions
+                .filter(e => !(Array.isArray(this.inverseTrigElements) && this.inverseTrigElements.includes(e.value))
+                    || !this._shouldSkipInverseTrigInLockView())
+                .map(e => e.value)
         ];
         
         // 函数显示名称映射（用于锁定视图）
@@ -529,7 +549,19 @@ if (typeof UIController === 'undefined') {
         const allButtons = [...buttons, ...inlineButtons];
         allButtons.forEach(btn => {
             const value = btn.dataset.value;
-            
+
+            // 反三角函数未解锁：始终保持锁定态（可点击弹解锁提示），不被本轮锁定状态覆盖
+            const isInverseTrig = Array.isArray(this.inverseTrigElements) && this.inverseTrigElements.includes(value);
+            if (isInverseTrig && !this.isInverseTrigUnlocked()) {
+                btn.classList.add('locked', 'inverse-trig-locked');
+                btn.disabled = false;
+                if (!btn.querySelector('.lock-icon')) {
+                    const originalValue = lockFuncDisplayNames[value] || this.getDisplaySymbol(value);
+                    btn.innerHTML = `${originalValue} <span class="lock-icon">🔒</span>`;
+                }
+                return;
+            }
+
             // 先清除所有锁定状态
             btn.classList.remove('locked');
             btn.disabled = false;
