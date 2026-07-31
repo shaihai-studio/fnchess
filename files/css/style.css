@@ -1206,7 +1206,7 @@ body::before {
     background: rgba(2, 6, 23, 0.8);
     border-radius: 14px;
     padding: 14px 16px;
-    font-family: 'Courier New', monospace;
+    font-family: 'Courier New', monospace !important; /* 覆盖 shaihai-theme 全局 SmileySans !important，保持输入区等宽 */
     font-size: 18px;
     color: #c8cdd5;
     display: flex;
@@ -1233,6 +1233,15 @@ body::before {
 .expression-display .placeholder {
     color: #64748b;
     font-style: italic;
+}
+
+/* 表达式输入区强制等宽：主题的 `*{font-family:SmileySans!important}` 优先级(0,0,0)低于具体选择器，
+   此规则(0,2,0)+!important 可稳定覆盖，保持输入区为等宽字体 */
+.expression-display .expression-element,
+.expression-display .expression-prefix,
+.expression-display .cursor,
+.expression-display .placeholder {
+    font-family: 'Courier New', 'Consolas', monospace !important;
 }
 
 .expression-element {
@@ -1270,6 +1279,73 @@ body::before {
 .expression-element:hover {
     background: rgba(239, 68, 68, 0.3);
     border-color: rgba(239, 68, 68, 0.5);
+}
+
+/* KaTeX 数学预览（常驻显示） */
+.math-preview-wrap {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px dashed rgba(255, 255, 255, 0.12);
+}
+
+.math-preview-label {
+    display: block;
+    font-size: 12px;
+    color: #94a3b8;
+    margin-bottom: 6px;
+    letter-spacing: 1px;
+    opacity: 0.8;
+}
+
+.math-preview {
+    display: block;
+    min-height: 36px;
+    padding: 8px 12px;
+    background: rgba(59, 130, 246, 0.08);
+    border: 1px solid rgba(59, 130, 246, 0.22);
+    border-radius: 10px;
+    color: #e2e8f0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    text-align: left;
+}
+
+.math-preview-empty {
+    font-style: italic;
+    font-size: 13px;
+    color: #64748b;
+    opacity: 0.85;
+}
+
+.math-preview-raw {
+    font-family: 'Courier New', 'Consolas', monospace !important; /* 与输入框等宽细体一致（对抗主题全局 SmileySans !important） */
+    font-size: 15px;
+    color: #f59e0b;
+    opacity: 0.85;
+}
+
+/* KaTeX 字号校正：.katex 默认相对父级放大 1.21em，用 1/1.21 抵消，使公式与周围文字同字号 */
+.math-preview .katex {
+    font-size: calc(1em / 1.21);
+}
+
+/* 预览区恢复 KaTeX（LaTeX）数学字体。
+   根因：shaihai-theme.css 的 `*{font-family:'SmileySans'!important}` 是 important 声明，
+   KaTeX 自带的字体规则（普通声明）永远压不过它，导致数学字体从未生效、预览区显示得意黑。
+   这里用更高优先级的具体选择器 + !important 把 KaTeX 字体压回去。 */
+.math-preview .katex {
+    font-family: KaTeX_Main, 'Times New Roman', serif !important;
+    font-style: normal !important;
+}
+.math-preview .katex * {
+    font-family: inherit !important;
+    font-style: inherit !important;
+}
+/* 数学变量保持 LaTeX 标准斜体（KaTeX_Math）：此规则写在 * 之后，同优先级下后声明胜出 */
+.math-preview .katex .mathnormal,
+.math-preview .katex .mathit {
+    font-family: KaTeX_Math, 'Times New Roman', serif !important;
+    font-style: italic !important;
 }
 
 /* 光标样式 */
@@ -3237,6 +3313,41 @@ body::before {
     .inline-elements-card {
         display: block !important;
     }
+
+    /* 平板竖屏：隐藏 KaTeX 数学预览 */
+    .math-preview-wrap {
+        display: none !important;
+    }
+
+    /* 平板竖屏：缩小元素按钮与输入框元素块 */
+    .inline-elements-body .element-btn {
+        padding: 6px 10px;
+        font-size: 12px;
+        min-height: 30px;
+    }
+
+    .expression-display .expression-element {
+        padding: 3px 6px;
+        font-size: 14px;
+        border-radius: 6px;
+    }
+
+    /* 平板竖屏：底部按钮组固定贴底，避免被内容挤出屏幕 */
+    #action-buttons-card {
+        position: fixed;
+        left: 8px;
+        right: 8px;
+        bottom: 0;
+        z-index: 50;
+        border-radius: 14px 14px 0 0;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        box-shadow: 0 -4px 18px rgba(0, 0, 0, 0.5);
+        padding: 10px 14px;
+        margin: 0;
+    }
+    .control-panel {
+        padding-bottom: 80px !important; /* 留出固定底栏空间，避免遮挡内联元素末尾 */
+    }
 }
 
 /* 手机布局（竖屏优先） */
@@ -3435,6 +3546,46 @@ body::before {
         display: block !important;
     }
 
+    /* 手机：隐藏 KaTeX 数学预览 */
+    .math-preview-wrap {
+        display: none !important;
+    }
+
+    /* 手机：缩小元素按钮与输入框元素块 */
+    .inline-elements-body .element-btn {
+        padding: 6px 10px;
+        font-size: 12px;
+        min-height: 30px;
+    }
+
+    .inline-elements-tab {
+        padding: 5px 10px;
+        font-size: 11px;
+    }
+
+    .expression-display .expression-element {
+        padding: 3px 6px;
+        font-size: 14px;
+        border-radius: 6px;
+    }
+
+    /* 手机竖屏：底部按钮组固定贴底，避免被内容挤出屏幕 */
+    #action-buttons-card {
+        position: fixed;
+        left: 8px;
+        right: 8px;
+        bottom: 0;
+        z-index: 50;
+        border-radius: 14px 14px 0 0;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        box-shadow: 0 -4px 18px rgba(0, 0, 0, 0.5);
+        padding: 10px 14px;
+        margin: 0;
+    }
+    .control-panel {
+        padding-bottom: 80px !important; /* 留出固定底栏空间，避免遮挡内联元素末尾 */
+    }
+
     /* 退出确认气泡 - 移动端适配 */
     .exit-confirm-popover {
         position: fixed;
@@ -3553,8 +3704,9 @@ body::before {
     }
 
     .inline-elements-body .element-btn {
-        padding: 6px 12px;
-        font-size: 13px;
+        padding: 6px 10px;
+        font-size: 12px;
+        min-height: 30px;
     }
 
     .button-group .btn {

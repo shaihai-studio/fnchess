@@ -219,6 +219,9 @@ if (typeof UIController === 'undefined') {
             'sin': 'sin',
             'cos': 'cos',
             'tan': 'tan',
+            'arcsin': 'arcsin',
+            'arccos': 'arccos',
+            'arctan': 'arctan',
             'abs': 'abs',
             'exp': 'exp',
             'ln': 'ln',
@@ -574,7 +577,7 @@ if (typeof UIController === 'undefined') {
         }
         
         // 函数类元素自动添加括号
-        const functionElements = ['sin', 'cos', 'tan', 'abs', 'exp', 'ln', 'log', 'sqrt'];
+        const functionElements = ['sin', 'cos', 'tan', 'arcsin', 'arccos', 'arctan', 'abs', 'exp', 'ln', 'log', 'sqrt'];
         if (functionElements.includes(element)) {
             // 插入函数名和括号：[sin, (, )]
             this.expressionElements.splice(this.cursorIndex, 0, element, '(', ')');
@@ -620,6 +623,7 @@ if (typeof UIController === 'undefined') {
             cursorSpan.textContent = '|';
             this.expressionDisplay.appendChild(cursorSpan);
             this.cursorIndex = 0;
+            this._renderMathPreview();
             return;
         }
         
@@ -639,7 +643,7 @@ if (typeof UIController === 'undefined') {
             
             const span = document.createElement('span');
             span.className = 'expression-element';
-            // 使用数学符号显示
+            // 使用数学符号显示（纯文本，配合等宽字体，保持原有输入区风格）
             span.textContent = this.getDisplaySymbol(this.expressionElements[i]);
             span.dataset.index = i;
             this.expressionDisplay.appendChild(span);
@@ -667,6 +671,9 @@ if (typeof UIController === 'undefined') {
         // 刷新滚动条按需显示状态（修复 #45：不溢出时不显示滚动条）
         this.updateExpressionScrollState();
 
+        // 渲染 KaTeX 数学预览（表达式实时美化，解析失败回退纯文本）
+        this._renderMathPreview();
+
         // P2P：本地输入时防抖同步，避免高频发送 state_sync 导致乱序覆盖
         if (!skipSync) {
             if (this._syncDebounceTimer) clearTimeout(this._syncDebounceTimer);
@@ -679,6 +686,39 @@ if (typeof UIController === 'undefined') {
                 this.gameController.bumpStateVersion();
             }
         }
+    }
+;
+
+// renderMathPreview
+    UIController.prototype._renderMathPreview = function() {
+        if (!this.mathPreview) {
+            this.mathPreview = document.getElementById('math-preview');
+        }
+        if (!this.mathPreview) return;
+
+        const expr = this.expressionElements.join('');
+        // 空表达式 / 引擎未就绪：显示引导提示（预览区域常驻可见）
+        if (!expr || typeof window.katex === 'undefined' || !window.MathLatex) {
+            this.mathPreview.innerHTML = '';
+            const hint = document.createElement('span');
+            hint.className = 'math-preview-empty';
+            hint.textContent = '构建表达式后在此实时预览数学公式';
+            this.mathPreview.appendChild(hint);
+            return;
+        }
+
+        const latex = window.MathLatex.toLatex(expr);
+        this.mathPreview.innerHTML = '';
+        if (latex === null) {
+            // 表达式不完整/非法：显示原文，提示暂不可渲染
+            const raw = document.createElement('span');
+            raw.className = 'math-preview-raw';
+            raw.textContent = expr;
+            this.mathPreview.appendChild(raw);
+            return;
+        }
+
+        window.katex.render(latex, this.mathPreview, { throwOnError: false });
     }
 ;
 
@@ -964,7 +1004,7 @@ if (typeof UIController === 'undefined') {
         if (!expression) return 0;
         const cleanExpr = expression.replace(/\s+/g, '').replace(/[()（）]/g, '');
         let length = 0;
-        const tokenRegex = /(sin|cos|tan|abs|exp|ln|log|sqrt|factorial)|(\d+(?:\.\d+)?)|(PI|π|e|i)|([+\-*/^!])|(x)/gi;
+        const tokenRegex = /(sin|cos|tan|arcsin|arccos|arctan|abs|exp|ln|log|sqrt|factorial)|(\d+(?:\.\d+)?)|(PI|π|e|i)|([+\-*/^!])|(x)/gi;
         let match;
         while ((match = tokenRegex.exec(cleanExpr)) !== null) {
             length++;
@@ -983,7 +1023,7 @@ if (typeof UIController === 'undefined') {
         const len = expr.length;
         
         // 多字母函数名列表
-        const multiCharFuncs = ['sin', 'cos', 'tan', 'abs', 'exp', 'ln', 'log', 'sqrt'];
+        const multiCharFuncs = ['sin', 'cos', 'tan', 'arcsin', 'arccos', 'arctan', 'abs', 'exp', 'ln', 'log', 'sqrt'];
         
         while (i < len) {
             let matched = false;

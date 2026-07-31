@@ -6,6 +6,7 @@
     <title>函数棋 - Function Chess</title>
     <link rel="stylesheet" href="files/css/style.css">
     <link rel="stylesheet" href="files/css/shaihai-theme.css">
+    <link rel="stylesheet" href="files/vendor/katex/katex.min.css">
 </head>
 <body>
     <!-- 启动界面（仅首次加载时显示） -->
@@ -98,6 +99,13 @@
                 <div class="expression-display" id="expression-display">
                     <span class="placeholder">点击元素构建表达式...</span>
                 </div>
+                <!-- KaTeX 数学预览（常驻显示，空态显示引导提示） -->
+                <div class="math-preview-wrap">
+                    <span class="math-preview-label">数学预览</span>
+                    <div class="math-preview" id="math-preview">
+                        <span class="math-preview-empty">构建表达式后在此实时预览数学公式</span>
+                    </div>
+                </div>
                 <label class="keep-expr-toggle" id="keep-expr-toggle-wrap">
                     <input type="checkbox" id="keep-expr-toggle">
                     <span>提交失败后保留解析式（不自动清空）</span>
@@ -110,8 +118,8 @@
                 <div class="inline-elements-body" id="inline-elements-body"></div>
             </div>
 
-            <!-- 按钮组 -->
-            <div class="panel-card">
+            <!-- 按钮组（竖屏下固定底栏，避免溢出屏幕） -->
+            <div class="panel-card" id="action-buttons-card">
                 <div class="button-group">
                     <button class="btn btn-primary" id="confirm-btn" data-arrow>确认目标</button>
                     <button class="btn btn-secondary" id="clear-btn">清除</button>
@@ -492,14 +500,17 @@
     </div>
 
     <!-- 加载 JavaScript 模块 -->
+    <!-- KaTeX 数学排版引擎（本地 vendor，离线可用） -->
+    <script src="files/vendor/katex/katex.min.js"></script>
     <!-- 响应式布局管理器（优先加载） -->
     <script src="files/js/ResponsiveLayout.js"></script>
     <script src="files/js/GridSystem.js"></script>
     <script src="files/js/CollisionDetector.js"></script>
-    <script src="files/js/函数复杂度运算/function-complexity-analyzer.js"></script>
     <script src="files/js/ComplexMath.js"></script>
     <script src="files/js/ExpressionAnalyzer.js"></script>
     <script src="files/js/FunctionParser.js"></script>
+    <!-- MathLatex：表达式 → LaTeX 转换器（运行时依赖 FunctionParser） -->
+    <script src="files/js/MathLatex.js"></script>
     <!-- geogebra-lite 核心引擎（采样+裁剪） -->
     <script src="files/geogebra-lite/plot/Gap.js"></script>
     <script src="files/geogebra-lite/plot/PathPlotter.js"></script>

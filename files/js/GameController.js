@@ -554,7 +554,7 @@ class GameController {
         }
 
         // 如果固定锁定数量不足，从剩余元素中补充（不与已有元素冲突）
-        const allElements = ['+','-','*','/','^','!','sin','cos','tan','abs','sqrt','ln','log','exp','factorial','0','1','2','3','4','5','6','7','8','9','π','e','i'];
+        const allElements = ['+','-','*','/','^','!','sin','cos','tan','arcsin','arccos','arctan','abs','sqrt','ln','log','exp','factorial','0','1','2','3','4','5','6','7','8','9','π','e','i'];
         const banned = new Set(['x', '(', ')']);
         let pool = allElements.filter(el => !banned.has(el) && !lockedElements.includes(el));
 

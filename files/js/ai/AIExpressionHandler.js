@@ -83,7 +83,7 @@ class AIExpressionHandler {
         const len = expr.length;
 
         // 多字母函数名列表
-        const multiCharFuncs = ['sin', 'cos', 'tan', 'abs', 'exp', 'ln', 'log', 'sqrt'];
+        const multiCharFuncs = ['sin', 'cos', 'tan', 'arcsin', 'arccos', 'arctan', 'abs', 'exp', 'ln', 'log', 'sqrt'];
 
         while (i < len) {
             let matched = false;

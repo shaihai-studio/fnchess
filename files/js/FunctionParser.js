@@ -10,7 +10,7 @@ class FunctionParser {
     constructor() {
         // 支持的运算符和函数
         this.operators = ['+', '-', '*', '/', '^'];
-        this.functions = ['sin', 'cos', 'tan', 'abs', 'ln', 'sqrt'];
+        this.functions = ['sin', 'cos', 'tan', 'arcsin', 'arccos', 'arctan', 'abs', 'ln', 'sqrt'];
         // 复数常量（与 geogebra-lite 一致）
         this.constants = { pi: { re: Math.PI, im: 0 }, e: { re: Math.E, im: 0 }, i: { re: 0, im: 1 } };
 
@@ -23,7 +23,7 @@ class FunctionParser {
             numbers: ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'π', 'e', 'i'],
             basicOperators: ['+', '-', '*', '/'],
             operators: ['.', '^', '!', '(', ')'],
-            functions: ['sin', 'cos', 'tan', 'abs', 'ln', 'sqrt']
+            functions: ['sin', 'cos', 'tan', 'arcsin', 'arccos', 'arctan', 'abs', 'ln', 'sqrt']
         };
 
         // 初始化函数复杂度分析器
@@ -67,7 +67,35 @@ class FunctionParser {
     cSin(a) { a = this.toComplex(a); return { re: Math.sin(a.re) * Math.cosh(a.im), im: Math.cos(a.re) * Math.sinh(a.im) }; }
     cCos(a) { a = this.toComplex(a); return { re: Math.cos(a.re) * Math.cosh(a.im), im: -Math.sin(a.re) * Math.sinh(a.im) }; }
     cTan(a) { const s = this.cSin(a), c = this.cCos(a); return this.cDiv(s, c); }
-    cSqrt(a) { return this.cPow(a, { re: 0.5, im: 0 }); }
+    cAsin(a) {
+        a = this.toComplex(a);
+        // asin(z) = -i * ln(i*z + sqrt(1 - z^2))
+        const iz = { re: -a.im, im: a.re };
+        const z2 = this.cMul(a, a);
+        const inner = this.cAdd(iz, this.cSqrt({ re: 1 - z2.re, im: -z2.im }));
+        const ln = this.cLn(inner);
+        return { re: ln.im, im: -ln.re };
+    }
+    cAcos(a) {
+        a = this.toComplex(a);
+        // acos(z) = π/2 - asin(z)
+        const asin = this.cAsin(a);
+        return { re: Math.PI / 2 - asin.re, im: -asin.im };
+    }
+    cAtan(a) {
+        a = this.toComplex(a);
+        // atan(z) = (i/2) * ln((i+z)/(i-z))
+        const iPlusZ = { re: a.re, im: a.im + 1 };
+        const iMinusZ = { re: -a.re, im: 1 - a.im };
+        const ln = this.cLn(this.cDiv(iPlusZ, iMinusZ));
+        return { re: -ln.im / 2, im: ln.re / 2 };
+    }
+    cSqrt(a) {
+        a = this.toComplex(a);
+        // 0 特判：cPow 对 r=0 时 ln(r)=-Inf 会产生 NaN，0^0.5 应为 0
+        if (a.re === 0 && a.im === 0) return { re: 0, im: 0 };
+        return this.cPow(a, { re: 0.5, im: 0 });
+    }
     cFactorial(a) {
         a = this.toComplex(a);
         if (a.im !== 0) return { re: NaN, im: NaN };
@@ -270,6 +298,9 @@ class FunctionParser {
                     case 'sin': return this.cSin(v);
                     case 'cos': return this.cCos(v);
                     case 'tan': return this.cTan(v);
+                    case 'arcsin': return this.cAsin(v);
+                    case 'arccos': return this.cAcos(v);
+                    case 'arctan': return this.cAtan(v);
                     case 'abs': return this.cAbs(v);
                     case 'ln': return this.cLn(v);
                     case 'sqrt': {
@@ -406,7 +437,7 @@ class FunctionParser {
     analyzeFunctionType(expression) {
         const cleanExpr = expression.replace(/\s+/g, '').replace(/[()（）]/g, '');
         let length = 0;
-        const tokenRegex = /(sin|cos|tan|abs|exp|ln|log|sqrt|factorial)|(\d+(?:\.\d+)?)|(PI|π|e|i)|([+\-*/^!])|(x)/gi;
+        const tokenRegex = /(sin|cos|tan|arcsin|arccos|arctan|abs|exp|ln|log|sqrt|factorial)|(\d+(?:\.\d+)?)|(PI|π|e|i)|([+\-*/^!])|(x)/gi;
         while (tokenRegex.exec(cleanExpr) !== null) {
             length++;
         }
@@ -427,7 +458,7 @@ class FunctionParser {
     getPolynomialDegree(expression) {
         const cleanExpr = expression.toLowerCase().replace(/\s/g, '');
 
-        const nonPolyPattern = /(sin|cos|tan|exp|ln|log|sqrt|abs)/;
+        const nonPolyPattern = /(sin|cos|tan|arcsin|arccos|arctan|exp|ln|log|sqrt|abs)/;
         if (nonPolyPattern.test(cleanExpr)) return -1;
         if (cleanExpr.includes('!')) return -1;
         if (cleanExpr.includes('(-1)^(1/2)') || cleanExpr.includes('(-1)^0.5') || cleanExpr.includes('i')) return -1;
