@@ -266,15 +266,45 @@ if (typeof UIController === 'undefined') {
         this.p2pTimeLimitStepper = document.getElementById('p2p-time-limit-stepper');
         this.p2pTimeLimitValue = document.getElementById('p2p-time-limit-value');
         if (!this.p2pRoundValue) return;
-        // 以主页三选项的当前值为初值；未选择过则用默认
-        this.p2pCurrentRoundIndex = this.currentRoundIndex ?? 0;
-        this.p2pCurrentDifficultyIndex = this.currentDifficultyIndex ?? 0;
-        this.p2pCurrentTimeLimitIndex = this.currentTimeLimitIndex ?? 2;
+        // P2P 三选项与主界面完全独立：初值取 P2P 自己的持久化记录（无记录则 8回合/简单/普通）
+        const saved = this._loadP2PSelectors();
+        this.p2pCurrentRoundIndex = saved.round;
+        this.p2pCurrentDifficultyIndex = saved.difficulty;
+        this.p2pCurrentTimeLimitIndex = saved.time;
         if (!this.roundOptions || !this.roundOptions.length) return;
         if (this.p2pCurrentRoundIndex < 0 || this.p2pCurrentRoundIndex >= this.roundOptions.length) this.p2pCurrentRoundIndex = 0;
         if (this.p2pCurrentDifficultyIndex < 0 || this.p2pCurrentDifficultyIndex >= this.difficultyOptions.length) this.p2pCurrentDifficultyIndex = 0;
         if (this.p2pCurrentTimeLimitIndex < 0 || this.p2pCurrentTimeLimitIndex >= this.timeLimitOptions.length) this.p2pCurrentTimeLimitIndex = 2;
         this._refreshP2PStepperDisplay();
+    }
+;
+
+// _loadP2PSelectors / _saveP2PSelectors — P2P 三选项独立持久化，主界面 stepper 变化不影响 P2P
+    UIController.prototype._loadP2PSelectors = function() {
+        const def = { round: 0, difficulty: 0, time: 2 };
+        try {
+            const raw = localStorage.getItem('function_chess_p2p_selectors');
+            if (!raw) return def;
+            const s = JSON.parse(raw);
+            return {
+                round: Number.isFinite(s && s.round) ? s.round : def.round,
+                difficulty: Number.isFinite(s && s.difficulty) ? s.difficulty : def.difficulty,
+                time: Number.isFinite(s && s.time) ? s.time : def.time
+            };
+        } catch (e) {
+            return def;
+        }
+    }
+;
+
+    UIController.prototype._saveP2PSelectors = function() {
+        try {
+            localStorage.setItem('function_chess_p2p_selectors', JSON.stringify({
+                round: this.p2pCurrentRoundIndex ?? 0,
+                difficulty: this.p2pCurrentDifficultyIndex ?? 0,
+                time: this.p2pCurrentTimeLimitIndex ?? 2
+            }));
+        } catch (e) { /* localStorage 不可用时静默忽略 */ }
     }
 ;
 
@@ -348,9 +378,10 @@ if (typeof UIController === 'undefined') {
 
 // _bindP2PStepperButtons
     UIController.prototype._bindP2PStepperButtons = function() {
+        // 覆盖式绑定：避免每次打开弹窗时 addEventListener 累加，导致一次点击跳多个档位
         const bind = (id, fn) => {
             const el = document.getElementById(id);
-            if (el) el.addEventListener('click', fn);
+            if (el) el.onclick = fn;
         };
         bind('p2p-round-prev', () => this._stepP2PRound(-1));
         bind('p2p-round-next', () => this._stepP2PRound(1));
@@ -367,6 +398,7 @@ if (typeof UIController === 'undefined') {
         const len = this.roundOptions.length;
         const next = ((this.p2pCurrentRoundIndex ?? 0) + direction + len) % len;
         this.p2pCurrentRoundIndex = next;
+        this._saveP2PSelectors();
         this._refreshP2PStepperDisplay();
         this._playP2PStepperFeedback('round');
     }
@@ -378,6 +410,7 @@ if (typeof UIController === 'undefined') {
         const len = this.difficultyOptions.length;
         const next = ((this.p2pCurrentDifficultyIndex ?? 0) + direction + len) % len;
         this.p2pCurrentDifficultyIndex = next;
+        this._saveP2PSelectors();
         this._refreshP2PStepperDisplay();
         this._playP2PStepperFeedback('difficulty');
     }
@@ -389,6 +422,7 @@ if (typeof UIController === 'undefined') {
         const len = this.timeLimitOptions.length;
         const next = ((this.p2pCurrentTimeLimitIndex ?? 2) + direction + len) % len;
         this.p2pCurrentTimeLimitIndex = next;
+        this._saveP2PSelectors();
         this._refreshP2PStepperDisplay();
         this._playP2PStepperFeedback('time-limit');
     }
