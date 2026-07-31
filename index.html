@@ -547,6 +547,16 @@
     <script src="files/js/ai/AIPersistence.js"></script>
     <script src="files/js/AIController.js"></script>
     <script src="files/js/ai/AITurnHandler.js"></script>
+    <!-- 联机信令服务器配置（必须在 P2PController.js 之前） -->
+    <script>
+        window.P2P_SIGNALING = {
+            host: 'p2p.shaihai.cn',
+            port: 80,
+            path: '/',
+            secure: false,
+            debug: 0
+        };
+    </script>
     <!-- 核心控制器 -->
     <script src="files/js/P2PController.js"></script>
     <script src="files/js/GameHistoryService.js"></script>
