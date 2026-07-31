@@ -25,6 +25,7 @@ if (typeof UIController === 'undefined') {
         this._bindP2PStepperButtons();
         this.showModal(document.getElementById('p2p-room-modal'));
         this._bindP2PRoomEvents();
+        this._bindLobbyEvents();
     }
 ;
 
@@ -40,6 +41,10 @@ if (typeof UIController === 'undefined') {
         p2p.onConnected = () => {
             this._updateP2PStatus('connected', '对手已连接！');
             this.showMessage('对手已加入，游戏开始！');
+            // 若从匹配大厅创建的房间，开局后通知服务器从列表移除
+            if (this._lobby && this._lobby.myRoomCode) {
+                this._lobby.notifyStarted();
+            }
             // 隐藏所有模态框：P2P房间 + 开始界面
             const p2pModal = document.getElementById('p2p-room-modal');
             if (p2pModal) this.hideModal(p2pModal);
@@ -90,6 +95,16 @@ if (typeof UIController === 'undefined') {
             console.error('[UI][P2P] onError:', err);
             this._updateP2PStatus('error', '连接错误：' + (err.message || err));
             this.showMessage('P2P连接错误：' + (err.message || err), 'error');
+            // 房主通过大厅创建失败/超时 → 取消大厅房间登记，恢复按钮
+            if (p2p.isHost && this._lobby && this._lobby.myRoomCode) {
+                this._lobbyCancelHost();
+            }
+            // 访客通过大厅加入失败 → 释放房间锁，恢复大厅可重新加入
+            if (!p2p.isHost && this._joiningRoomCode) {
+                if (this._lobby) this._lobby.cancelJoin(this._joiningRoomCode);
+                this._joiningRoomCode = null;
+                this._updateLobbyStatus('error', '加入失败：无法连接到房主，请刷新后重试');
+            }
             // 失败后恢复创建/加入按钮，避免永久卡死（需手动关闭弹窗才能重试）
             const cb = document.getElementById('p2p-create-btn'); if (cb) cb.disabled = false;
             const jb = document.getElementById('p2p-join-btn'); if (jb) jb.disabled = false;
@@ -187,25 +202,25 @@ if (typeof UIController === 'undefined') {
                 }
             };
         }
-        // 标签页切换
-        const bindTab = (tabId, contentId) => {
+        // 标签页切换（onclick 覆盖式，避免重复打开弹窗时监听器叠加）
+        const bindTab = (tabId, contentId, showLeft) => {
             const tab = $(tabId), content = $(contentId);
-            if (tab && content) {
-                tab.addEventListener('click', () => {
-                    document.querySelectorAll('.p2p-tab').forEach(t => t.classList.remove('active'));
-                    document.querySelectorAll('.p2p-tab-content').forEach(c => c.style.display = 'none');
-                    tab.classList.add('active');
-                    content.style.display = 'block';
-                    // 切换到「加入房间」时隐藏左侧三选项，「创建房间」时恢复
-                    const leftCol = document.querySelector('.p2p-selectors-left');
-                    if (leftCol) {
-                        leftCol.style.display = tabId === 'p2p-tab-create' ? 'flex' : 'none';
-                    }
-                });
-            }
+            if (!tab || !content) return;
+            tab.onclick = () => {
+                document.querySelectorAll('.p2p-tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.p2p-tab-content').forEach(c => c.style.display = 'none');
+                tab.classList.add('active');
+                content.style.display = 'block';
+                // 切换「加入房间」时隐藏左侧三选项（建房参数不适用），创建房间/匹配大厅恢复
+                const leftCol = document.querySelector('.p2p-selectors-left');
+                if (leftCol) leftCol.style.display = showLeft ? 'flex' : 'none';
+                // 切换到匹配大厅时自动连接并刷新
+                if (tabId === 'p2p-tab-lobby') this._openLobby();
+            };
         };
-        bindTab('p2p-tab-create', 'p2p-tab-create-content');
-        bindTab('p2p-tab-join', 'p2p-tab-join-content');
+        bindTab('p2p-tab-create', 'p2p-tab-create-content', true);
+        bindTab('p2p-tab-join', 'p2p-tab-join-content', false);
+        bindTab('p2p-tab-lobby', 'p2p-tab-lobby-content', true);
         // 返回按钮
         const backBtn = $('p2p-back-btn');
         if (backBtn) {
@@ -475,6 +490,8 @@ if (typeof UIController === 'undefined') {
         this.p2pController?.disconnect();
         this.p2pController = null;
         this.isP2PMode = false;
+        // 断开匹配大厅连接（含自动重连清理）
+        if (typeof this._closeLobby === 'function') this._closeLobby();
         // 清理 P2P 对局残留的历史函数与格子，防止切换到其他模式时仍显示旧图像
         if (this.gridSystem) {
             this.gridSystem.functionHistory = [];

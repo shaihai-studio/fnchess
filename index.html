@@ -476,6 +476,7 @@
                     <div class="p2p-tabs">
                         <button class="p2p-tab active" id="p2p-tab-create">创建房间</button>
                         <button class="p2p-tab" id="p2p-tab-join">加入房间</button>
+                        <button class="p2p-tab" id="p2p-tab-lobby">匹配大厅</button>
                     </div>
                     <div class="p2p-tab-content" id="p2p-tab-create-content">
                         <p class="p2p-desc">创建房间后将获得一个6位数字房间码，分享给对手即可开始对战</p>
@@ -492,6 +493,22 @@
                             <input type="text" id="p2p-room-input" class="p2p-room-input" maxlength="6" placeholder="输入6位数字房间码" autocomplete="off">
                         </div>
                         <button class="btn btn-primary p2p-action-btn" id="p2p-join-btn">加入房间</button>
+                    </div>
+                    <div class="p2p-tab-content" id="p2p-tab-lobby-content" style="display:none;">
+                        <div class="lobby-status" id="lobby-status">
+                            <span class="p2p-status-dot"></span>
+                            <span class="lobby-status-text">未连接</span>
+                        </div>
+                        <div class="lobby-actions">
+                            <button class="btn btn-primary p2p-action-btn" id="lobby-create-btn">创建房间（进大厅）</button>
+                            <button class="btn btn-small lobby-refresh-btn" id="lobby-refresh-btn">刷新</button>
+                        </div>
+                        <div class="lobby-list" id="lobby-list"></div>
+                        <button class="btn btn-secondary p2p-back-btn" id="lobby-back-btn" style="width:100%;margin-top:8px;">返回</button>
+                        <div class="p2p-battle-hint">
+                            <small>创建房间后进入等待列表，其他玩家可点击你的房间加入</small><br>
+                            <small>加入后按房主配置开局</small>
+                        </div>
                     </div>
                     <div class="p2p-battle-hint">
                         <small>房主为<strong>玩家A</strong>，访客为<strong>玩家B</strong></small><br>
@@ -574,6 +591,8 @@
     </script>
     <!-- 核心控制器 -->
     <script src="files/js/P2PController.js"></script>
+    <!-- 匹配大厅控制器（依赖 P2PController.signaling 构建 WebSocket 地址） -->
+    <script src="files/js/MatchLobby.js"></script>
     <script src="files/js/GameHistoryService.js"></script>
     <script src="files/js/GameController.js"></script>
     <script src="files/js/SeedImporter.js"></script>
@@ -590,6 +609,7 @@
     <script src="files/js/ui/UICampaign.js"></script>
     <script src="files/js/ui/UIRace.js"></script>
     <script src="files/js/ui/UIP2P.js"></script>
+    <script src="files/js/ui/UILobby.js"></script>
 <script src="files/js/ui/UICore.js"></script>
     <script src="files/js/SummaTrainer.js"></script>
     
@@ -605,7 +625,7 @@
             uiController.raceModeManager = new RaceModeManager();
             uiController.raceModeController = new RaceModeController(gridSystem);
             uiController.p2pController = null;
-            uiController._lobby = null;
+            uiController._lobby = new MatchLobbyController();
 
             // 创建Summa训练器
             const summaTrainer = new SummaTrainer(gameController, gridSystem);

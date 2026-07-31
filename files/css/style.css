@@ -2635,6 +2635,21 @@ body::before {
 .p2p-battle-hint { margin-top: 8px; text-align: center; opacity: 0.6; }
 .p2p-back-btn { margin-top: 8px; }
 
+/* 匹配大厅 */
+.lobby-status { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: rgba(0,0,0,0.2); border-radius: 8px; margin-bottom: 12px; }
+.lobby-status-text { font-size: 13px; color: #94a3b8; }
+.lobby-actions { display: flex; gap: 8px; margin-bottom: 12px; }
+.lobby-actions .btn { flex: 1; }
+.lobby-refresh-btn { flex: 0 0 auto; width: auto !important; padding: 8px 14px; }
+.lobby-list { max-height: 260px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding: 4px; }
+.lobby-room-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; transition: border-color 0.2s, background 0.2s; }
+.lobby-room-row:hover { border-color: rgba(59,130,246,0.4); background: rgba(59,130,246,0.08); }
+.lobby-room-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.lobby-room-code { font-family: monospace; font-size: 16px; font-weight: bold; color: #eab308; letter-spacing: 2px; }
+.lobby-room-desc { font-size: 12px; color: #94a3b8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lobby-join-btn { flex-shrink: 0; }
+.lobby-empty { padding: 20px; text-align: center; color: #64748b; font-size: 13px; border: 1px dashed rgba(255,255,255,0.1); border-radius: 10px; }
+
 .difficulty-select select option[value="easy"] {
     color: #22c55e;
 }
