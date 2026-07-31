@@ -38,11 +38,11 @@
    - secure（是否 HTTPS）：□ 是 □ 否
    - path（路径，通常为 `/`）：`_________________`
 
-2. **示例：当前使用的 `0.peerjs.com` 公共服务器**
+2. **示例：当前使用的自托管服务器 `p2p.shaihai.cn`**
    ```
-   host: '0.peerjs.com'
-   port: 443
-   secure: true
+   host: 'p2p.shaihai.cn'
+   port: 80
+   secure: false
    path: '/'
    ```
 
@@ -71,6 +71,6 @@
 
 ## 补充说明
 
-- 当前默认使用 `0.peerjs.com` 公共服务器（免费、无需自托管）
+- 当前默认使用自托管服务器 `p2p.shaihai.cn`（端口 80，明文 HTTP，对应 `server/index.js`）
 - 信令服务器只负责交换连接元数据，游戏数据（函数表达式、棋盘状态）通过 P2P 直连传输
 - 如果双方处于对称型 NAT 后面无法直连，还需额外部署 TURN 中继服务器

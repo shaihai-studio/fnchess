@@ -163,9 +163,9 @@ if (typeof UIController === 'undefined') {
         const joinBtn = $('p2p-join-btn');
         if (joinBtn) {
             joinBtn.onclick = () => {
-                const code = $('p2p-room-input')?.value?.trim().toUpperCase();
+                const code = $('p2p-room-input')?.value?.trim();
                 if (!code || code.length !== 6) {
-                    this.showMessage('请输入6位房间码', 'error');
+                    this.showMessage('请输入6位数字房间码', 'error');
                     return;
                 }
                 joinBtn.disabled = true;
@@ -243,6 +243,8 @@ if (typeof UIController === 'undefined') {
         this.gameController._syncHook = () => this._syncToPeer();
         this._applyingRemote = false;
         this._lastSyncTime = 0;
+        // 周期同步：每 0.2s 由当前玩家方（操作方）主动推送一次完整快照
+        this._startP2PPeriodicSync();
         // 房主在这里初始化游戏（访客在 onGameInit 中初始化）
         if (p2p.isHost) {
             const rounds = this._getP2PRounds();
@@ -429,6 +431,8 @@ if (typeof UIController === 'undefined') {
 
 // _cleanupP2P
     UIController.prototype._cleanupP2P = function() {
+        // 清理周期同步定时器，避免残留后台发送
+        this._stopP2PPeriodicSync();
         // 清理创建房间时轮询房间码的定时器，避免重开弹窗后叠加残留轮询
         if (this._p2pCheckCodeInterval) {
             clearInterval(this._p2pCheckCodeInterval);
@@ -477,6 +481,32 @@ if (typeof UIController === 'undefined') {
         if (disc) this.hideModal(disc);
         if (typeof this._cleanupP2P === 'function') this._cleanupP2P();
         this.handleRestart();
+    }
+;
+
+// _startP2PPeriodicSync
+    // 在事件驱动同步基础上，增加每 0.2s 的周期同步：
+    // 仅「当前玩家方」（操作方）主动推送完整状态快照，被动方只接收，
+    // 保证对手能实时看到操作方的输入/选点/锁定等过程状态。
+    // 配合 state_sync 的版本号机制，旧快照会被接收方自动丢弃，不会乱序覆盖。
+    UIController.prototype._startP2PPeriodicSync = function() {
+        this._stopP2PPeriodicSync();
+        this._p2pSyncInterval = setInterval(() => {
+            if (!this.isP2PMode || !this.p2pController || !this.p2pController.isConnected) return;
+            // 仅当前玩家方（操作方）主动推送
+            if (!this.gameController ||
+                this.gameController.currentPlayer !== this.p2pController.myPlayerId) return;
+            this._syncToPeer();
+        }, 200);
+    }
+;
+
+// _stopP2PPeriodicSync
+    UIController.prototype._stopP2PPeriodicSync = function() {
+        if (this._p2pSyncInterval) {
+            clearInterval(this._p2pSyncInterval);
+            this._p2pSyncInterval = null;
+        }
     }
 ;
 

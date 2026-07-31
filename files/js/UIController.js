@@ -58,6 +58,8 @@ class UIController {
         
         // P2P：表达式同步防抖计时器，避免输入过程中频繁发送 state_sync
         this._syncDebounceTimer = null;
+        // P2P：周期同步定时器（每 0.2s 由当前玩家方主动推送一次完整快照）
+        this._p2pSyncInterval = null;
         
         // 拖拽状态
         this.draggedElement = null;

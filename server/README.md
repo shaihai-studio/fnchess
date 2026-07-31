@@ -22,11 +22,14 @@ npm start
 
 ## 跨互联网部署
 
-将本目录部署到公网服务器（如云主机），然后修改
-`files/js/P2PController.js` 中：
+将本目录部署到公网服务器（如云主机）即可。前端已默认指向自托管服务器：
+
+- 信令服务器地址：`http://p2p.shaihai.cn/`（端口 80，明文 HTTP）
+- 前端配置位于 `files/js/P2PController.js` 的 `P2PController.signaling`，
+  也可通过 `index.html` 中的 `window.P2P_SIGNALING` 覆盖，例如：
 
 ```javascript
-static signaling = {
+window.P2P_SIGNALING = {
     host: '你的公网域名或IP',
     port: 9000,
     secure: true,   // 若用 HTTPS/TLS 则设为 true

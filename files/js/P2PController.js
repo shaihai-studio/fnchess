@@ -33,17 +33,17 @@
  */
 class P2PController {
     // ═══ 静态信令服务器配置（全局生效） ═══
-    // 默认使用官方公共 PeerJS 服务器（免费、无需自托管）
+    // 默认使用自托管服务器 http://p2p.shaihai.cn/（server/index.js）
     // 可通过 window.P2P_SIGNALING 覆盖，例如：
     //   window.P2P_SIGNALING = { host: 'localhost', port: 9000, secure: false };
-    // 长期稳定运营建议改回自托管服务器（server/index.js）
+    // 若服务器启用了 HTTPS/TLS，需将 secure 改为 true
     static signaling = (typeof window !== 'undefined' && window.P2P_SIGNALING)
-        ? { host: '0.peerjs.com', port: 443, path: '/', secure: true, debug: 0, ...window.P2P_SIGNALING }
+        ? { host: 'p2p.shaihai.cn', port: 80, path: '/', secure: false, debug: 0, ...window.P2P_SIGNALING }
         : {
-            host: '0.peerjs.com',
-            port: 443,
+            host: 'p2p.shaihai.cn',
+            port: 80,
             path: '/',
-            secure: true,
+            secure: false,
             debug: 0
         };
 
@@ -112,7 +112,7 @@ class P2PController {
             { urls: 'stun:stun.qq.com:3478' },
             { urls: 'stun:stun.miwifi.com:3478' }
         ];
-        this._codeChars = 'ABCDEFGHJKMNPRSTUVWXYZ23456789';
+        this._codeChars = '0123456789';
         this._cachedIceServers = null;  // 服务端拉取的完整 ICE 配置缓存
     }
 
@@ -247,10 +247,10 @@ class P2PController {
             this._notifyStatus('error', '已有进行中的连接');
             return;
         }
-        // 过滤掉生成时排除的易混淆字符
-        const normalized = roomCode.trim().toUpperCase().replace(/[^ABCDEFGHJKMNPRSTUVWXYZ23456789]/g, '');
+        // 过滤掉非数字字符
+        const normalized = roomCode.trim().replace(/[^0-9]/g, '');
         if (normalized.length !== 6) {
-            this._notifyStatus('error', '房间码必须是6位有效字符（不含 0/1/I/L/O）');
+            this._notifyStatus('error', '房间码必须是6位数字');
             return;
         }
         this._disconnecting = false;
