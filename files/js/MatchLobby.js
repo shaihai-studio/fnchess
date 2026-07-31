@@ -134,6 +134,17 @@ class MatchLobbyController {
         }
     }
 
+    /** 暂停房间列表自动刷新（对局进行中调用，节省流量） */
+    pauseRefresh() {
+        this._stopRefresh();
+    }
+
+    /** 恢复房间列表自动刷新（已连接时生效） */
+    resumeRefresh() {
+        if (!this.isConnected) return;
+        this._startRefresh();
+    }
+
     _notifyConnection(connected) {
         if (this.onConnectionChange) this.onConnectionChange(connected);
     }

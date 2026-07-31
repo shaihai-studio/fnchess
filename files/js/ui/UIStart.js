@@ -688,6 +688,10 @@ if (typeof UIController === 'undefined') {
 // handleRestart
     UIController.prototype.handleRestart = function() {
         if (window.audioManager) window.audioManager.playClick();
+        // P2P 对局结束返回主页 = 离开联机模式：清理 P2P 连接并关闭匹配大厅
+        if (this.isP2PMode && typeof this._cleanupP2P === 'function') {
+            this._cleanupP2P();
+        }
         // ★ 先强制停止游戏运行
         this.forceStopGame();
         this.hideModal(this.gameOverModal, () => {

@@ -26,6 +26,8 @@ if (typeof UIController === 'undefined') {
         this.showModal(document.getElementById('p2p-room-modal'));
         this._bindP2PRoomEvents();
         this._bindLobbyEvents();
+        // 进入联机模式即打开匹配大厅连接（切到大厅页签时通常已连好，无需等待）
+        if (typeof this._openLobby === 'function') this._openLobby();
     }
 ;
 
@@ -253,6 +255,8 @@ if (typeof UIController === 'undefined') {
         if (this.levelEditor) this.levelEditor.deactivate();
         this._markGameActive();
         this.isP2PMode = true;
+        // 对局进行中暂停大厅列表自动刷新，省流量（连接本身保留）
+        if (this._lobby) this._lobby.pauseRefresh();
         this.gameController.setP2PController(p2p);
         // 注入全量同步钩子：本地状态变更时由 GameController 回调，向对手发送完整快照
         this.gameController._syncHook = () => this._syncToPeer();
@@ -490,7 +494,8 @@ if (typeof UIController === 'undefined') {
         this.p2pController?.disconnect();
         this.p2pController = null;
         this.isP2PMode = false;
-        // 断开匹配大厅连接（含自动重连清理）
+        // 离开联机模式：关闭匹配大厅连接
+        // （disconnect 后服务器侧会自动清理本连接登记的房间）
         if (typeof this._closeLobby === 'function') this._closeLobby();
         // 清理 P2P 对局残留的历史函数与格子，防止切换到其他模式时仍显示旧图像
         if (this.gridSystem) {

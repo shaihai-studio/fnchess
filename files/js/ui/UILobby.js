@@ -12,6 +12,8 @@ if (typeof UIController === 'undefined') {
         }
         if (!this._lobby) this._lobby = new MatchLobbyController();
         const lobby = this._lobby;
+        // 每次进入大厅先重置状态文本，避免残留上一局的"正在连接房间 xxx"
+        this._updateLobbyStatus('idle', '正在连接大厅...');
         lobby.onConnectionChange = (connected) => this._renderLobbyStatus(connected);
         lobby.onRoomsUpdate = (rooms) => this._renderLobbyRooms(rooms);
         lobby.onHostRegistered = (code) => this._onLobbyHostRegistered(code);
@@ -21,7 +23,12 @@ if (typeof UIController === 'undefined') {
             this._updateLobbyStatus('error', '加入失败：房间不可用，请刷新列表');
             this.showMessage('该房间已被占用或已关闭，请刷新后重试', 'error');
         };
+        // connect() 在已连接时是幂等跳过；记录是否本就已连接，用于立即刷新状态显示
+        const alreadyConnected = lobby.isConnected && lobby.ws && lobby.ws.readyState === WebSocket.OPEN;
         lobby.connect();
+        lobby.resumeRefresh();
+        lobby.fetchRooms();
+        if (alreadyConnected) this._renderLobbyStatus(true);
     }
 ;
 
@@ -183,11 +190,6 @@ if (typeof UIController === 'undefined') {
         if (refreshBtn) refreshBtn.onclick = () => {
             if (this._lobby) this._lobby.fetchRooms();
             this.showMessage('已刷新房间列表');
-        };
-        const backBtn = $('lobby-back-btn');
-        if (backBtn) backBtn.onclick = () => {
-            this.hideModal(document.getElementById('p2p-room-modal'));
-            this._cleanupP2P();
         };
     }
 ;
