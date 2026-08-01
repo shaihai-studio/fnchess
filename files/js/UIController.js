@@ -60,6 +60,14 @@ class UIController {
         this._syncDebounceTimer = null;
         // P2P：周期同步定时器（每 0.2s 由当前玩家方主动推送一次完整快照）
         this._p2pSyncInterval = null;
+        // P2P：健康监测（被动方等待对方回合超时 → 健康探测 + 多次补救 + 提示）
+        this._p2pHealthTimer = null;
+        this._p2pHealthChecking = false;
+        this._p2pHealthRetryCount = 0;
+        this._p2pHealthCheckAt = 0;
+        this._p2pWaitStartAt = null;
+        this._p2pLastTimerVal = null;
+        this._p2pStallWarnedAt = 0;
         
         // 拖拽状态
         this.draggedElement = null;

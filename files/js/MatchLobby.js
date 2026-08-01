@@ -46,6 +46,7 @@ class MatchLobbyController {
         this.ws = null;
         this.isConnected = false;
         this.myRoomCode = null;   // 我作为房主登记的房间码
+        this.myRoomExpiresAt = 0; // 房间到期时间戳（毫秒），状态条倒计时用
         this.rooms = [];          // 服务器推来的房间列表快照
         this._manualClose = false;
         this._reconnectTimer = null;
@@ -54,10 +55,11 @@ class MatchLobbyController {
         // ── 回调 ──────────────────────────────────────────────
         this.onConnectionChange = null; // (connected) => void
         this.onRoomsUpdate = null;      // (rooms) => void
-        this.onHostRegistered = null;   // (code) => void
+        this.onHostRegistered = null;   // (code, expiresAt) => void
         this.onGuestJoining = null;     // (code) => void（房主收到：有人申请加入）
         this.onJoinAccepted = null;     // (code) => void（访客收到：服务器放行）
         this.onJoinRejected = null;     // (code, reason) => void
+        this.onHostRoomExpired = null;  // (code) => void（房主收到：房间到期被服务器清理）
     }
 
     // ─── 连接管理 ────────────────────────────────────────────
@@ -107,6 +109,7 @@ class MatchLobbyController {
         }
         this.isConnected = false;
         this.myRoomCode = null;
+        this.myRoomExpiresAt = 0;
         this.rooms = [];
         this._notifyConnection(false);
     }
@@ -159,7 +162,13 @@ class MatchLobbyController {
                 break;
             case 'host_registered':
                 this.myRoomCode = String(data.code);
-                if (this.onHostRegistered) this.onHostRegistered(this.myRoomCode);
+                this.myRoomExpiresAt = Number(data.expiresAt) || 0;
+                if (this.onHostRegistered) this.onHostRegistered(this.myRoomCode, this.myRoomExpiresAt);
+                break;
+            case 'room_expired':
+                this.myRoomCode = null;
+                this.myRoomExpiresAt = 0;
+                if (this.onHostRoomExpired) this.onHostRoomExpired(String(data.code));
                 break;
             case 'guest_joining':
                 if (this.onGuestJoining) this.onGuestJoining(String(data.code));
@@ -190,6 +199,7 @@ class MatchLobbyController {
     cancelHost(code) {
         this._send({ type: 'cancel_register', code: String(code || this.myRoomCode || '') });
         this.myRoomCode = null;
+        this.myRoomExpiresAt = 0;
     }
 
     /** 拉取房间列表 */
@@ -211,5 +221,6 @@ class MatchLobbyController {
     notifyStarted(code) {
         this._send({ type: 'room_started', code: String(code || this.myRoomCode || '') });
         this.myRoomCode = null;
+        this.myRoomExpiresAt = 0;
     }
 }

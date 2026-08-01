@@ -688,6 +688,14 @@ if (typeof UIController === 'undefined') {
 // handleRestart
     UIController.prototype.handleRestart = function() {
         if (window.audioManager) window.audioManager.playClick();
+        // 房主建房等待中返回主页：房间保留（不销毁），状态条继续显示；
+        // 退出函数棋（关闭页面）才由 beforeunload 弹确认提醒。
+        this._doHandleRestart();
+    }
+;
+
+// _doHandleRestart
+    UIController.prototype._doHandleRestart = function() {
         // P2P 对局结束返回主页 = 离开联机模式：清理 P2P 连接并关闭匹配大厅
         if (this.isP2PMode && typeof this._cleanupP2P === 'function') {
             this._cleanupP2P();

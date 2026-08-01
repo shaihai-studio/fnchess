@@ -2635,6 +2635,30 @@ body::before {
 .p2p-battle-hint { margin-top: 8px; text-align: center; opacity: 0.6; }
 .p2p-back-btn { margin-top: 8px; }
 
+/* P2P 联机模态框 - 手机端上下排布
+   桌面端（≥768px）保持左右两栏；手机端 Stepper 三个选项在上、tab 主体在下，宽度撑满 */
+@media (max-width: 767px) {
+    .p2p-room-content { max-width: 100% !important; }
+    .p2p-content-layout {
+        flex-direction: column !important;
+        gap: 14px !important;
+        align-items: stretch !important;
+    }
+    .p2p-selectors-left {
+        flex: none !important;
+        width: 100% !important;
+        border-right: none !important;
+        padding-right: 0 !important;
+        padding-bottom: 12px !important;
+        border-bottom: 1px solid rgba(255,255,255,0.08) !important;
+    }
+    .p2p-selectors-right {
+        flex: none !important;
+        width: 100% !important;
+        min-width: 0 !important;
+    }
+}
+
 /* 匹配大厅 */
 .lobby-status { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: rgba(0,0,0,0.2); border-radius: 8px; margin-bottom: 12px; }
 .lobby-status-text { font-size: 13px; color: #94a3b8; }
@@ -2649,6 +2673,39 @@ body::before {
 .lobby-room-desc { font-size: 12px; color: #94a3b8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lobby-join-btn { flex-shrink: 0; }
 .lobby-empty { padding: 20px; text-align: center; color: #64748b; font-size: 13px; border: 1px dashed rgba(255,255,255,0.1); border-radius: 10px; }
+.lobby-delete-btn { flex: 0 0 auto; width: auto !important; padding: 8px 14px; background: rgba(239,68,68,0.15); color: #f87171; border-color: rgba(239,68,68,0.4); }
+.lobby-delete-btn:hover { background: rgba(239,68,68,0.3); color: #fca5a5; }
+.lobby-long-lived-label { display: flex; align-items: center; gap: 6px; margin-bottom: 12px; font-size: 12px; color: #94a3b8; cursor: pointer; }
+.lobby-long-lived-label input { accent-color: #eab308; }
+
+/* 房主常驻状态条（顶部固定） */
+.lobby-host-banner {
+    position: fixed; top: 12px; left: 50%; transform: translateX(-50%);
+    z-index: 9999; display: flex; align-items: center; gap: 8px;
+    padding: 8px 16px; background: rgba(15, 18, 35, 0.92);
+    border: 1px solid rgba(234, 179, 8, 0.55); border-radius: 999px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    font-family: 'Courier New', Consolas, monospace; font-size: 14px;
+    color: #eab308; white-space: nowrap; letter-spacing: 0.5px;
+}
+.lobby-host-banner-dot { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 8px #22c55e; animation: lobby-pulse 1.2s infinite; }
+@keyframes lobby-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+/* P2P 等待对方回执提示条（屏幕底部中央，避免与顶部房间状态条重叠） */
+.p2p-await-banner {
+    position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%);
+    z-index: 9998; display: flex; align-items: center; gap: 8px;
+    padding: 8px 16px; background: rgba(30, 20, 5, 0.92);
+    border: 1px solid rgba(251, 191, 36, 0.6); border-radius: 999px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    font-size: 13px; color: #fbbf24; white-space: nowrap;
+}
+.p2p-await-dot { width: 8px; height: 8px; border-radius: 50%; background: #fbbf24; box-shadow: 0 0 8px #fbbf24; animation: lobby-pulse 1.2s infinite; }
+
+/* 退出确认弹窗 */
+.p2p-exit-confirm-text { font-size: 15px; color: #e2e8f0; line-height: 1.6; margin: 12px 0 18px; text-align: center; }
+.p2p-exit-confirm-actions { display: flex; gap: 10px; justify-content: center; }
+.p2p-exit-confirm-actions .btn { min-width: 110px; }
 
 .difficulty-select select option[value="easy"] {
     color: #22c55e;

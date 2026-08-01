@@ -252,6 +252,16 @@ if (typeof UIController === 'undefined') {
         // 控制面板：在内容不溢出时不显示滚动条，溢出时自动出现滚动条
         // 修复 #45：原本 overflow-y: auto 在不超高时也会渲染出空滚动条（Windows 上尤其明显）
         this.initControlPanelAutoScroll();
+
+        // 退出函数棋（关闭页面/标签页/刷新）前：房主有活跃房间时弹浏览器确认提醒
+        // （房间将失效）。确认后页面才真正关闭；关闭时服务器因 WS 断开会自动清理房间。
+        window.addEventListener('beforeunload', (e) => {
+            if (this._lobby && this._lobby.myRoomCode) {
+                e.preventDefault();
+                e.returnValue = '退出后，您创建的房间将立即失效。是否确认退出？';
+                return e.returnValue;
+            }
+        });
     }
 ;
 
@@ -1073,23 +1083,27 @@ if (typeof UIController === 'undefined') {
 ;
 
 // _syncToPeer
-    UIController.prototype._syncToPeer = function() {
+    // confirmKey 非空 = 阶段切换确认推送（要求对方回 state_sync_ack，并带重发），不节流；
+    // 否则为普通推送（有 50ms 节流）。
+    UIController.prototype._syncToPeer = function(confirmKey = null) {
         if (this._applyingRemote) return;
         if (!this.isP2PMode || !this.p2pController || !this.p2pController.isConnected) return;
         const now = Date.now();
-        if (this._lastSyncTime && now - this._lastSyncTime < 50) return; // 简单节流，避免高频重复发送
+        if (!confirmKey && this._lastSyncTime && now - this._lastSyncTime < 50) return; // 简单节流
         this._lastSyncTime = now;
-        this.p2pController.sendStateSync(this.buildSyncSnapshot());
+        this.p2pController.sendStateSync(this.buildSyncSnapshot(), confirmKey);
     }
 ;
 
 // _p2pSyncNow
-    // 绕过节流立即同步一次：用于棋盘点选/锁定等低频但要求"每点击一次同步一次"的操作
-    UIController.prototype._p2pSyncNow = function() {
+    // 绕过节流立即同步一次：用于棋盘点选/锁定等低频但要求"每点击一次同步一次"的操作。
+    // confirm=true 时生成阶段确认 key（触发对方回执 + 重发，用于阶段切换）。
+    UIController.prototype._p2pSyncNow = function(confirm = false) {
         if (this._applyingRemote) return;
         if (!this.isP2PMode || !this.p2pController || !this.p2pController.isConnected) return;
         this._lastSyncTime = 0;
-        this._syncToPeer();
+        const key = confirm ? this.p2pController.nextSyncConfirmKey() : null;
+        this._syncToPeer(key);
     }
 ;
 
@@ -1108,11 +1122,31 @@ if (typeof UIController === 'undefined') {
         if (!s || !s.gc) return;
         this._applyingRemote = true;
         try {
+            const prevRound = this.gameController.currentRound;
+            const prevPhase = this.gameController.currentPhase;
             const applied = this.gameController.loadStateSnapshot(s.gc);
-            // 以操作方为基准：轮到本方的回合内，不覆盖本方的表达式输入（避免吞字符）
-            const isMyTurn = this.p2pController && this.gameController &&
-                this.gameController.currentPlayer === this.p2pController.myPlayerId;
-            if (!isMyTurn) {
+            // 以操作方为基准：轮到本方的回合内，不覆盖本方的表达式输入（避免吞字符）。
+            // 用远端快照里的 currentPlayer 判断而非应用后的本地值：若快照因版本过滤被拒绝，
+            // 本地 currentPlayer 未更新，用本地值判断会误判"轮到对方"而吞掉本方正在输入的表达式。
+            const myId = this.p2pController && this.p2pController.myPlayerId;
+            const isMyTurn = !!(myId && s.gc && s.gc.currentPlayer === myId);
+            const newRound = this.gameController.currentRound;
+            const newPhase = this.gameController.currentPhase;
+            // 回合推进（进入新回合）：清空表达式与棋盘残留。
+            // 操作方本地由 switchPlayer→roundComplete 清理；被动方靠快照推进时也必须清理，
+            // 否则上一回合构造的表达式/目标格会残留到新回合（如构造方 y=1 残留、目标/禁止格残留）。
+            // 此时刻意不采用 s.expr（操作方快照里可能仍带其本地输入残留），强制置空。
+            const roundAdvanced = applied && newRound !== prevRound;
+            // 兜底：只要进入 SELECT_TARGET（新回合开始，不允许输入表达式），就强制清空表达式残留。
+            // 覆盖（applied=false 本地维持 SELECT_TARGET）或（roundAdvanced=false 应对端也推进过了）
+            // 等场景，避免 y=1 等残留。
+            const enteredSelectTarget = applied && newPhase === this.gameController.phases.SELECT_TARGET &&
+                prevPhase !== this.gameController.phases.SELECT_TARGET;
+            if (roundAdvanced || enteredSelectTarget) {
+                this.expressionElements = [];
+                this.cursorIndex = 0;
+                this.gridSystem.clearAll();
+            } else if (!isMyTurn) {
                 this.expressionElements = (s.expr || []).slice();
                 this.cursorIndex = (typeof s.cursorIndex === 'number') ? s.cursorIndex : this.expressionElements.length;
             }

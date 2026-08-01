@@ -993,8 +993,10 @@ if (typeof UIController === 'undefined') {
 
 // clearExpression
     UIController.prototype.clearExpression = function() {
+        // audioManager.playElementClick 异常不能让 expressionElements 残留：
+        // 回合切换依赖 clearExpression 彻底清空，否则新回合会显示上一回合的表达式
         if (window.audioManager && this.expressionElements && this.expressionElements.length > 0) {
-            window.audioManager.playElementClick();
+            try { window.audioManager.playElementClick(); } catch (e) { /* ignore */ }
         }
         this.expressionElements = [];
         this.currentExpression = '';

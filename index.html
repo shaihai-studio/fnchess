@@ -17,6 +17,18 @@
         </div>
     </div>
 
+    <!-- 房主常驻状态条（关闭联机弹窗/返回主菜单后仍显示，房间存活指示） -->
+    <div class="lobby-host-banner" id="lobby-host-banner" style="display:none;">
+        <span class="lobby-host-banner-dot"></span>
+        <span class="lobby-host-banner-text">[<span id="lobby-banner-code">------</span>] 等待玩家加入 剩余时间：<span id="lobby-banner-time">05:00</span></span>
+    </div>
+
+    <!-- P2P 等待对方回执提示条（任何同步机制等待对方回复时显示） -->
+    <div class="p2p-await-banner" id="p2p-await-banner" style="display:none;">
+        <span class="p2p-await-dot"></span>
+        <span>连接不稳定，正在等待对方回复…</span>
+    </div>
+
     <div id="summa-container"></div>
 
     <!-- 顶部信息栏 -->
@@ -501,8 +513,12 @@
                         </div>
                         <div class="lobby-actions">
                             <button class="btn btn-primary p2p-action-btn" id="lobby-create-btn">创建房间（进大厅）</button>
-                            <button class="btn btn-small lobby-refresh-btn" id="lobby-refresh-btn">刷新</button>
+                            <button class="btn btn-small lobby-delete-btn" id="lobby-delete-btn" style="display:none;">删除房间</button>
                         </div>
+                        <label class="lobby-long-lived-label">
+                            <input type="checkbox" id="lobby-long-lived-toggle">
+                            <span>长效模式（30分钟，房间号以00开头）</span>
+                        </label>
                         <div class="lobby-list" id="lobby-list"></div>
                         <div class="p2p-battle-hint">
                             <small>创建房间后进入等待列表，其他玩家可点击你的房间加入</small><br>
@@ -515,6 +531,18 @@
                     </div>
                     <button class="btn btn-secondary p2p-back-btn" id="p2p-back-btn" style="width:100%;margin-top:8px;">返回</button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 房主退出联机二次确认（有活跃房间时弹出） -->
+    <div class="modal" id="p2p-exit-confirm-modal" style="display:none;">
+        <div class="modal-content" style="max-width:420px;">
+            <h2>确认退出</h2>
+            <p class="p2p-exit-confirm-text">退出后，您创建的房间将立即失效。是否确认退出？</p>
+            <div class="p2p-exit-confirm-actions">
+                <button class="btn btn-secondary" id="p2p-exit-confirm-cancel">取消</button>
+                <button class="btn btn-primary" id="p2p-exit-confirm-ok">确认退出</button>
             </div>
         </div>
     </div>

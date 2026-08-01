@@ -86,10 +86,19 @@ server.on('upgrade', (req, socket, head) => {
  */
 const rooms = new Map();
 
-function genRoomCode() {
+// 房间有效期：普通 5 分钟，长效模式 30 分钟
+const ROOM_TTL_DEFAULT = 5 * 60 * 1000;
+const ROOM_TTL_LONG = 30 * 60 * 1000;
+
+function genRoomCode(longLived = false) {
     let code;
     do {
-        code = String(Math.floor(Math.random() * 1000000)).padStart(6, '0');
+        if (longLived) {
+            // 长效模式：房间号以 00 开头（如 002639），占用特殊号段
+            code = '00' + String(Math.floor(Math.random() * 10000)).padStart(4, '0');
+        } else {
+            code = String(Math.floor(Math.random() * 1000000)).padStart(6, '0');
+        }
     } while (rooms.has(code));
     return code;
 }
@@ -110,6 +119,18 @@ function cleanupHost(ws) {
     }
 }
 
+// 定期清理过期房间（普通 5 分钟 / 长效 30 分钟），并通知对应房主
+setInterval(() => {
+    const now = Date.now();
+    for (const [code, room] of rooms) {
+        if (room.expiresAt && now >= room.expiresAt) {
+            rooms.delete(code);
+            console.log(`[Lobby] 房间 ${code} 已过期，自动清理`);
+            send(room.hostWs, { type: 'room_expired', code });
+        }
+    }
+}, 30000);
+
 lobbyWss.on('connection', (ws) => {
     console.log('[Lobby] 客户端已连接');
 
@@ -122,17 +143,21 @@ lobbyWss.on('connection', (ws) => {
             // 房主登记房间（建房进大厅列表）
             case 'host_register': {
                 cleanupHost(ws); // 同一连接重复登记时，先清旧房
-                const code = genRoomCode();
+                const longLived = !!(msg.options && msg.options.longLived);
+                const code = genRoomCode(longLived);
+                const expiresAt = Date.now() + (longLived ? ROOM_TTL_LONG : ROOM_TTL_DEFAULT);
                 rooms.set(code, {
                     code,
                     options: msg.options || {},
                     hostWs: ws,
                     guestWs: null,
                     status: 'waiting',
-                    createdAt: Date.now()
+                    createdAt: Date.now(),
+                    expiresAt,
+                    longLived
                 });
-                send(ws, { type: 'host_registered', code });
-                console.log(`[Lobby] 房主登记房间 ${code}`, msg.options || {});
+                send(ws, { type: 'host_registered', code, expiresAt });
+                console.log(`[Lobby] 房主登记房间 ${code}（${longLived ? '长效 30 分钟' : '5 分钟'}）`, msg.options || {});
                 break;
             }
 
@@ -145,10 +170,15 @@ lobbyWss.on('connection', (ws) => {
 
             // 访客拉取房间列表
             case 'list_rooms': {
+                const now = Date.now();
                 const list = [];
-                for (const room of rooms.values()) {
+                for (const [code, room] of rooms) {
+                    if (room.expiresAt && now >= room.expiresAt) {
+                        rooms.delete(code);
+                        continue;
+                    }
                     if (room.status !== 'waiting') continue;
-                    list.push({ code: room.code, options: room.options, createdAt: room.createdAt });
+                    list.push({ code: room.code, options: room.options, createdAt: room.createdAt, expiresAt: room.expiresAt });
                 }
                 send(ws, { type: 'rooms_list', rooms: list });
                 break;
@@ -157,7 +187,16 @@ lobbyWss.on('connection', (ws) => {
             // 访客申请加入
             case 'join_request': {
                 const room = rooms.get(String(msg.code));
-                if (!room || room.status !== 'waiting') {
+                if (!room) {
+                    send(ws, { type: 'join_rejected', code: String(msg.code), reason: 'room_not_available' });
+                    return;
+                }
+                if (room.expiresAt && Date.now() >= room.expiresAt) {
+                    rooms.delete(String(msg.code));
+                    send(ws, { type: 'join_rejected', code: String(msg.code), reason: 'room_expired' });
+                    return;
+                }
+                if (room.status !== 'waiting') {
                     send(ws, { type: 'join_rejected', code: String(msg.code), reason: 'room_not_available' });
                     return;
                 }

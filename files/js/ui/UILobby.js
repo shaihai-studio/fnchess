@@ -16,13 +16,19 @@ if (typeof UIController === 'undefined') {
         this._updateLobbyStatus('idle', '正在连接大厅...');
         lobby.onConnectionChange = (connected) => this._renderLobbyStatus(connected);
         lobby.onRoomsUpdate = (rooms) => this._renderLobbyRooms(rooms);
-        lobby.onHostRegistered = (code) => this._onLobbyHostRegistered(code);
+        lobby.onHostRegistered = (code, expiresAt) => this._onLobbyHostRegistered(code, expiresAt);
         lobby.onJoinAccepted = (code) => this._onLobbyJoinAccepted(code);
         lobby.onGuestJoining = (code) => this._onLobbyGuestJoining(code);
         lobby.onJoinRejected = (code, reason) => {
             this._updateLobbyStatus('error', '加入失败：房间不可用，请刷新列表');
             this.showMessage('该房间已被占用或已关闭，请刷新后重试', 'error');
         };
+        lobby.onHostRoomExpired = (code) => this._onLobbyHostRoomExpired(code);
+        // 若房主已有活跃房间（离开联机界面时保留的），恢复状态条与删除按钮
+        if (lobby.myRoomCode) {
+            this._showHostRoomBanner(lobby.myRoomCode, lobby.myRoomExpiresAt);
+            this._refreshHostDeleteBtn();
+        }
         // connect() 在已连接时是幂等跳过；记录是否本就已连接，用于立即刷新状态显示
         const alreadyConnected = lobby.isConnected && lobby.ws && lobby.ws.readyState === WebSocket.OPEN;
         lobby.connect();
@@ -33,8 +39,15 @@ if (typeof UIController === 'undefined') {
 ;
 
 // _closeLobby
+    // 离开联机界面。房主有活跃房间时不断开大厅连接（房间存活、状态条常驻），
+    // 仅暂停列表刷新；无活跃房间才真正断开连接。
     UIController.prototype._closeLobby = function() {
-        if (this._lobby) this._lobby.disconnect();
+        if (!this._lobby) return;
+        if (this._lobby.myRoomCode) {
+            this._lobby.pauseRefresh();
+            return;
+        }
+        this._lobby.disconnect();
     }
 ;
 
@@ -125,19 +138,24 @@ if (typeof UIController === 'undefined') {
         const rounds = this._getP2PRounds();
         const difficulty = this._getP2PDifficulty();
         const timeLimitMode = this._getP2PTimeLimitMode();
+        // 长效模式：有效期 30 分钟、房间号以 00 开头
+        const longLived = !!(document.getElementById('lobby-long-lived-toggle') || {}).checked;
         const btn = document.getElementById('lobby-create-btn');
         if (btn) btn.disabled = true;
         this._updateLobbyStatus('creating', '正在向大厅登记房间...');
-        lobby.hostRegister({ rounds, difficulty, timeLimitMode });
+        lobby.hostRegister({ rounds, difficulty, timeLimitMode, longLived });
     }
 ;
 
 // _onLobbyHostRegistered
-    UIController.prototype._onLobbyHostRegistered = function(code) {
+    UIController.prototype._onLobbyHostRegistered = function(code, expiresAt) {
         // 用大厅分配的房间码创建 P2P 房间（复用预留钩子 createRoomWithCode）
         if (this.p2pController) this.p2pController.createRoomWithCode(code);
         this._updateLobbyStatus('waiting', `房间 ${code} 已登记，等待对手加入...`);
         this.showMessage(`房间 ${code} 已创建，等待对手加入`);
+        // 常驻顶部状态条 + 显示删除房间按钮
+        this._showHostRoomBanner(code, expiresAt);
+        this._refreshHostDeleteBtn();
     }
 ;
 
@@ -168,6 +186,9 @@ if (typeof UIController === 'undefined') {
 
 // _onLobbyGuestJoining
     UIController.prototype._onLobbyGuestJoining = function(code) {
+        // 有人加入 → 隐藏常驻状态条，准备切入对战
+        this._stopHostRoomBanner();
+        this._refreshHostDeleteBtn();
         this._updateLobbyStatus('connecting', `有对手加入你的房间（${code}），正在建立连接...`);
     }
 ;
@@ -176,6 +197,8 @@ if (typeof UIController === 'undefined') {
     UIController.prototype._lobbyCancelHost = function() {
         const lobby = this._lobby;
         if (lobby) lobby.cancelHost();
+        this._stopHostRoomBanner();
+        this._refreshHostDeleteBtn();
         const btn = document.getElementById('lobby-create-btn');
         if (btn) btn.disabled = false;
     }
@@ -186,10 +209,179 @@ if (typeof UIController === 'undefined') {
         const $ = id => document.getElementById(id);
         const createBtn = $('lobby-create-btn');
         if (createBtn) createBtn.onclick = () => this._lobbyHostRegister();
-        const refreshBtn = $('lobby-refresh-btn');
-        if (refreshBtn) refreshBtn.onclick = () => {
-            if (this._lobby) this._lobby.fetchRooms();
-            this.showMessage('已刷新房间列表');
+        // 「删除房间」按钮（仅房主可见）：销毁房间并关闭建房等待
+        const deleteBtn = $('lobby-delete-btn');
+        if (deleteBtn) deleteBtn.onclick = () => this._lobbyDeleteRoom();
+        // 长效模式开关（30 分钟，房间号以 00 开头）
+        const longToggle = $('lobby-long-lived-toggle');
+        if (longToggle) longToggle.onchange = () => {};
+    }
+;
+
+// _onLobbyHostRoomExpired
+    UIController.prototype._onLobbyHostRoomExpired = function(code) {
+        this._stopHostRoomBanner();
+        this._refreshHostDeleteBtn();
+        this._cleanupHostWaiting();
+        this._updateLobbyStatus('idle', '房间已过期，请重新创建');
+        this.showMessage('房间已过期，请重新创建', 'warning');
+        const btn = document.getElementById('lobby-create-btn');
+        if (btn) btn.disabled = false;
+    }
+;
+
+// _cleanupHostWaiting
+    // 房主建房等待但尚未开局时，关闭 PeerJS 等待连接（房间被删除/过期后调用）
+    UIController.prototype._cleanupHostWaiting = function() {
+        if (this.p2pController && this.p2pController.isHost && !this.p2pController.isConnected) {
+            this.p2pController.disconnect();
+        }
+    }
+;
+
+// _showHostRoomBanner
+    // 常驻顶部状态条：[房间ID] 等待玩家加入 剩余时间：[MM:SS]
+    // 房主关闭联机弹窗/返回主菜单后仍保持显示（大厅连接常驻，房间存活）
+    UIController.prototype._showHostRoomBanner = function(code, expiresAt) {
+        const banner = document.getElementById('lobby-host-banner');
+        if (!banner) return;
+        const codeEl = document.getElementById('lobby-banner-code');
+        if (codeEl) codeEl.textContent = String(code || '------');
+        this._hostRoomExpiresAt = Number(expiresAt) || (Date.now() + 300000);
+        banner.style.display = 'flex';
+        this._startHostRoomBannerTimer();
+        this._updateHostRoomBannerTime();
+    }
+;
+
+// _startHostRoomBannerTimer
+    UIController.prototype._startHostRoomBannerTimer = function() {
+        this._stopHostRoomBannerTimer();
+        this._hostRoomBannerTimer = setInterval(() => {
+            if (!this._updateHostRoomBannerTime()) this._stopHostRoomBannerTimer();
+        }, 1000);
+    }
+;
+
+// _stopHostRoomBannerTimer
+    UIController.prototype._stopHostRoomBannerTimer = function() {
+        if (this._hostRoomBannerTimer) {
+            clearInterval(this._hostRoomBannerTimer);
+            this._hostRoomBannerTimer = null;
+        }
+    }
+;
+
+// _updateHostRoomBannerTime
+    UIController.prototype._updateHostRoomBannerTime = function() {
+        const timeEl = document.getElementById('lobby-banner-time');
+        const remaining = Math.max(0, Math.floor((this._hostRoomExpiresAt - Date.now()) / 1000));
+        if (timeEl) timeEl.textContent = this._formatMMSS(remaining);
+        if (remaining <= 0) {
+            // 房间到期：隐藏状态条、清理建房等待
+            this._stopHostRoomBanner();
+            this._cleanupHostWaiting();
+            this.showMessage('房间已过期，请重新创建', 'warning');
+            return false;
+        }
+        return true;
+    }
+;
+
+// _stopHostRoomBanner
+    UIController.prototype._stopHostRoomBanner = function() {
+        this._stopHostRoomBannerTimer();
+        const banner = document.getElementById('lobby-host-banner');
+        if (banner) banner.style.display = 'none';
+        this._hostRoomExpiresAt = 0;
+    }
+;
+
+// _formatMMSS
+    UIController.prototype._formatMMSS = function(totalSeconds) {
+        const m = String(Math.floor(totalSeconds / 60)).padStart(2, '0');
+        const s = String(totalSeconds % 60).padStart(2, '0');
+        return `${m}:${s}`;
+    }
+;
+
+// _refreshHostDeleteBtn
+    // 「删除房间」按钮仅房主（有活跃房间）可见
+    UIController.prototype._refreshHostDeleteBtn = function() {
+        const btn = document.getElementById('lobby-delete-btn');
+        if (!btn) return;
+        const active = !!(this._lobby && this._lobby.myRoomCode);
+        btn.style.display = active ? '' : 'none';
+    }
+;
+
+// _lobbyDeleteRoom
+    // 房主主动删除房间（大厅「删除房间」按钮）
+    UIController.prototype._lobbyDeleteRoom = function() {
+        const lobby = this._lobby;
+        if (!lobby || !lobby.myRoomCode) return;
+        const code = lobby.myRoomCode;
+        this._destroyHostRoom();
+        this._updateLobbyStatus('idle', `房间 ${code} 已删除`);
+        this.showMessage(`房间 ${code} 已删除`);
+        const btn = document.getElementById('lobby-create-btn');
+        if (btn) btn.disabled = false;
+    }
+;
+
+// _destroyHostRoom
+    // 销毁房主房间（删除房间按钮 / 退出确认框确认后调用）
+    UIController.prototype._destroyHostRoom = function() {
+        const lobby = this._lobby;
+        if (lobby && lobby.myRoomCode) {
+            lobby.cancelHost(lobby.myRoomCode);
+        }
+        this._stopHostRoomBanner();
+        this._cleanupHostWaiting();
+        this._refreshHostDeleteBtn();
+    }
+;
+
+// _confirmP2PExit
+    // 退出拦截：房主有活跃房间时弹二次确认
+    // 确认 = 销毁房间并退出；取消 = 返回界面
+    UIController.prototype._confirmP2PExit = function(onConfirm) {
+        const modal = document.getElementById('p2p-exit-confirm-modal');
+        if (!modal || !this._lobby || !this._lobby.myRoomCode) {
+            if (onConfirm) onConfirm();
+            return;
+        }
+        this._p2pExitConfirmCb = onConfirm;
+        this.showModal(modal);
+        const ok = document.getElementById('p2p-exit-confirm-ok');
+        const cancel = document.getElementById('p2p-exit-confirm-cancel');
+        if (ok) ok.onclick = () => {
+            this._destroyHostRoom();
+            this.hideModal(modal);
+            const cb = this._p2pExitConfirmCb;
+            this._p2pExitConfirmCb = null;
+            if (cb) cb();
         };
+        if (cancel) cancel.onclick = () => {
+            this.hideModal(modal);
+            this._p2pExitConfirmCb = null;
+        };
+        // ESC / 点遮罩 = 取消
+        this.bindModalDismiss(modal, () => {
+            this.hideModal(modal);
+            this._p2pExitConfirmCb = null;
+        });
+    }
+;
+
+// _p2pCloseRoomModal
+    // 关闭联机房间弹窗（返回按钮 / ESC / 遮罩）：
+    // 房主退出联机界面不再销毁房间 —— 房间保留（大厅 WS 常驻 + PeerJS 建房连接保留 +
+    // 顶部状态条继续显示），有对手加入仍会自动切入对战。
+    // 只有「退出函数棋」（关闭页面）才由 beforeunload 弹确认提醒。
+    UIController.prototype._p2pCloseRoomModal = function() {
+        const p2pModal = document.getElementById('p2p-room-modal');
+        if (p2pModal) this.hideModal(p2pModal);
+        this._cleanupP2P();
     }
 ;

@@ -212,8 +212,8 @@ if (typeof UIController === 'undefined') {
         } else if (phase === 'set_forbidden') {
             this.gameController.addForbiddenCell(cell);
         }
-        // P2P：每次点选/取消都立即同步，让对手实时看到当前选择（绕过节流）
-        this._p2pSyncNow();
+        // P2P：selectTargetCell/addForbiddenCell 内部已通过 _syncHook(_p2pSyncNow) 强制同步，
+        // 无需再重复推送（避免同版本全量快照双发造成消息风暴）
     }
 ;
 
@@ -288,22 +288,38 @@ if (typeof UIController === 'undefined') {
             this.updateTimer(state.remainingTime);
         }
 
-        // 构造方实时绘制函数曲线，让对手同步看到
-        if ((state.currentPhase === 'input_function' || state.currentPhase === 'evaluate') && state.roundState.functionExpression) {
+        // 构造方提交后绘制函数曲线，让对手同步看到。
+        // 只在「提交后」（roundState.functionExpression 非空）绘制 —— 输入过程中
+        // 不画曲线，仅同步表达式文本；避免"还没点确认就开始绘制"。
+        // 不限阶段：提交后进入 evaluate/switch_player 的快照也会到达，
+        // 而棋盘 gridSystem.draw() 已清空画布，必须每次快照都补画曲线。
+        if (state.roundState.functionExpression) {
             this._drawRemoteFunction(state.roundState.functionExpression);
         }
     }
 ;
 
 // _drawRemoteFunction
+    // 远端快照到达时重绘函数曲线。因为棋盘 gridSystem.draw() 每次都会清空整块画布，
+    // 曲线必须随每次快照补画；表达式变化时带动画（与提交方同步体验），
+    // 表达式相同时无动画静默补画（避免提交瞬间 expr 未变被去重跳过 → 曲线消失）。
     UIController.prototype._drawRemoteFunction = async function(expr) {
-        if (expr === this._lastRemoteExpr) return; // 表达式未变则跳过重绘
-        this._lastRemoteExpr = expr;
-        try {
-            // 带动画绘制函数曲线，让对手看到与提交方相同的绘制过程
-            await this.renderer.drawFunction(expr, true);
-        } catch (e) {
-            // 远端函数绘制失败时静默处理
+        if (!expr || !this.renderer) return;
+        if (expr !== this._lastRemoteExpr) {
+            this._lastRemoteExpr = expr;
+            try {
+                // 带动画绘制函数曲线，让对手看到与提交方相同的绘制过程
+                await this.renderer.drawFunction(expr, true);
+            } catch (e) {
+                // 远端函数绘制失败时静默处理
+            }
+        } else {
+            try {
+                // 相同表达式：无动画静默补画（画布刚被棋盘重绘清空）
+                this.renderer.drawFunction(expr, false);
+            } catch (e) {
+                // 远端函数绘制失败时静默处理
+            }
         }
     }
 ;
