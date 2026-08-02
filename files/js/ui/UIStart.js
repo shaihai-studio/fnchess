@@ -702,6 +702,14 @@ if (typeof UIController === 'undefined') {
         }
         // ★ 先强制停止游戏运行
         this.forceStopGame();
+        // game-over 后重启不走 resetBattleGrid，需显式清空上一局残留的函数解析式
+        // （input 区 + KaTeX 数学预览），避免"返回主菜单后历史解析式残留在主界面"。
+        if (typeof this.clearExpression === 'function') {
+            try { this.clearExpression(); } catch (e) { /* UI 未就绪时静默忽略 */ }
+        }
+        // 同步清理固定定位的 hover tooltip（fixed z-index:10000，不清会穿透显示在主菜单上）
+        try { this.hideHistoryFunctionTooltip && this.hideHistoryFunctionTooltip(); } catch (e) {}
+        try { this.hideLockCountTooltip && this.hideLockCountTooltip(); } catch (e) {}
         this.hideModal(this.gameOverModal, () => {
             // 如果在测试模式，先退出测试模式
             if (this.gameController.isTestMode()) {

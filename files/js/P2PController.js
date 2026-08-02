@@ -237,8 +237,14 @@ class P2PController {
         } catch (err) { this._handleError(err); }
     }
 
-    /** 用大厅分配的 roomCode 创建房间（跳过随机生成） */
-    async createRoomWithCode(code) {
+    /**
+     * 用大厅分配的 roomCode 创建房间（跳过随机生成）
+     * @param {string} code - 大厅分配的房间码
+     * @param {number} waitTimeout - 等待对手加入的超时毫秒数。
+     *        默认 60s；长效模式（服务器房间 30 分钟 TTL）由调用方传入剩余有效期，
+     *        避免 PeerJS 默认 60s 超时提前销毁房间（服务器房间仍存活，访客却无法加入）。
+     */
+    async createRoomWithCode(code, waitTimeout = 60000) {
         try {
             await P2PController.ensurePeerJs();
         } catch (err) {
@@ -272,7 +278,9 @@ class P2PController {
             this.peer.on('open', () => {
                 this._clearTimeout();
                 this._notifyStatus('waiting', '等待对手加入...');
-                this._startTimeout('等待对手超时', 60000);
+                // 长效模式传入的 waitTimeout 为服务器房间剩余有效期（最长 30 分钟）；
+                // 普通模式保持 60s 默认。服务器到期会发 room_expired，由大厅侧正常收尾。
+                this._startTimeout('等待对手超时', waitTimeout);
             });
             this.peer.on('connection', (conn) => {
                 if (this.isConnected || this._guestConnecting) { conn.close(); return; }

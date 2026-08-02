@@ -45,6 +45,18 @@ if (typeof UIController === 'undefined') {
             this.inverseTrigToggle.addEventListener('change', () => {
                 this.setInverseTrigEnabled(this.inverseTrigToggle.checked);
             });
+            // 未解锁时 checkbox 是 disabled（点击无任何反应），用户会困惑"勾了开关为什么没用"。
+            // 拦截 label 点击：未解锁 → 阻止默认行为并弹出解锁提示，给出明确反馈。
+            if (this.inverseTrigToggleWrap) {
+                this.inverseTrigToggleWrap.addEventListener('click', (e) => {
+                    if (this.inverseTrigToggle.disabled) {
+                        e.preventDefault();
+                        if (typeof this.showInverseTrigLockedDialog === 'function') {
+                            this.showInverseTrigLockedDialog();
+                        }
+                    }
+                });
+            }
         }
         this.refreshInverseTrigToggle();
         
@@ -339,6 +351,8 @@ if (typeof UIController === 'undefined') {
         this.refreshStartSelectorDisplay();
         this.updateDifficultyHint();
         this.syncStartSelectionState();
+        // 难度切换后刷新反三角函数开关的提示（简单难度会隐藏反三角按钮，需即时更新）
+        if (typeof this.refreshInverseTrigToggle === 'function') this.refreshInverseTrigToggle();
     }
 ;
 
@@ -1197,6 +1211,17 @@ if (typeof UIController === 'undefined') {
                     this.showMessage('状态已与对手同步：你未提交的操作已被重置', 'warning');
                 }
             }
+            // ── P2P 被动方音效：接收方对"对方选格/回合推进"给出声音反馈 ──
+            // 仅在应用成功且本端非当前操作方（!isMyTurn）时播放，避免与本地交互音效叠加。
+            if (applied && !isMyTurn && window.audioManager) {
+                const nowTargets = (gc.roundState && gc.roundState.targetCells) ? gc.roundState.targetCells.length : 0;
+                const nowForbidden = (gc.roundState && gc.roundState.forbiddenCells) ? gc.roundState.forbiddenCells.length : 0;
+                if (roundAdvanced || enteredSelectTarget) {
+                    window.audioManager.playPhaseChange();   // 新回合开始提示
+                } else if (nowTargets > prevTargets || nowForbidden > prevForbidden) {
+                    window.audioManager.playElementClick();  // 对方新增目标格/禁止格
+                }
+            }
             // P2P 快照只传历史函数解析式（剥离采样点）→ 应用后为缺 points 的历史函数
             // 用本地 renderer 重新采样，保证历史淡化绘图正常显示（传解析式、本地绘历史）。
             // 最多 2 个历史函数，每次采样开销很小；_renderFromState 会把补好点的
@@ -1549,6 +1574,22 @@ if (typeof UIController === 'undefined') {
         if (typeof this.gridSystem.draw === 'function') {
             this.gridSystem.draw();
         }
+
+        // 统一清理表达式（input 区 + KaTeX 数学预览），避免"返回主菜单后残留上一局
+        // 函数解析式（如 ln(sin(x)^2)+1）"透过透明主菜单 modal 显示在 logo 附近。
+        // 覆盖 P2P / AI / 本地 / race / campaign 的 handleExit 与 returnCampaignToDifficulty
+        // 等所有走 resetBattleGrid 的路径。_doHandleRestart（game-over 重启，不走这里）
+        // 需单独显式调用 clearExpression。
+        if (typeof this.clearExpression === 'function') {
+            try { this.clearExpression(); } catch (e) { /* UI 未就绪时静默忽略 */ }
+        }
+
+        // 清理历史函数曲线 hover tooltip（fixed z-index:10000，比主菜单 .modal 高，
+        // 若不清理会穿透显示在主菜单按钮附近："第 X 回合 + 解析式" 黑色小标签）。
+        // 同理清理锁定格数 tooltip（也是 fixed z-index:10000）。
+        // 鼠标从棋盘快速移动到外部元素/键盘进主菜单时，mouseleave 不触发，需显式清理。
+        try { this.hideHistoryFunctionTooltip && this.hideHistoryFunctionTooltip(); } catch (e) {}
+        try { this.hideLockCountTooltip && this.hideLockCountTooltip(); } catch (e) {}
     }
 ;
 

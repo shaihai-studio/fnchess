@@ -825,6 +825,26 @@ if (typeof UIController === 'undefined') {
         if (this.inverseTrigToggleWrap) {
             this.inverseTrigToggleWrap.classList.toggle('disabled', !unlocked);
         }
+
+        // 已解锁但当前难度是"简单"时，对战元素面板的反三角按钮会被隐藏
+        // （isInverseTrigHideContext → isEasyMode() true → shouldHideInverseTrigElement true）。
+        // 玩家勾了开关却看不到按钮会困惑，所以在开关下方追加一行黄字提示。
+        const _diffVal = (this.difficultySelect && this.difficultySelect.value)
+            || (this.difficultyOptions && this.difficultyOptions[this.currentDifficultyIndex]
+                && this.difficultyOptions[this.currentDifficultyIndex].value);
+        const _isEasyNow = unlocked && _diffVal === 'easy';
+        let _hint = document.getElementById('inverse-trig-difficulty-hint');
+        if (_isEasyNow && this.inverseTrigToggleWrap && this.inverseTrigToggleWrap.parentNode) {
+            if (!_hint) {
+                _hint = document.createElement('div');
+                _hint.id = 'inverse-trig-difficulty-hint';
+                _hint.style.cssText = 'font-size:12px;color:#f59e0b;margin-top:6px;line-height:1.4;';
+                this.inverseTrigToggleWrap.parentNode.insertBefore(_hint, this.inverseTrigToggleWrap.nextSibling);
+            }
+            _hint.textContent = '⚠️ 当前为简单难度，不显示反三角函数。请切换至普通或专家难度。';
+        } else if (_hint) {
+            _hint.remove();
+        }
     }
 ;
 

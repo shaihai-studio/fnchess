@@ -149,8 +149,15 @@ if (typeof UIController === 'undefined') {
 
 // _onLobbyHostRegistered
     UIController.prototype._onLobbyHostRegistered = function(code, expiresAt) {
-        // 用大厅分配的房间码创建 P2P 房间（复用预留钩子 createRoomWithCode）
-        if (this.p2pController) this.p2pController.createRoomWithCode(code);
+        // 用大厅分配的房间码创建 P2P 房间（复用预留钩子 createRoomWithCode）。
+        // 关键：PeerJS 等待对手加入的超时对齐服务器房间有效期——长效模式 30 分钟，
+        // 普通模式 5 分钟。否则 PeerJS 默认 60s 超时会提前 disconnect() 销毁房间
+        // （服务器房间仍存活，访客却无法加入 → "等几分钟就被提示没连接到对手"）。
+        // 服务器到期会发 room_expired → _onLobbyHostRoomExpired 正常收尾。
+        let waitTimeout = 60000;
+        const exp = Number(expiresAt) || 0;
+        if (exp > 0) waitTimeout = Math.max(0, exp - Date.now());
+        if (this.p2pController) this.p2pController.createRoomWithCode(code, waitTimeout);
         this._updateLobbyStatus('waiting', `房间 ${code} 已登记，等待对手加入...`);
         this.showMessage(`房间 ${code} 已创建，等待对手加入`);
         // 常驻顶部状态条 + 显示删除房间按钮
