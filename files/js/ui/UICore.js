@@ -1197,6 +1197,26 @@ if (typeof UIController === 'undefined') {
                     this.showMessage('状态已与对手同步：你未提交的操作已被重置', 'warning');
                 }
             }
+            // P2P 快照只传历史函数解析式（剥离采样点）→ 应用后为缺 points 的历史函数
+            // 用本地 renderer 重新采样，保证历史淡化绘图正常显示（传解析式、本地绘历史）。
+            // 最多 2 个历史函数，每次采样开销很小；_renderFromState 会把补好点的
+            // functionHistory 同步给 GridSystem 并绘制。
+            if (applied && this.renderer && this.gridSystem) {
+                const _hist = gc.functionHistory;
+                if (Array.isArray(_hist)) {
+                    const _range = this.gridSystem.getRange();
+                    for (const _f of _hist) {
+                        if (_f && _f.expression && !Array.isArray(_f.points)) {
+                            try {
+                                _f.points = this.renderer.sampleFunction(_f.expression, _range.min, _range.max);
+                                _f.sampledRange = this.gridSystem.range;
+                            } catch (e) {
+                                _f.points = [];
+                            }
+                        }
+                    }
+                }
+            }
             // 只有真正应用了新的状态才执行完整重绘，避免旧/重复快照触发不必要的重绘
             if (applied) this._renderFromState();
         } finally {

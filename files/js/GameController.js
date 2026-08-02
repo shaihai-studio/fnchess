@@ -1539,25 +1539,24 @@ class GameController {
             return;
         }
         let nextPhase = phaseOrder[currentIndex + 1];
-            
-            // 如果从SET_LOCKS进入INPUT_FUNCTION，需要切换玩家
-            if (this.currentPhase === this.phases.SET_LOCKS && nextPhase === this.phases.INPUT_FUNCTION) {
-                this.switchToInputPhase();
-                return;
-            }
-            
-            // 自动跳过不需要设置的阶段（在AI确认后）
-            if (nextPhase === this.phases.SET_FORBIDDEN && this.getMaxForbiddenCount() === 0) {
-                nextPhase = this.phases.SET_LOCKS;
-            }
-            
-            if (nextPhase === this.phases.SET_LOCKS && this.getMaxLockCount() === 0) {
-                this.switchToInputPhase();
-                return;
-            }
-            
-            this.setPhase(nextPhase);
+
+        // 如果从SET_LOCKS进入INPUT_FUNCTION，需要切换玩家
+        if (this.currentPhase === this.phases.SET_LOCKS && nextPhase === this.phases.INPUT_FUNCTION) {
+            this.switchToInputPhase();
+            return;
         }
+
+        // 自动跳过不需要设置的阶段（在AI确认后）
+        if (nextPhase === this.phases.SET_FORBIDDEN && this.getMaxForbiddenCount() === 0) {
+            nextPhase = this.phases.SET_LOCKS;
+        }
+
+        if (nextPhase === this.phases.SET_LOCKS && this.getMaxLockCount() === 0) {
+            this.switchToInputPhase();
+            return;
+        }
+
+        this.setPhase(nextPhase);
     }
     
     /**
@@ -1721,10 +1720,11 @@ class GameController {
             // buildSyncSnapshot 调用后立即同步 send，期间不会修改这些引用，安全。
             roundState: this.roundState,
             usedCells: this.usedCells || [],
-            // 只传输最近 2 回合的历史函数（历史淡化绘制只用 roundDiff 1~2）。
-            // functionHistory 中每个函数都带海量采样点（数千~上万 {x,y}），若全量传输，
-            // 回合越多序列化体积线性暴涨 → P2P 越到后面越卡。裁剪后接收端绘制不受影响。
-            functionHistory: this._recentFunctionHistory(),
+            // P2P 联机：历史函数只传解析式（剥离采样点，接收端本地重新采样绘制）。
+            // 每个函数原本带数千~上万个 {x,y} 采样点，若全量传输会让每条 state_sync
+            // 快照序列化体积暴涨 → 第二回合起同步明显变慢。只传表达式后体积近乎为零，
+            // 接收端 applySyncSnapshot 对缺 points 的历史函数用本地 renderer 补采样。
+            functionHistory: this._p2pFunctionHistorySnapshot(),
             elementLockCounts: lockCountsObj
         };
     }
@@ -1740,6 +1740,22 @@ class GameController {
         const cutoff = this.currentRound - 2;
         if (cutoff <= 0) return all;
         return all.filter(f => f.round >= cutoff);
+    }
+
+    /**
+     * 返回供 P2P 快照传输的历史函数（剥离采样点，只保留解析式与必要元数据）。
+     * P2P 下每条 state_sync 都带完整历史函数（数千~上万采样点）会令消息体积暴涨
+     * （第二回合起同步变慢）；只传 expression 后接收端用本地 renderer 重新采样绘制，
+     * 体积近乎为零且不影响历史淡化显示。
+     */
+    _p2pFunctionHistorySnapshot() {
+        const recent = this._recentFunctionHistory();
+        if (this.gameMode !== 'p2p' || !Array.isArray(recent)) return recent;
+        return recent.map(f => ({
+            expression: f.expression,
+            round: f.round,
+            color: f.color
+        }));
     }
 
     /**
@@ -1784,13 +1800,19 @@ class GameController {
         if (!s) return false;
         const remoteVersion = s.version ?? -1;
         // P2P 版本同步原则：
-        // - 操作方（currentPlayer === myPlayerId）本地状态权威：仅接受对端 round/phase 前进
-        //   （remoteAhead，对端已推进到下一阶段/回合）或 version 更高的快照，其余按旧快照/回声拒绝。
+        // - 操作方（快照所声明的 currentPlayer === myPlayerId）本地状态权威：仅接受对端 round/phase
+        //   前进（remoteAhead，对端已推进到下一阶段/回合）或 version 更高的快照，其余按旧快照/回声拒绝。
         // - 被动方：操作方版本权威，无条件接受（DataChannel 保序，操作方只发其最新状态）。
         //   被动方本地 finalizeRound/startNextRound 复制推进会令本地 _stateVersion 虚高
         //   （setPhase 递增），若仍按 version 比较会拒绝操作方后续真实快照（选目标/禁止/锁定），
         //   导致"被动方新回合收不到操作方状态"。故被动方无条件接受并在应用后强制对齐 version。
-        const isOperator = !!(this.p2pActionSender && this.currentPlayer === this.p2pActionSender.myPlayerId);
+        // 关键修正（方案A）：isOperator 用「远端快照声明的 currentPlayer」判定，而非本地 currentPlayer。
+        // 旧逻辑用本地 currentPlayer，若被动方因时序残留旧操作方值（如回合1 selector=B 残留），会误判
+        // 为自己是操作方 → 走版本过滤拒绝操作方的真实快照（如第二回合 A 选的目标格）→ B 端卡死且
+        // health monitor 因"我方操作"停止 → 永久卡死。改用远端快照判定后，被动方无论本地 currentPlayer
+        // 残留什么都会无条件接受操作方快照；同时 version 对齐也据此正确（被动方严格对齐、消除虚高）。
+        const _myId = this.p2pActionSender ? this.p2pActionSender.myPlayerId : null;
+        const isOperator = !!(_myId && s.currentPlayer === _myId);
         if (remoteVersion !== -1 && isOperator) {
             const remoteAhead = this._isRemoteAhead(s.currentPhase, s.currentRound);
             if (!remoteAhead && remoteVersion <= this._stateVersion) {
