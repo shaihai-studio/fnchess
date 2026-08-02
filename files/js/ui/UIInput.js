@@ -711,17 +711,27 @@ if (typeof UIController === 'undefined') {
         // 渲染 KaTeX 数学预览（表达式实时美化，解析失败回退纯文本）
         this._renderMathPreview();
 
-        // P2P：本地输入时防抖同步，避免高频发送 state_sync 导致乱序覆盖
-        if (!skipSync) {
+        // P2P：本地输入时防抖同步，避免高频发送 state_sync 导致乱序覆盖。
+        // 关键限制：仅在 INPUT_FUNCTION 阶段同步。提交后 currentPhase 进入 EVALUATE，
+        // 此时若仍推表达式快照，会覆盖对端刚收到的 EVALUATE 状态 → currentPhase 回退
+        // → evaluateResult 因 phase 检查被跳过 → switchPlayer 不执行 → currentPlayer 卡死
+        // （截图"第二回合双方 currentPlayer 错位"的潜在根因之一）。
+        const gc = this.gameController;
+        const inInputPhase = gc && gc.currentPhase === gc.phases.INPUT_FUNCTION;
+        if (!skipSync && inInputPhase) {
             if (this._syncDebounceTimer) clearTimeout(this._syncDebounceTimer);
             this._syncDebounceTimer = setTimeout(() => {
                 this._syncDebounceTimer = null;
                 this._syncToPeer();
             }, 250);
             // 表达式属于 UI 层状态，手动递增版本号，确保远端能持续收到最新表达式
-            if (this.gameController && typeof this.gameController.bumpStateVersion === 'function') {
-                this.gameController.bumpStateVersion();
+            if (gc && typeof gc.bumpStateVersion === 'function') {
+                gc.bumpStateVersion();
             }
+        } else if (this._syncDebounceTimer && (!inInputPhase || skipSync)) {
+            // 已脱离 INPUT_FUNCTION 或显式跳过同步 → 清除待发的防抖定时器，避免延后污染
+            clearTimeout(this._syncDebounceTimer);
+            this._syncDebounceTimer = null;
         }
     }
 ;

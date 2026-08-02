@@ -561,6 +561,12 @@ if (typeof UIController === 'undefined') {
             this.updateLockedElements();
             this.showMessage(`已锁定元素: ${data.element}`);
         });
+
+        // P2P：用户点"确认目标/禁止/锁定"时 currentPhase 已被对端快照覆盖（非预期阶段），
+        // 请求同步自愈并提示用户稍候，避免按钮无反应造成困惑。
+        this.gameController.on('phaseMismatchHint', (data) => {
+            this.showMessage('正在与对手同步状态，请稍候…', 'warning');
+        });
         
         this.gameController.on('evaluationComplete', (data) => {
             if (window.audioManager) {
@@ -592,6 +598,14 @@ if (typeof UIController === 'undefined') {
                     color: '#00d4ff', // 默认颜色
                     sampledRange: this.gridSystem.range  // 记录采样时的 range，用于 range 扩大后的重采样判断
                 });
+                // 历史淡化绘制只用最近 2 回合（GridSystem.drawHistoryFunctions 只画 roundDiff 1~2），
+                // 裁剪更早的函数，防止 functionHistory 无限增长 → 每个函数数千~上万个采样点，
+                // 导致 P2P 同步序列化/重绘越到后面越卡。
+                const _histCutoff = this.gameController.currentRound - 2;
+                if (_histCutoff > 0) {
+                    this.gameController.functionHistory =
+                        this.gameController.functionHistory.filter(f => f.round >= _histCutoff);
+                }
             }
 
             // ── 挑衅反转学习钉子 ────────────────────────────────────────────────
@@ -1098,11 +1112,25 @@ if (typeof UIController === 'undefined') {
 // _p2pSyncNow
     // 绕过节流立即同步一次：用于棋盘点选/锁定等低频但要求"每点击一次同步一次"的操作。
     // confirm=true 时生成阶段确认 key（触发对方回执 + 重发，用于阶段切换）。
+    // 关键：300ms 内复用同一 confirm key。evaluateResult 内 setPhase(SWITCH_PLAYER) +
+    // switchPlayer 内 setPhase(SELECT_TARGET) 会连续两次调用本函数（确认 push），
+    // 若都生成新 key → 两次独立的高频重发（8 次 × 2 = 16 条消息）；复用同一 key 只 8 次。
     UIController.prototype._p2pSyncNow = function(confirm = false) {
         if (this._applyingRemote) return;
         if (!this.isP2PMode || !this.p2pController || !this.p2pController.isConnected) return;
         this._lastSyncTime = 0;
-        const key = confirm ? this.p2pController.nextSyncConfirmKey() : null;
+        let key = null;
+        if (confirm) {
+            const now = Date.now();
+            if (this._lastConfirmTime && this._lastConfirmKey &&
+                now - this._lastConfirmTime < 300) {
+                key = this._lastConfirmKey;
+            } else {
+                key = this.p2pController.nextSyncConfirmKey();
+                this._lastConfirmKey = key;
+                this._lastConfirmTime = now;
+            }
+        }
         this._syncToPeer(key);
     }
 ;
@@ -1122,16 +1150,22 @@ if (typeof UIController === 'undefined') {
         if (!s || !s.gc) return;
         this._applyingRemote = true;
         try {
-            const prevRound = this.gameController.currentRound;
-            const prevPhase = this.gameController.currentPhase;
-            const applied = this.gameController.loadStateSnapshot(s.gc);
+            const gc = this.gameController;
+            const prevRound = gc.currentRound;
+            const prevPhase = gc.currentPhase;
+            // 应用前记录本地"未提交操作"，用于检测本地操作被远端快照覆盖/回滚并提示用户
+            const hadLocalExpr = this.expressionElements.length > 0;
+            const prevExprStr = this.expressionElements.join('|');
+            const prevTargets = (gc.roundState && gc.roundState.targetCells) ? gc.roundState.targetCells.length : 0;
+            const prevForbidden = (gc.roundState && gc.roundState.forbiddenCells) ? gc.roundState.forbiddenCells.length : 0;
+            const applied = gc.loadStateSnapshot(s.gc);
             // 以操作方为基准：轮到本方的回合内，不覆盖本方的表达式输入（避免吞字符）。
             // 用远端快照里的 currentPlayer 判断而非应用后的本地值：若快照因版本过滤被拒绝，
             // 本地 currentPlayer 未更新，用本地值判断会误判"轮到对方"而吞掉本方正在输入的表达式。
             const myId = this.p2pController && this.p2pController.myPlayerId;
             const isMyTurn = !!(myId && s.gc && s.gc.currentPlayer === myId);
-            const newRound = this.gameController.currentRound;
-            const newPhase = this.gameController.currentPhase;
+            const newRound = gc.currentRound;
+            const newPhase = gc.currentPhase;
             // 回合推进（进入新回合）：清空表达式与棋盘残留。
             // 操作方本地由 switchPlayer→roundComplete 清理；被动方靠快照推进时也必须清理，
             // 否则上一回合构造的表达式/目标格会残留到新回合（如构造方 y=1 残留、目标/禁止格残留）。
@@ -1149,6 +1183,19 @@ if (typeof UIController === 'undefined') {
             } else if (!isMyTurn) {
                 this.expressionElements = (s.expr || []).slice();
                 this.cursorIndex = (typeof s.cursorIndex === 'number') ? s.cursorIndex : this.expressionElements.length;
+            }
+            // ── 回滚提示：本地未提交操作被远端快照覆盖/清空时，明确告知用户 ──
+            // 仅在同一回合内（非正常回合推进清理）检测，避免新回合清空被误报为"回滚"。
+            if (applied && !roundAdvanced && !enteredSelectTarget) {
+                const nowExprStr = this.expressionElements.join('|');
+                const nowTargets = (gc.roundState && gc.roundState.targetCells) ? gc.roundState.targetCells.length : 0;
+                const nowForbidden = (gc.roundState && gc.roundState.forbiddenCells) ? gc.roundState.forbiddenCells.length : 0;
+                const exprReset = hadLocalExpr && nowExprStr !== prevExprStr;
+                const targetsReset = prevTargets > 0 && nowTargets < prevTargets;
+                const forbiddenReset = prevForbidden > 0 && nowForbidden < prevForbidden;
+                if (exprReset || targetsReset || forbiddenReset) {
+                    this.showMessage('状态已与对手同步：你未提交的操作已被重置', 'warning');
+                }
             }
             // 只有真正应用了新的状态才执行完整重绘，避免旧/重复快照触发不必要的重绘
             if (applied) this._renderFromState();

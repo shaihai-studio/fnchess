@@ -549,6 +549,9 @@ if (typeof UIController === 'undefined') {
             this.gridSystem.usedCells = [];
         }
         this._lastRemoteExpr = null;
+        // 清理 confirm key 合并窗口，避免断线/重连后旧 key 残留误用
+        this._lastConfirmKey = null;
+        this._lastConfirmTime = 0;
         if (this.gameController && typeof this.gameController.bumpStateVersion === 'function') {
             this.gameController._syncHook = null;
         }
@@ -580,8 +583,8 @@ if (typeof UIController === 'undefined') {
 
 // _startP2PPeriodicSync
     // 在事件驱动同步基础上，增加周期同步兜底：仅「当前玩家方」（操作方）主动推送完整状态快照，
-    // 被动方只接收。事件驱动（选格/输入/锁定/阶段切换）已实时强制推送，周期推送只是兜底，
-    // 频率 0.5s 即可（0.2s 会造成全量快照风暴，对手端大量"忽略旧快照"浪费序列化/带宽）。
+    // 被动方只接收。事件驱动（选格/输入/锁定/阶段切换）已实时强制推送，周期推送只是兜底。
+    // 频率 0.8s（放宽以减少 WebRTC 拥塞风险；操作方事件驱动仍实时，不影响同步即时性）。
     UIController.prototype._startP2PPeriodicSync = function() {
         this._stopP2PPeriodicSync();
         this._p2pSyncInterval = setInterval(() => {
@@ -590,7 +593,7 @@ if (typeof UIController === 'undefined') {
             if (!this.gameController ||
                 this.gameController.currentPlayer !== this.p2pController.myPlayerId) return;
             this._syncToPeer();
-        }, 500);
+        }, 800);
     }
 ;
 
@@ -604,11 +607,12 @@ if (typeof UIController === 'undefined') {
 ;
 
 // _startP2PHealthMonitor
-    // 被动方健康监测：每 0.5s 检查一次。当「对方回合」期间 3s 内无推进
-    // （倒计时未刷新 = 未收到 timer_sync；进入对方回合超 3s = 未收到选格/推进）时，
-    // 强制发起健康探测（health_check + request_sync 补救）；对方 2s 未回执则
-    // 提醒「连接较差，请耐心等待」，并持续多次补救直到对方回应或连接断开。
-    UIController.prototype._startP2PHealthMonitor = function() {
+// 被动方健康监测：每 0.5s 检查一次。当「对方回合」期间 5s 内无推进
+        // （倒计时未刷新 = 未收到 timer_sync；进入对方回合超 5s = 未收到选格/推进）时，
+        // 强制发起健康探测（health_check + request_sync 补救）；对方 2s 未回执则
+        // 提醒「连接较差，请耐心等待」，并持续多次补救直到对方回应或连接断开。
+        // 阈值放宽：操作方（选目标格/想函数）正常思考可能 3-5s，避免误报"连接不稳定"。
+        UIController.prototype._startP2PHealthMonitor = function() {
         this._stopP2PHealthMonitor();
         this._p2pHealthChecking = false;
         this._p2pHealthRetryCount = 0;
@@ -655,8 +659,8 @@ if (typeof UIController === 'undefined') {
             this._p2pHealthChecking = false;
             return;
         }
-        // 等待超时（进入对方回合 3s 无推进 / 倒计时 3s 卡住）→ 强制检查一次
-        if (!this._p2pHealthChecking && now - this._p2pWaitStartAt > 3000) {
+        // 等待超时（进入对方回合 5s 无推进 / 倒计时 5s 卡住）→ 强制检查一次
+        if (!this._p2pHealthChecking && now - this._p2pWaitStartAt > 5000) {
             this._p2pHealthChecking = true;
             this._p2pHealthRetryCount = 0;
             this._fireP2PHealthCheck();

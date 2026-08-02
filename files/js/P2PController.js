@@ -366,8 +366,9 @@ class P2PController {
             document.addEventListener('visibilitychange', this._visibilityHandler);
             this._pingInterval = setInterval(() => { if (this.isConnected) this.send({ type: 'ping' }); }, 5000);
             // 周期验证：固定频率向对手报告当前状态指纹，双方据此发现并自愈同步丢失。
-            // 每 2s 一次即可（过于频繁会增加无谓消息，且 state_sync 事件驱动已覆盖实时性）
-            this._syncVerifyInterval = setInterval(() => this._sendSyncVerify(), 2000);
+            // 每 3s 一次（state_sync 事件驱动 + confirm 重发已覆盖实时性；
+            // verify 只需兜底"两端长时间无快照但状态漂移"的罕见情况，频率放宽减少拥塞）。
+            this._syncVerifyInterval = setInterval(() => this._sendSyncVerify(), 3000);
             console.log(`[P2P] DataChannel 已打开，isHost=${this.isHost}, myPlayerId=${this.myPlayerId}`);
             this._notifyStatus('connected', this.isHost ? '对手已加入！游戏即将开始...' : '已连接到房间！游戏即将开始...');
             if (this.onConnected) this.onConnected();
