@@ -7,21 +7,31 @@
 
 ## 图片资源
 
-- `images/MainTitle.png`, `StartButton.png`, `VolumeButton.png` — **Shaihai Studio 原创**
+- `images/MainTitle.png`, `MainTitle2.png`, `StartButton.png`, `VolumeButton.png` — **Shaihai Studio 原创**
 - `Summa形象处理/summa_image/*.PNG` (9个表情图片) — **Shaihai Studio 原创**
 
 ## 字体
 
-`fonts/SmileySans-Oblique.*` — **得意黑 (SmileySans)**  
-Copyright (c) 2023, atyunsine <jingyuminn@outlook.com>  
-SIL Open Font License v1.1 — 可自由使用、修改和分发，不得单独售卖字体文件。  
+`fonts/SmileySans-Oblique.otf.woff2`, `fonts/SmileySans-Oblique.ttf.woff2` — **得意黑 (SmileySans)**
+Copyright (c) 2023, atyunsine <jingyuminn@outlook.com>
+SIL Open Font License v1.1 — 可自由使用、修改和分发，不得单独售卖字体文件。
 项目地址: https://github.com/atelier-anchor/SmileySans
 
 ## 第三方代码
 
-`files/geogebra-lite/` — **geogebra-lite 引擎**  
-改编自 [GeoGebra](https://www.geogebra.org/) 开源项目 (GNU General Public License v3)。  
+`files/geogebra-lite/` — **geogebra-lite 引擎**
+改编自 [GeoGebra](https://www.geogebra.org/) 开源项目 (GNU General Public License v3)。
 按照 GPL v3 条款，本项目的 AGPL v3 许可证与 GPL v3 兼容。
+
+`files/vendor/katex/` — **KaTeX 数学排版引擎**
+Copyright (c) Khan Academy
+MIT License — 本地离线分发，用于表达式数学公式实时排版。
+
+`files/vendor/peerjs/peerjs.min.js` — **PeerJS 库**
+MIT License — 用于 WebRTC 点对点联机，作为 CDN 加载失败时的本地回退。
+
+`server/` — **自托管信令服务器依赖**（express / peer / ws，均 MIT License）
+仅在自部署 PeerJS 信令服务器时需要，不随前端打包。
 
 ---
 
