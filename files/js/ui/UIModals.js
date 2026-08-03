@@ -454,13 +454,8 @@ if (typeof UIController === 'undefined') {
         const p2pRoom = document.getElementById('p2p-room-modal');
         if (p2pRoom) {
             this.bindModalDismiss(p2pRoom, () => {
-                // 房主有活跃房间时弹二次确认；否则按原逻辑关闭
-                if (typeof this._p2pCloseRoomModal === 'function') {
-                    this._p2pCloseRoomModal();
-                } else {
-                    this.hideModal(p2pRoom);
-                    if (typeof this._cleanupP2P === 'function') this._cleanupP2P();
-                }
+                this.hideModal(p2pRoom);
+                if (typeof this._cleanupP2P === 'function') this._cleanupP2P();
             });
         }
 

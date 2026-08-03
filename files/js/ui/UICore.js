@@ -45,18 +45,6 @@ if (typeof UIController === 'undefined') {
             this.inverseTrigToggle.addEventListener('change', () => {
                 this.setInverseTrigEnabled(this.inverseTrigToggle.checked);
             });
-            // 未解锁时 checkbox 是 disabled（点击无任何反应），用户会困惑"勾了开关为什么没用"。
-            // 拦截 label 点击：未解锁 → 阻止默认行为并弹出解锁提示，给出明确反馈。
-            if (this.inverseTrigToggleWrap) {
-                this.inverseTrigToggleWrap.addEventListener('click', (e) => {
-                    if (this.inverseTrigToggle.disabled) {
-                        e.preventDefault();
-                        if (typeof this.showInverseTrigLockedDialog === 'function') {
-                            this.showInverseTrigLockedDialog();
-                        }
-                    }
-                });
-            }
         }
         this.refreshInverseTrigToggle();
         
@@ -189,6 +177,8 @@ if (typeof UIController === 'undefined') {
             });
         }
         this.initStartSelectors();
+        this.initEditor();
+        this.initCampaignImport();
         this.refreshStartSelectorDisplay();
         
         
@@ -221,7 +211,8 @@ if (typeof UIController === 'undefined') {
                 this.modeHint.textContent = '联机对战：与远方好友同台竞技';
             });
         }
-        // modeEditorBtn 现为指向 level-editor.html 的 <a> 链接，不需要 JS 事件绑定
+        // 关卡编辑器：选中模式，点击「开始游戏」后才打开编辑器
+        if (this.modeEditorBtn) this.modeEditorBtn.addEventListener('click', () => this.selectMode('editor'));
         if (this.raceBackBtn) this.raceBackBtn.addEventListener('click', () => this.showRaceLevelList());
         if (this.raceCloseBtn) this.raceCloseBtn.addEventListener('click', () => this.closeRaceUI());
 
@@ -238,10 +229,10 @@ if (typeof UIController === 'undefined') {
             if (el) el.addEventListener('click', fn);
         };
         bind('campaign-close-btn', () => this.closeCampaignUI());
-        bind('campaign-close-btn2', () => this.closeCampaignUI());
         bind('campaign-back-btn', () => this.playUIButtonSound(() => this.showCampaignDifficulty()));
         bind('campaign-reset-btn', () => this.playUIButtonSound(() => this.resetCampaignProgress()));
         bind('race-reset-btn', () => this.playUIButtonSound(() => this.resetRaceProgress()));
+        bind('race-custom-btn', () => this.playUIButtonSound(() => this.openRaceCustomModal()));
         bind('campaign-diff-fraction', () => this.playUIButtonSound(() => this.openCampaignLevels('fraction')));
         bind('campaign-diff-easy', () => this.playUIButtonSound(() => this.openCampaignLevels('easy')));
         bind('campaign-return-difficulty-btn', () => this.playUIButtonSound(() => this.returnCampaignToDifficulty()));
@@ -258,22 +249,13 @@ if (typeof UIController === 'undefined') {
         this.refreshUnsovableDifficultyVisibility();
         this.addCampaignDrawDelayToggle();
         this.updateCampaignDrawDelayToggleVisibility();
+        this.initRaceCustom();
         this.bindBackgroundMusicControls();
         this.initBackgroundMusic();
 
         // 控制面板：在内容不溢出时不显示滚动条，溢出时自动出现滚动条
         // 修复 #45：原本 overflow-y: auto 在不超高时也会渲染出空滚动条（Windows 上尤其明显）
         this.initControlPanelAutoScroll();
-
-        // 退出函数棋（关闭页面/标签页/刷新）前：房主有活跃房间时弹浏览器确认提醒
-        // （房间将失效）。确认后页面才真正关闭；关闭时服务器因 WS 断开会自动清理房间。
-        window.addEventListener('beforeunload', (e) => {
-            if (this._lobby && this._lobby.myRoomCode) {
-                e.preventDefault();
-                e.returnValue = '退出后，您创建的房间将立即失效。是否确认退出？';
-                return e.returnValue;
-            }
-        });
     }
 ;
 
@@ -351,8 +333,6 @@ if (typeof UIController === 'undefined') {
         this.refreshStartSelectorDisplay();
         this.updateDifficultyHint();
         this.syncStartSelectionState();
-        // 难度切换后刷新反三角函数开关的提示（简单难度会隐藏反三角按钮，需即时更新）
-        if (typeof this.refreshInverseTrigToggle === 'function') this.refreshInverseTrigToggle();
     }
 ;
 
@@ -575,12 +555,6 @@ if (typeof UIController === 'undefined') {
             this.updateLockedElements();
             this.showMessage(`已锁定元素: ${data.element}`);
         });
-
-        // P2P：用户点"确认目标/禁止/锁定"时 currentPhase 已被对端快照覆盖（非预期阶段），
-        // 请求同步自愈并提示用户稍候，避免按钮无反应造成困惑。
-        this.gameController.on('phaseMismatchHint', (data) => {
-            this.showMessage('正在与对手同步状态，请稍候…', 'warning');
-        });
         
         this.gameController.on('evaluationComplete', (data) => {
             if (window.audioManager) {
@@ -612,14 +586,6 @@ if (typeof UIController === 'undefined') {
                     color: '#00d4ff', // 默认颜色
                     sampledRange: this.gridSystem.range  // 记录采样时的 range，用于 range 扩大后的重采样判断
                 });
-                // 历史淡化绘制只用最近 2 回合（GridSystem.drawHistoryFunctions 只画 roundDiff 1~2），
-                // 裁剪更早的函数，防止 functionHistory 无限增长 → 每个函数数千~上万个采样点，
-                // 导致 P2P 同步序列化/重绘越到后面越卡。
-                const _histCutoff = this.gameController.currentRound - 2;
-                if (_histCutoff > 0) {
-                    this.gameController.functionHistory =
-                        this.gameController.functionHistory.filter(f => f.round >= _histCutoff);
-                }
             }
 
             // ── 挑衅反转学习钉子 ────────────────────────────────────────────────
@@ -653,10 +619,11 @@ if (typeof UIController === 'undefined') {
 
         // 闯关：关卡结果与自动进入下一关/重试
         this.gameController.on('campaignLevelResult', (data) => {
-            this.refreshCampaignStartUI();
+            if (!this.campaignIsCustom) this.refreshCampaignStartUI();
             const rawLevelId = data.levelId || this.campaignCurrentLevelId || 1;
             const isFraction = typeof rawLevelId === 'string' && String(rawLevelId).includes('/');
             const levelId = isFraction ? String(rawLevelId) : Number(rawLevelId || 1);
+            if (!this.campaignIsCustom) {
             let isNewRecord = false;
             let previousBest = this.getCampaignLevelBestRecord(levelId);
             if (data.pass) {
@@ -701,6 +668,7 @@ if (typeof UIController === 'undefined') {
                         }
                     }
                 }
+            }
             }
             setTimeout(() => {
                 try {
@@ -818,8 +786,14 @@ if (typeof UIController === 'undefined') {
                 if (data.pass) {
                     this.clearRaceCountdown();
                     this.stopRaceElapsedTimer();
-                    if (data.isNewBest) this.playRaceNewRecordIntro(() => { if (window.audioManager) window.audioManager.playRaceFanfare?.(); this.unlockNextRaceLevel(data.levelId); this.showRaceVictory(data); });
-                    else { if (window.audioManager) window.audioManager.playRaceFinish?.(); this.unlockNextRaceLevel(data.levelId); this.showRaceVictory(data); }
+                    const afterWin = () => {
+                        // 自定义竞速关不解锁内置 30 关进度
+                        if (!this.raceIsCustom) this.unlockNextRaceLevel(data.levelId);
+                        this.showRaceVictory(data);
+                    };
+                    // 自定义关不记录最佳成绩，故不播放 NEW RECORD 过场
+                    if (data.isNewBest && !this.raceIsCustom) this.playRaceNewRecordIntro(() => { if (window.audioManager) window.audioManager.playRaceFanfare?.(); afterWin(); });
+                    else { if (window.audioManager) window.audioManager.playRaceFinish?.(); afterWin(); }
                 } else {
                     this.showMessage('挑战失败，请重试本关', 'error');
                     this.gameController.prepareInputPhase();
@@ -1111,41 +1085,23 @@ if (typeof UIController === 'undefined') {
 ;
 
 // _syncToPeer
-    // confirmKey 非空 = 阶段切换确认推送（要求对方回 state_sync_ack，并带重发），不节流；
-    // 否则为普通推送（有 50ms 节流）。
-    UIController.prototype._syncToPeer = function(confirmKey = null) {
+    UIController.prototype._syncToPeer = function() {
         if (this._applyingRemote) return;
         if (!this.isP2PMode || !this.p2pController || !this.p2pController.isConnected) return;
         const now = Date.now();
-        if (!confirmKey && this._lastSyncTime && now - this._lastSyncTime < 50) return; // 简单节流
+        if (this._lastSyncTime && now - this._lastSyncTime < 50) return; // 简单节流，避免高频重复发送
         this._lastSyncTime = now;
-        this.p2pController.sendStateSync(this.buildSyncSnapshot(), confirmKey);
+        this.p2pController.sendStateSync(this.buildSyncSnapshot());
     }
 ;
 
 // _p2pSyncNow
-    // 绕过节流立即同步一次：用于棋盘点选/锁定等低频但要求"每点击一次同步一次"的操作。
-    // confirm=true 时生成阶段确认 key（触发对方回执 + 重发，用于阶段切换）。
-    // 关键：300ms 内复用同一 confirm key。evaluateResult 内 setPhase(SWITCH_PLAYER) +
-    // switchPlayer 内 setPhase(SELECT_TARGET) 会连续两次调用本函数（确认 push），
-    // 若都生成新 key → 两次独立的高频重发（8 次 × 2 = 16 条消息）；复用同一 key 只 8 次。
-    UIController.prototype._p2pSyncNow = function(confirm = false) {
+    // 绕过节流立即同步一次：用于棋盘点选/锁定等低频但要求"每点击一次同步一次"的操作
+    UIController.prototype._p2pSyncNow = function() {
         if (this._applyingRemote) return;
         if (!this.isP2PMode || !this.p2pController || !this.p2pController.isConnected) return;
         this._lastSyncTime = 0;
-        let key = null;
-        if (confirm) {
-            const now = Date.now();
-            if (this._lastConfirmTime && this._lastConfirmKey &&
-                now - this._lastConfirmTime < 300) {
-                key = this._lastConfirmKey;
-            } else {
-                key = this.p2pController.nextSyncConfirmKey();
-                this._lastConfirmKey = key;
-                this._lastConfirmTime = now;
-            }
-        }
-        this._syncToPeer(key);
+        this._syncToPeer();
     }
 ;
 
@@ -1164,83 +1120,13 @@ if (typeof UIController === 'undefined') {
         if (!s || !s.gc) return;
         this._applyingRemote = true;
         try {
-            const gc = this.gameController;
-            const prevRound = gc.currentRound;
-            const prevPhase = gc.currentPhase;
-            // 应用前记录本地"未提交操作"，用于检测本地操作被远端快照覆盖/回滚并提示用户
-            const hadLocalExpr = this.expressionElements.length > 0;
-            const prevExprStr = this.expressionElements.join('|');
-            const prevTargets = (gc.roundState && gc.roundState.targetCells) ? gc.roundState.targetCells.length : 0;
-            const prevForbidden = (gc.roundState && gc.roundState.forbiddenCells) ? gc.roundState.forbiddenCells.length : 0;
-            const applied = gc.loadStateSnapshot(s.gc);
-            // 以操作方为基准：轮到本方的回合内，不覆盖本方的表达式输入（避免吞字符）。
-            // 用远端快照里的 currentPlayer 判断而非应用后的本地值：若快照因版本过滤被拒绝，
-            // 本地 currentPlayer 未更新，用本地值判断会误判"轮到对方"而吞掉本方正在输入的表达式。
-            const myId = this.p2pController && this.p2pController.myPlayerId;
-            const isMyTurn = !!(myId && s.gc && s.gc.currentPlayer === myId);
-            const newRound = gc.currentRound;
-            const newPhase = gc.currentPhase;
-            // 回合推进（进入新回合）：清空表达式与棋盘残留。
-            // 操作方本地由 switchPlayer→roundComplete 清理；被动方靠快照推进时也必须清理，
-            // 否则上一回合构造的表达式/目标格会残留到新回合（如构造方 y=1 残留、目标/禁止格残留）。
-            // 此时刻意不采用 s.expr（操作方快照里可能仍带其本地输入残留），强制置空。
-            const roundAdvanced = applied && newRound !== prevRound;
-            // 兜底：只要进入 SELECT_TARGET（新回合开始，不允许输入表达式），就强制清空表达式残留。
-            // 覆盖（applied=false 本地维持 SELECT_TARGET）或（roundAdvanced=false 应对端也推进过了）
-            // 等场景，避免 y=1 等残留。
-            const enteredSelectTarget = applied && newPhase === this.gameController.phases.SELECT_TARGET &&
-                prevPhase !== this.gameController.phases.SELECT_TARGET;
-            if (roundAdvanced || enteredSelectTarget) {
-                this.expressionElements = [];
-                this.cursorIndex = 0;
-                this.gridSystem.clearAll();
-            } else if (!isMyTurn) {
+            const applied = this.gameController.loadStateSnapshot(s.gc);
+            // 以操作方为基准：轮到本方的回合内，不覆盖本方的表达式输入（避免吞字符）
+            const isMyTurn = this.p2pController && this.gameController &&
+                this.gameController.currentPlayer === this.p2pController.myPlayerId;
+            if (!isMyTurn) {
                 this.expressionElements = (s.expr || []).slice();
                 this.cursorIndex = (typeof s.cursorIndex === 'number') ? s.cursorIndex : this.expressionElements.length;
-            }
-            // ── 回滚提示：本地未提交操作被远端快照覆盖/清空时，明确告知用户 ──
-            // 仅在同一回合内（非正常回合推进清理）检测，避免新回合清空被误报为"回滚"。
-            if (applied && !roundAdvanced && !enteredSelectTarget) {
-                const nowExprStr = this.expressionElements.join('|');
-                const nowTargets = (gc.roundState && gc.roundState.targetCells) ? gc.roundState.targetCells.length : 0;
-                const nowForbidden = (gc.roundState && gc.roundState.forbiddenCells) ? gc.roundState.forbiddenCells.length : 0;
-                const exprReset = hadLocalExpr && nowExprStr !== prevExprStr;
-                const targetsReset = prevTargets > 0 && nowTargets < prevTargets;
-                const forbiddenReset = prevForbidden > 0 && nowForbidden < prevForbidden;
-                if (exprReset || targetsReset || forbiddenReset) {
-                    this.showMessage('状态已与对手同步：你未提交的操作已被重置', 'warning');
-                }
-            }
-            // ── P2P 被动方音效：接收方对"对方选格/回合推进"给出声音反馈 ──
-            // 仅在应用成功且本端非当前操作方（!isMyTurn）时播放，避免与本地交互音效叠加。
-            if (applied && !isMyTurn && window.audioManager) {
-                const nowTargets = (gc.roundState && gc.roundState.targetCells) ? gc.roundState.targetCells.length : 0;
-                const nowForbidden = (gc.roundState && gc.roundState.forbiddenCells) ? gc.roundState.forbiddenCells.length : 0;
-                if (roundAdvanced || enteredSelectTarget) {
-                    window.audioManager.playPhaseChange();   // 新回合开始提示
-                } else if (nowTargets > prevTargets || nowForbidden > prevForbidden) {
-                    window.audioManager.playElementClick();  // 对方新增目标格/禁止格
-                }
-            }
-            // P2P 快照只传历史函数解析式（剥离采样点）→ 应用后为缺 points 的历史函数
-            // 用本地 renderer 重新采样，保证历史淡化绘图正常显示（传解析式、本地绘历史）。
-            // 最多 2 个历史函数，每次采样开销很小；_renderFromState 会把补好点的
-            // functionHistory 同步给 GridSystem 并绘制。
-            if (applied && this.renderer && this.gridSystem) {
-                const _hist = gc.functionHistory;
-                if (Array.isArray(_hist)) {
-                    const _range = this.gridSystem.getRange();
-                    for (const _f of _hist) {
-                        if (_f && _f.expression && !Array.isArray(_f.points)) {
-                            try {
-                                _f.points = this.renderer.sampleFunction(_f.expression, _range.min, _range.max);
-                                _f.sampledRange = this.gridSystem.range;
-                            } catch (e) {
-                                _f.points = [];
-                            }
-                        }
-                    }
-                }
             }
             // 只有真正应用了新的状态才执行完整重绘，避免旧/重复快照触发不必要的重绘
             if (applied) this._renderFromState();
@@ -1333,8 +1219,6 @@ if (typeof UIController === 'undefined') {
 
 // handleClear
     UIController.prototype.handleClear = function() {
-        // 观战模式：只读，禁止清除
-        if (this._isSpectating) return;
         const state = this.gameController.getGameState();
 
         // AI 正在输入时，禁止清除 Summa 的表达式，避免误删 AI 当前回合输入
@@ -1424,6 +1308,16 @@ if (typeof UIController === 'undefined') {
     }
 ;
 
+// clearAllLocks — 退出对局后立即取消所有锁定，且锁定逻辑永不作用于文本框输入
+    UIController.prototype.clearAllLocks = function() {
+        const gc = this.gameController;
+        if (!gc) return;
+        if (gc.roundState) gc.roundState.lockedElements = [];
+        if (gc.elementLockCounts && typeof gc.elementLockCounts.clear === 'function') gc.elementLockCounts.clear();
+        if (gc.parser && typeof gc.parser.clearLockedElements === 'function') gc.parser.clearLockedElements();
+    }
+;
+
 // handleExit
     UIController.prototype.handleExit = function() {
         if (window.audioManager) window.audioManager.playClick();
@@ -1431,6 +1325,9 @@ if (typeof UIController === 'undefined') {
 
         // ★ 先强制停止游戏运行（停计时器、清AI队列、标记非活跃）
         this.forceStopGame();
+
+        // ★ 退出对局立即取消所有锁定（覆盖所有模式），且不影响任何文本框输入
+        this.clearAllLocks();
 
         // P2P 联机模式：断开连接并返回开始界面
         if (this.isP2PMode || this.gameController.gameMode === 'p2p') {
@@ -1576,22 +1473,6 @@ if (typeof UIController === 'undefined') {
         if (typeof this.gridSystem.draw === 'function') {
             this.gridSystem.draw();
         }
-
-        // 统一清理表达式（input 区 + KaTeX 数学预览），避免"返回主菜单后残留上一局
-        // 函数解析式（如 ln(sin(x)^2)+1）"透过透明主菜单 modal 显示在 logo 附近。
-        // 覆盖 P2P / AI / 本地 / race / campaign 的 handleExit 与 returnCampaignToDifficulty
-        // 等所有走 resetBattleGrid 的路径。_doHandleRestart（game-over 重启，不走这里）
-        // 需单独显式调用 clearExpression。
-        if (typeof this.clearExpression === 'function') {
-            try { this.clearExpression(); } catch (e) { /* UI 未就绪时静默忽略 */ }
-        }
-
-        // 清理历史函数曲线 hover tooltip（fixed z-index:10000，比主菜单 .modal 高，
-        // 若不清理会穿透显示在主菜单按钮附近："第 X 回合 + 解析式" 黑色小标签）。
-        // 同理清理锁定格数 tooltip（也是 fixed z-index:10000）。
-        // 鼠标从棋盘快速移动到外部元素/键盘进主菜单时，mouseleave 不触发，需显式清理。
-        try { this.hideHistoryFunctionTooltip && this.hideHistoryFunctionTooltip(); } catch (e) {}
-        try { this.hideLockCountTooltip && this.hideLockCountTooltip(); } catch (e) {}
     }
 ;
 
@@ -1623,6 +1504,7 @@ if (typeof UIController === 'undefined') {
 
 // getDifficultyRange
     UIController.prototype.getDifficultyRange = function(diff) {
+        if (diff === 'custom') return { start: 1, end: (this.importedCampaignPack && this.importedCampaignPack.levels ? this.importedCampaignPack.levels.length : 1), cls: 'custom', label: (this.importedCampaignName || '自制关卡') };
         if (diff === 'easy') return { start: 1, end: 29, cls: 'easy', label: '简单（1-29）' };
         if (diff === 'normal') return { start: 30, end: 53, cls: 'normal', label: '普通（30-53）' };
         if (diff === 'hard') return { start: 54, end: 69, cls: 'hard', label: '困难（54-69）' };
@@ -1645,9 +1527,14 @@ if (typeof UIController === 'undefined') {
         const showUnsolvable = cleared >= 81;
         if (fractionBtn) fractionBtn.style.display = showFraction ? '' : 'none';
         if (unsolvableBtn) unsolvableBtn.style.display = showUnsolvable ? '' : 'none';
+        const customBtn = document.getElementById('campaign-diff-custom');
+        if (customBtn) {
+            customBtn.style.display = this.importedCampaignPack ? '' : 'none';
+        }
         let visibleCount = 4; // easy / normal / hard / expert 始终可见
         if (showFraction) visibleCount++;
         if (showUnsolvable) visibleCount++;
+        if (this.importedCampaignPack) visibleCount++; // 自定义关卡入口
         grid.style.gridTemplateColumns = `repeat(${visibleCount}, minmax(0, 1fr))`;
     }
 ;

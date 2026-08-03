@@ -37,6 +37,14 @@ if (typeof UIController === 'undefined') {
 
 // handleKeyboardInput
     UIController.prototype.handleKeyboardInput = function(e) {
+        // 关卡编辑器输入框聚焦时，交还浏览器原生处理：允许 textarea 换行、input 正常录入，
+        // 避免被全局键盘监听（捕获阶段）拦截 Enter 等按键导致无法换行。
+        // 任何文本框（输入框/文本域/可编辑区）一律交还浏览器原生处理，
+        // 确保锁定等游戏键盘逻辑不会拦截或影响文本框输入（编辑器、Summa 对话框、联机房间码等）
+        const _edT = e.target;
+        if (_edT && _edT.tagName && (_edT.tagName === 'TEXTAREA' || _edT.tagName === 'INPUT' || _edT.isContentEditable)) {
+            return;
+        }
         const phase = this.gameController.currentPhase;
         const key = e.key;
 
@@ -585,8 +593,6 @@ if (typeof UIController === 'undefined') {
 
 // addElementToExpression
     UIController.prototype.addElementToExpression = function(element) {
-        // 观战模式：只读，禁止输入表达式
-        if (this._isSpectating) return;
         if (this.gameController?.gameMode === 'race' && this._raceCountdownActive) return;
         const phase = this.gameController.currentPhase;
         if (phase !== 'input_function') {
@@ -713,27 +719,17 @@ if (typeof UIController === 'undefined') {
         // 渲染 KaTeX 数学预览（表达式实时美化，解析失败回退纯文本）
         this._renderMathPreview();
 
-        // P2P：本地输入时防抖同步，避免高频发送 state_sync 导致乱序覆盖。
-        // 关键限制：仅在 INPUT_FUNCTION 阶段同步。提交后 currentPhase 进入 EVALUATE，
-        // 此时若仍推表达式快照，会覆盖对端刚收到的 EVALUATE 状态 → currentPhase 回退
-        // → evaluateResult 因 phase 检查被跳过 → switchPlayer 不执行 → currentPlayer 卡死
-        // （截图"第二回合双方 currentPlayer 错位"的潜在根因之一）。
-        const gc = this.gameController;
-        const inInputPhase = gc && gc.currentPhase === gc.phases.INPUT_FUNCTION;
-        if (!skipSync && inInputPhase) {
+        // P2P：本地输入时防抖同步，避免高频发送 state_sync 导致乱序覆盖
+        if (!skipSync) {
             if (this._syncDebounceTimer) clearTimeout(this._syncDebounceTimer);
             this._syncDebounceTimer = setTimeout(() => {
                 this._syncDebounceTimer = null;
                 this._syncToPeer();
             }, 250);
             // 表达式属于 UI 层状态，手动递增版本号，确保远端能持续收到最新表达式
-            if (gc && typeof gc.bumpStateVersion === 'function') {
-                gc.bumpStateVersion();
+            if (this.gameController && typeof this.gameController.bumpStateVersion === 'function') {
+                this.gameController.bumpStateVersion();
             }
-        } else if (this._syncDebounceTimer && (!inInputPhase || skipSync)) {
-            // 已脱离 INPUT_FUNCTION 或显式跳过同步 → 清除待发的防抖定时器，避免延后污染
-            clearTimeout(this._syncDebounceTimer);
-            this._syncDebounceTimer = null;
         }
     }
 ;
@@ -1005,10 +1001,8 @@ if (typeof UIController === 'undefined') {
 
 // clearExpression
     UIController.prototype.clearExpression = function() {
-        // audioManager.playElementClick 异常不能让 expressionElements 残留：
-        // 回合切换依赖 clearExpression 彻底清空，否则新回合会显示上一回合的表达式
         if (window.audioManager && this.expressionElements && this.expressionElements.length > 0) {
-            try { window.audioManager.playElementClick(); } catch (e) { /* ignore */ }
+            window.audioManager.playElementClick();
         }
         this.expressionElements = [];
         this.currentExpression = '';

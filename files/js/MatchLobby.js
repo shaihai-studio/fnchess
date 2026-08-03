@@ -21,21 +21,16 @@
  * 通过 WebSocket 连接服务器的 /lobby 端点，与 PeerJS 信令同一端口。
  *
  * 协议（JSON，字符串收发）：
- *  - host_register  { options:{rounds,difficulty,timeLimitMode,longLived,allowSpectate} } → host_registered { code }
+ *  - host_register  { options:{rounds,difficulty,timeLimitMode} } → host_registered { code }
  *  - cancel_register { code }                                     → 房主取消登记
- *  - list_rooms      {}                                           → rooms_list { rooms:[{code,options,createdAt,status,spectatorCount}] }
+ *  - list_rooms      {}                                           → rooms_list { rooms:[{code,options,createdAt}] }
  *  - join_request    { code }                                     → join_accepted { code } / join_rejected { code, reason }
  *  - join_cancel     { code }                                     → 访客取消加入
- *  - room_started    { code, spectate }                           → 房间开局；spectate=true 保留在大厅，否则移除
+ *  - room_started    { code }                                     → 房间开局，从列表移除
  *  - guest_joining   { code }                                     → 服务器推送给房主：有人申请加入
- *  - spectate_enable / spectate_disable { code }                  → 房主切换观战开关（对局中随时可切）
- *  - spectate_join   { code }                                     → 观众加入观战 → spectate_joined / spectate_join_rejected
- *  - spectate_leave  { code }                                     → 观众退出观战
- *  - spectate_sync   { payload }                                  → 房主推送快照 → 服务器广播 spectate_state 给观众
  *
  * 角色约定：登记房间的 = 房主（前端调 createRoomWithCode 建房），
  *          申请加入的 = 访客（前端调 joinRoom）。开战后取房主配置，与现有 P2P 流程完全兼容。
- *          观战的 = 观众（前端调 joinSpectate，仅走 Lobby WS，不涉及 PeerJS）。
  */
 class MatchLobbyController {
     static get lobbyUrl() {
@@ -51,25 +46,18 @@ class MatchLobbyController {
         this.ws = null;
         this.isConnected = false;
         this.myRoomCode = null;   // 我作为房主登记的房间码
-        this.myRoomExpiresAt = 0; // 房间到期时间戳（毫秒），状态条倒计时用
         this.rooms = [];          // 服务器推来的房间列表快照
         this._manualClose = false;
         this._reconnectTimer = null;
         this._refreshTimer = null;
 
         // ── 回调 ──────────────────────────────────────────────
-        this.onConnectionChange = null;   // (connected) => void
-        this.onRoomsUpdate = null;        // (rooms) => void
-        this.onHostRegistered = null;     // (code, expiresAt) => void
-        this.onGuestJoining = null;       // (code) => void（房主收到：有人申请加入）
-        this.onJoinAccepted = null;       // (code) => void（访客收到：服务器放行）
-        this.onJoinRejected = null;       // (code, reason) => void
-        this.onHostRoomExpired = null;    // (code) => void（房主收到：房间到期被服务器清理）
-        // ── 观战回调 ─────────────────────────────────────────
-        this.onSpectateState = null;      // (payload, code) => void（观众收到状态快照）
-        this.onSpectateEnded = null;      // (code, reason) => void（观战结束：房主关闭/断线）
-        this.onSpectateJoined = null;     // (code) => void（观众加入成功）
-        this.onSpectateJoinRejected = null;// (code, reason) => void（观众加入被拒）
+        this.onConnectionChange = null; // (connected) => void
+        this.onRoomsUpdate = null;      // (rooms) => void
+        this.onHostRegistered = null;   // (code) => void
+        this.onGuestJoining = null;     // (code) => void（房主收到：有人申请加入）
+        this.onJoinAccepted = null;     // (code) => void（访客收到：服务器放行）
+        this.onJoinRejected = null;     // (code, reason) => void
     }
 
     // ─── 连接管理 ────────────────────────────────────────────
@@ -119,7 +107,6 @@ class MatchLobbyController {
         }
         this.isConnected = false;
         this.myRoomCode = null;
-        this.myRoomExpiresAt = 0;
         this.rooms = [];
         this._notifyConnection(false);
     }
@@ -172,13 +159,7 @@ class MatchLobbyController {
                 break;
             case 'host_registered':
                 this.myRoomCode = String(data.code);
-                this.myRoomExpiresAt = Number(data.expiresAt) || 0;
-                if (this.onHostRegistered) this.onHostRegistered(this.myRoomCode, this.myRoomExpiresAt);
-                break;
-            case 'room_expired':
-                this.myRoomCode = null;
-                this.myRoomExpiresAt = 0;
-                if (this.onHostRoomExpired) this.onHostRoomExpired(String(data.code));
+                if (this.onHostRegistered) this.onHostRegistered(this.myRoomCode);
                 break;
             case 'guest_joining':
                 if (this.onGuestJoining) this.onGuestJoining(String(data.code));
@@ -188,18 +169,6 @@ class MatchLobbyController {
                 break;
             case 'join_rejected':
                 if (this.onJoinRejected) this.onJoinRejected(String(data.code), data.reason);
-                break;
-            case 'spectate_state':
-                if (this.onSpectateState) this.onSpectateState(data.payload, String(data.code));
-                break;
-            case 'spectate_ended':
-                if (this.onSpectateEnded) this.onSpectateEnded(String(data.code), data.reason);
-                break;
-            case 'spectate_joined':
-                if (this.onSpectateJoined) this.onSpectateJoined(String(data.code));
-                break;
-            case 'spectate_join_rejected':
-                if (this.onSpectateJoinRejected) this.onSpectateJoinRejected(String(data.code), data.reason);
                 break;
         }
     }
@@ -221,7 +190,6 @@ class MatchLobbyController {
     cancelHost(code) {
         this._send({ type: 'cancel_register', code: String(code || this.myRoomCode || '') });
         this.myRoomCode = null;
-        this.myRoomExpiresAt = 0;
     }
 
     /** 拉取房间列表 */
@@ -239,39 +207,9 @@ class MatchLobbyController {
         this._send({ type: 'join_cancel', code: String(code) });
     }
 
-    /** 上报房间开局。spectate=true 时房间保留在大厅（可被观战），false 时从大厅移除 */
-    notifyStarted(code, spectate) {
-        this._send({
-            type: 'room_started',
-            code: String(code || this.myRoomCode || ''),
-            spectate: spectate !== false
-        });
+    /** 上报房间开局，从列表移除 */
+    notifyStarted(code) {
+        this._send({ type: 'room_started', code: String(code || this.myRoomCode || '') });
         this.myRoomCode = null;
-        this.myRoomExpiresAt = 0;
-    }
-
-    // ─── 观战 API ────────────────────────────────────────────
-
-    /** 房主切换观战开关（对局中随时可切；关闭会立即踢掉观众并隐藏房间） */
-    setSpectateEnabled(code, enabled) {
-        this._send({
-            type: enabled ? 'spectate_enable' : 'spectate_disable',
-            code: String(code || this.myRoomCode || '')
-        });
-    }
-
-    /** 房主推送状态快照 → 服务器广播给该房间所有观众 */
-    sendSpectateSync(snapshot) {
-        this._send({ type: 'spectate_sync', payload: snapshot });
-    }
-
-    /** 观众加入观战（仅需房间码，不涉及 PeerJS） */
-    joinSpectate(code) {
-        this._send({ type: 'spectate_join', code: String(code) });
-    }
-
-    /** 观众退出观战 */
-    leaveSpectate(code) {
-        this._send({ type: 'spectate_leave', code: String(code) });
     }
 }

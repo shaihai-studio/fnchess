@@ -58,21 +58,8 @@ class UIController {
         
         // P2P：表达式同步防抖计时器，避免输入过程中频繁发送 state_sync
         this._syncDebounceTimer = null;
-        // P2P：周期同步定时器（每 0.8s 由当前玩家方主动推送一次完整快照兜底）
+        // P2P：周期同步定时器（每 0.2s 由当前玩家方主动推送一次完整快照）
         this._p2pSyncInterval = null;
-        // P2P：confirm key 合并窗口（_p2pSyncNow 复用同一 key），减少短时间内多次 setPhase 产生的冗余重发
-        this._lastConfirmKey = null;
-        this._lastConfirmTime = 0;
-        // P2P：上次同步时间戳（用于 50ms 节流；保留原字段）
-        this._lastSyncTime = 0;
-        // P2P：健康监测（被动方等待对方回合超时 → 健康探测 + 多次补救 + 提示）
-        this._p2pHealthTimer = null;
-        this._p2pHealthChecking = false;
-        this._p2pHealthRetryCount = 0;
-        this._p2pHealthCheckAt = 0;
-        this._p2pWaitStartAt = null;
-        this._p2pLastTimerVal = null;
-        this._p2pStallWarnedAt = 0;
         
         // 拖拽状态
         this.draggedElement = null;

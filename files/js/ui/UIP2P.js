@@ -12,13 +12,8 @@ if (typeof UIController === 'undefined') {
         }
         // 退出可能残留的关卡编辑器 UI
         if (this.levelEditor) this.levelEditor.deactivate();
-        // 观战开关默认开启（房主默认允许观战，进入大厅建房时可取消勾选）
-        if (this._spectateEnabled === undefined) this._spectateEnabled = true;
-        // 房主有活跃等待房间时保留既有连接（PeerJS 建房等待不能断），只重绑回调
-        const hasActiveHostRoom = this._lobby && this._lobby.myRoomCode &&
-            this.p2pController && this.p2pController.isHost && !this.p2pController.isConnected;
-        if (!hasActiveHostRoom) this._cleanupP2P?.();
-        if (!this.p2pController) this.p2pController = new P2PController();
+        this._cleanupP2P?.();
+        this.p2pController = new P2PController();
         this._setupP2PCallbacks();
         const $ = id => document.getElementById(id);
         const cb = $('p2p-create-btn'); if (cb) cb.disabled = false;
@@ -48,22 +43,22 @@ if (typeof UIController === 'undefined') {
         p2p.onConnected = () => {
             this._updateP2PStatus('connected', '对手已连接！');
             this.showMessage('对手已加入，游戏开始！');
-            // 若从匹配大厅创建的房间，开局后通知服务器：
-            //  - 开启观战（默认）→ 房间保留在大厅，观众可直接加入
-            //  - 关闭观战 → 房间从大厅移除
+            // 若从匹配大厅创建的房间，开局后通知服务器从列表移除
             if (this._lobby && this._lobby.myRoomCode) {
-                this._p2pRoomCode = this._lobby.myRoomCode;
-                // 默认开启观战：仅当建房时显式取消勾选才关闭
-                this._spectateEnabled = this._spectateEnabled !== false;
-                this._lobby.notifyStarted(this._p2pRoomCode, this._spectateEnabled);
-                // 显示"对战中"状态条（含观战开关），房主对局中可随时切换
-                this._showHostGameBanner(this._p2pRoomCode);
+                this._lobby.notifyStarted();
             }
             // 隐藏所有模态框：P2P房间 + 开始界面
             const p2pModal = document.getElementById('p2p-room-modal');
             if (p2pModal) this.hideModal(p2pModal);
             this.hideStartModal();
-            this.startP2PGame(); // 内含房主 initGame + sendGameInit（首局与 Rematch 统一路径）
+            this.startP2PGame();
+            // 房主发送游戏初始化给访客
+            if (p2p.isHost && this.gameController) {
+                const rounds = this._getP2PRounds();
+                const difficulty = this._getP2PDifficulty();
+                const timeLimitMode = this._getP2PTimeLimitMode();
+                p2p.sendGameInit({ rounds, difficulty, timeLimitMode });
+            }
         };
         // 收到游戏初始化（访客端）
         p2p.onGameInit = (config) => {
@@ -80,8 +75,6 @@ if (typeof UIController === 'undefined') {
             if (!this.gameController || !this.p2pController) return;
             // 本方为操作方时，以本地倒计时为准，忽略对手的同步包
             if (this.gameController.currentPlayer === this.p2pController.myPlayerId) return;
-            // 双驱动竞态保护：本地已有活动计时器（两端短暂判定不一致）时以本地为准，避免倒计时忽快忽慢
-            if (this.gameController.timerInterval) return;
             this.gameController.remainingTime = remainingTime;
             if (window.audioManager && remainingTime > 0 && remainingTime <= 5) {
                 window.audioManager.playTick();
@@ -121,8 +114,6 @@ if (typeof UIController === 'undefined') {
         // 游戏数据接收
         p2p.onGameAction = (action, payload) => {
             console.log(`[UI][P2P] 收到动作 action=${action}, payload=`, payload);
-            // 收到对方动作（阶段推进）→ 健康监测重置计时，视为对方在线
-            this._p2pPeerActivityReset();
             if (this.gameController.onP2PGameAction) {
                 return this.gameController.onP2PGameAction(action, payload);
             }
@@ -131,8 +122,6 @@ if (typeof UIController === 'undefined') {
         // 全量状态镜像：接收对手的实时快照并直接重绘
         p2p.onStateSync = (state) => {
             console.log('[UI][P2P] 收到 state_sync');
-            // 收到对方推进（快照）→ 健康监测重置计时，视为对方在线
-            this._p2pPeerActivityReset();
             this.applySyncSnapshot(state);
         };
         // 对方拒绝动作（nack）：提示并请求整局状态重同步（P20）
@@ -148,30 +137,6 @@ if (typeof UIController === 'undefined') {
         p2p.onSyncRequest = () => {
             this._syncToPeer();
         };
-        // 周期验证：向对手报告当前状态指纹（version/round/player/phase）。
-        // P2PController 据此检测对方是否与本方同步：
-        //  - 对方未初始化或 gen 落后 → Host 重发 game_init（直到收到确认，防开局卡死）
-        //  - 对方状态版本落后/领先 → 主动补发或请求全量快照（防同步消息丢失导致的卡死）
-        p2p.onGetVerifyState = () => {
-            if (!this.isP2PMode || !this.gameController) return null;
-            const gc = this.gameController;
-            if (gc.gameMode !== 'p2p' || typeof gc.getSyncFingerprint !== 'function') return null;
-            return gc.getSyncFingerprint();
-        };
-        // 健康探测回执：对方进程/连接仍在 → 停止补救循环并重新计时
-        p2p.onHealthCheckAck = () => {
-            this._p2pHealthChecking = false;
-            this._p2pHealthRetryCount = 0;
-            this._p2pWaitStartAt = Date.now();
-        };
-        // 阶段确认重发：P2PController 定时触发，用最新状态携带原确认 key 重发，
-        // 直到对方回 state_sync_ack（保证阶段切换关键快照必达）
-        p2p.onSyncConfirmResend = (key) => {
-            this._syncToPeer(key);
-        };
-        // 等待对方回执提示：任何同步机制（action ack / 阶段确认 / game_init /
-        // 全量快照请求 / health_check）在等待对方回复时，显示"连接不稳定，正在等待"常驻提示
-        p2p.onAwaitChange = (awaiting) => this._p2pSetAwaitBanner(awaiting);
         // 对方请求再战：保持 P2P 连接与 host/guest 角色，直接重置对局
         // （翻转 isHost 但不重建连接会导致 myPlayerId 与 isHost 不一致，故不再翻转）
         p2p.onRematch = () => {
@@ -258,10 +223,13 @@ if (typeof UIController === 'undefined') {
         bindTab('p2p-tab-create', 'p2p-tab-create-content', true);
         bindTab('p2p-tab-join', 'p2p-tab-join-content', false);
         bindTab('p2p-tab-lobby', 'p2p-tab-lobby-content', true);
-        // 返回按钮：房主有活跃房间时先弹二次确认
+        // 返回按钮
         const backBtn = $('p2p-back-btn');
         if (backBtn) {
-            backBtn.onclick = () => this._p2pCloseRoomModal();
+            backBtn.onclick = () => {
+                this.hideModal(document.getElementById('p2p-room-modal'));
+                this._cleanupP2P();
+            };
         }
     }
 ;
@@ -290,30 +258,19 @@ if (typeof UIController === 'undefined') {
         // 对局进行中暂停大厅列表自动刷新，省流量（连接本身保留）
         if (this._lobby) this._lobby.pauseRefresh();
         this.gameController.setP2PController(p2p);
-        // 注入全量同步钩子：本地状态变更（setPhase/选格/锁定）由 GameController 回调触发，
-        // 必须强制绕过节流立即推送 —— 尤其"切换操作方"的关键阶段快照（如 input_function）
-        // 若被 _syncToPeer 的 50ms 节流吞掉，且推送方随即变被动方（周期推送停止），
-        // 对手将永远收不到该快照而卡死在旧阶段（双方死锁）。
-        // confirm 参数：setPhase（阶段切换）传 true → 生成确认 key，要求对方回执并重发。
-        this.gameController._syncHook = (confirm) => this._p2pSyncNow(confirm);
+        // 注入全量同步钩子：本地状态变更时由 GameController 回调，向对手发送完整快照
+        this.gameController._syncHook = () => this._syncToPeer();
         this._applyingRemote = false;
         this._lastSyncTime = 0;
         // 周期同步：每 0.2s 由当前玩家方（操作方）主动推送一次完整快照
         this._startP2PPeriodicSync();
-        // 健康监测：被动方等待对方回合超时（倒计时卡住 / 3s 未选格）→ 探测 + 多次补救 + 提示
-        this._startP2PHealthMonitor();
-        // 观战同步：开启观战且本端为房主（大厅登记的房主）时，每 500ms 经 Lobby WS 推送快照给观众
-        this._startSpectateSync();
-        // 房主在这里初始化游戏（访客在 onGameInit 中初始化），并发送游戏初始化给访客。
-        // 首局与 Rematch 复用同一路径：sendGameInit 每次递增 _gen，
-        // 保证 Rematch 后新旧对局消息能正确过滤（BUG-15）。
+        // 房主在这里初始化游戏（访客在 onGameInit 中初始化）
         if (p2p.isHost) {
             const rounds = this._getP2PRounds();
             const difficulty = this._getP2PDifficulty();
             const timeLimitMode = this._getP2PTimeLimitMode();
             if (this.gameController) this.gameController.timeLimitMode = timeLimitMode;
             this.gameController.initGame(rounds, difficulty, 'p2p');
-            p2p.sendGameInit({ rounds, difficulty, timeLimitMode });
         }
     }
 ;
@@ -529,38 +486,16 @@ if (typeof UIController === 'undefined') {
     UIController.prototype._cleanupP2P = function() {
         // 清理周期同步定时器，避免残留后台发送
         this._stopP2PPeriodicSync();
-        // 清理健康监测定时器
-        this._stopP2PHealthMonitor();
-        // 清理观战同步定时器
-        this._stopSpectateSync();
-        // 对局中退出：告知服务器关闭观战（踢掉观众），房间随大厅连接断开自动清理。
-        // 随后 _closeLobby 在 myRoomCode 为空（开局后已清空）时会真正断开大厅连接。
-        if (this._lobby && this._p2pRoomCode) {
-            this._lobby.setSpectateEnabled(this._p2pRoomCode, false);
-            this._p2pRoomCode = null;
-        }
-        // 隐藏"连接不稳定，正在等待"提示条
-        if (typeof this._p2pSetAwaitBanner === 'function') this._p2pSetAwaitBanner(false);
-        // 房主有活跃等待房间（尚未开局）时，保留 PeerJS 建房连接、大厅 WS 与顶部状态条
-        // （房间持续存活；有对手加入仍会自动切入对战）。
-        const keepHostWaiting = this._lobby && this._lobby.myRoomCode &&
-            this.p2pController && this.p2pController.isHost && !this.p2pController.isConnected;
-        if (!keepHostWaiting && typeof this._stopHostRoomBanner === 'function') {
-            this._stopHostRoomBanner();
-        }
         // 清理创建房间时轮询房间码的定时器，避免重开弹窗后叠加残留轮询
         if (this._p2pCheckCodeInterval) {
             clearInterval(this._p2pCheckCodeInterval);
             this._p2pCheckCodeInterval = null;
         }
-        if (this.p2pController && !keepHostWaiting) {
-            this.p2pController.disconnect();
-            this.p2pController = null;
-        }
+        this.p2pController?.disconnect();
+        this.p2pController = null;
         this.isP2PMode = false;
-        // 离开联机模式：关闭匹配大厅连接。
-        // _closeLobby 在房主有活跃房间时只暂停列表刷新（WS 常驻，房间继续存活），
-        // 无活跃房间时才真正断开（断开后服务器侧会自动清理本连接登记的房间）
+        // 离开联机模式：关闭匹配大厅连接
+        // （disconnect 后服务器侧会自动清理本连接登记的房间）
         if (typeof this._closeLobby === 'function') this._closeLobby();
         // 清理 P2P 对局残留的历史函数与格子，防止切换到其他模式时仍显示旧图像
         if (this.gridSystem) {
@@ -568,11 +503,16 @@ if (typeof UIController === 'undefined') {
             this.gridSystem.usedCells = [];
         }
         this._lastRemoteExpr = null;
-        // 清理 confirm key 合并窗口，避免断线/重连后旧 key 残留误用
-        this._lastConfirmKey = null;
-        this._lastConfirmTime = 0;
         if (this.gameController && typeof this.gameController.bumpStateVersion === 'function') {
             this.gameController._syncHook = null;
+        }
+    }
+;
+
+// _p2pSendConfirmed
+    UIController.prototype._p2pSendConfirmed = function(action, payload) {
+        if (this.isP2PMode && this.p2pController && this.p2pController.isConnected) {
+            this.p2pController.sendGameAction(action, payload);
         }
     }
 ;
@@ -601,9 +541,10 @@ if (typeof UIController === 'undefined') {
 ;
 
 // _startP2PPeriodicSync
-    // 在事件驱动同步基础上，增加周期同步兜底：仅「当前玩家方」（操作方）主动推送完整状态快照，
-    // 被动方只接收。事件驱动（选格/输入/锁定/阶段切换）已实时强制推送，周期推送只是兜底。
-    // 频率 0.8s（放宽以减少 WebRTC 拥塞风险；操作方事件驱动仍实时，不影响同步即时性）。
+    // 在事件驱动同步基础上，增加每 0.2s 的周期同步：
+    // 仅「当前玩家方」（操作方）主动推送完整状态快照，被动方只接收，
+    // 保证对手能实时看到操作方的输入/选点/锁定等过程状态。
+    // 配合 state_sync 的版本号机制，旧快照会被接收方自动丢弃，不会乱序覆盖。
     UIController.prototype._startP2PPeriodicSync = function() {
         this._stopP2PPeriodicSync();
         this._p2pSyncInterval = setInterval(() => {
@@ -612,7 +553,7 @@ if (typeof UIController === 'undefined') {
             if (!this.gameController ||
                 this.gameController.currentPlayer !== this.p2pController.myPlayerId) return;
             this._syncToPeer();
-        }, 800);
+        }, 200);
     }
 ;
 
@@ -621,184 +562,6 @@ if (typeof UIController === 'undefined') {
         if (this._p2pSyncInterval) {
             clearInterval(this._p2pSyncInterval);
             this._p2pSyncInterval = null;
-        }
-    }
-;
-
-// _startSpectateSync
-    // 观战同步：仅「大厅登记的房主 + 开启观战 + 大厅连接在线」时生效，
-    // 每 500ms 将 buildSyncSnapshot() 经 Lobby WS 推给服务器，由其广播给观众。
-    // 复用 WebRTC 的 P2P 快照构建逻辑，观众端无需任何 WebRTC 连接。
-    UIController.prototype._startSpectateSync = function() {
-        this._stopSpectateSync();
-        if (!this._spectateEnabled || !this._p2pRoomCode) return;
-        this._spectateSyncTimer = setInterval(() => {
-            if (!this.isP2PMode) return;
-            const lobby = this._lobby;
-            if (!lobby || !lobby.isConnected || !this._spectateEnabled) return;
-            try {
-                lobby.sendSpectateSync(this.buildSyncSnapshot());
-            } catch (e) { /* 快照构建失败时静默跳过本次推送 */ }
-        }, 500);
-    }
-;
-
-// _stopSpectateSync
-    UIController.prototype._stopSpectateSync = function() {
-        if (this._spectateSyncTimer) {
-            clearInterval(this._spectateSyncTimer);
-            this._spectateSyncTimer = null;
-        }
-    }
-;
-
-// _toggleSpectate
-    // 房主对局中切换观战开关：开启 → 恢复大厅展示；关闭 → 立即隐藏房间并踢掉观众
-    UIController.prototype._toggleSpectate = function(enabled) {
-        this._spectateEnabled = !!enabled;
-        const lobby = this._lobby;
-        if (lobby && this._p2pRoomCode) {
-            lobby.setSpectateEnabled(this._p2pRoomCode, this._spectateEnabled);
-        }
-        this._startSpectateSync();
-        this._updateSpectateBar();
-    }
-;
-
-// _updateSpectateBar
-    // 对局中房主顶部的观战开关指示（lobby-host-banner 内嵌）
-    UIController.prototype._updateSpectateBar = function() {
-        const bar = document.getElementById('lobby-host-banner');
-        const toggle = document.getElementById('lobby-spectate-toggle');
-        const label = document.getElementById('lobby-spectate-label');
-        if (!bar) return;
-        if (!this._spectateEnabled) {
-            if (toggle) toggle.checked = false;
-            if (label) label.textContent = '观战关闭';
-            bar.classList.remove('lobby-host-banner-playing');
-        } else {
-            if (toggle) toggle.checked = true;
-            if (label) label.textContent = '观战开启';
-            bar.classList.add('lobby-host-banner-playing');
-        }
-    }
-;
-
-// _startP2PHealthMonitor
-// 被动方健康监测：每 0.5s 检查一次。当「对方回合」期间 5s 内无推进
-        // （倒计时未刷新 = 未收到 timer_sync；进入对方回合超 5s = 未收到选格/推进）时，
-        // 强制发起健康探测（health_check + request_sync 补救）；对方 2s 未回执则
-        // 提醒「连接较差，请耐心等待」，并持续多次补救直到对方回应或连接断开。
-        // 阈值放宽：操作方（选目标格/想函数）正常思考可能 3-5s，避免误报"连接不稳定"。
-        UIController.prototype._startP2PHealthMonitor = function() {
-        this._stopP2PHealthMonitor();
-        this._p2pHealthChecking = false;
-        this._p2pHealthRetryCount = 0;
-        this._p2pWaitStartAt = null;
-        this._p2pLastTimerVal = null;
-        this._p2pStallWarnedAt = 0;
-        this._p2pHealthTimer = setInterval(() => this._tickP2PHealth(), 500);
-    }
-;
-
-// _stopP2PHealthMonitor
-    UIController.prototype._stopP2PHealthMonitor = function() {
-        if (this._p2pHealthTimer) {
-            clearInterval(this._p2pHealthTimer);
-            this._p2pHealthTimer = null;
-        }
-        this._p2pHealthChecking = false;
-        this._p2pHealthRetryCount = 0;
-        this._p2pWaitStartAt = null;
-        this._p2pLastTimerVal = null;
-    }
-;
-
-// _tickP2PHealth
-    UIController.prototype._tickP2PHealth = function() {
-        const p2p = this.p2pController;
-        if (!p2p || !p2p.isConnected || !this.isP2PMode) return;
-        const gc = this.gameController;
-        if (!gc) return;
-        const now = Date.now();
-        // 我方操作：无需监测对方
-        if (gc.currentPlayer === p2p.myPlayerId) {
-            this._p2pWaitStartAt = null;
-            this._p2pHealthChecking = false;
-            this._p2pHealthRetryCount = 0;
-            return;
-        }
-        // 对方回合：记录进入等待的起点
-        if (this._p2pWaitStartAt == null) this._p2pWaitStartAt = now;
-        // 倒计时刷新（timer_sync 持续到达）= 对方有推进，重置计时
-        if (this._p2pLastTimerVal === null || gc.remainingTime !== this._p2pLastTimerVal) {
-            this._p2pLastTimerVal = gc.remainingTime;
-            this._p2pWaitStartAt = now;
-            this._p2pHealthChecking = false;
-            return;
-        }
-        // 等待超时（进入对方回合 5s 无推进 / 倒计时 5s 卡住）→ 强制检查一次
-        if (!this._p2pHealthChecking && now - this._p2pWaitStartAt > 5000) {
-            this._p2pHealthChecking = true;
-            this._p2pHealthRetryCount = 0;
-            this._fireP2PHealthCheck();
-            return;
-        }
-        // 检查中且 2s 无回应 → 再次发动补救，并节流提醒用户
-        if (this._p2pHealthChecking && now - this._p2pHealthCheckAt > 2000) {
-            this._p2pHealthRetryCount++;
-            this._fireP2PHealthCheck();
-            if (now - this._p2pStallWarnedAt > 10000) {
-                this._p2pStallWarnedAt = now;
-                console.warn('[P2P] 对方无回应，连接较差，进入补救循环');
-                this.showMessage('连接较差，请耐心等待', 'warning');
-            }
-        }
-    }
-;
-
-// _fireP2PHealthCheck
-    // 强制检查：首次只发轻量健康探测（对方回 ack 即视为在线，不打扰不刷消息）；
-    // 仅当确认对方 2s 无回应（补救阶段）才发 request_sync 请求全量快照恢复同步。
-    // 避免在 SELECT_TARGET 等无计时阶段的正常等待中持续 request_sync 造成消息风暴
-    // （全量快照体积随回合增长，风暴会引发丢包→版本落后→更多请求的恶性循环）。
-    UIController.prototype._fireP2PHealthCheck = function() {
-        const p2p = this.p2pController;
-        if (!p2p || !p2p.isConnected) return;
-        this._p2pHealthCheckAt = Date.now();
-        // 轻量健康探测：要求对方立即回执（确认连接/进程是否仍在）
-        if (p2p.sendHealthCheck) p2p.sendHealthCheck();
-        // 补救阶段：前 2 次无回执仍只发轻量探测（轻微网络波动不应触发全量快照风暴），
-        // 连续 ≥3 次无回执才请求全量快照帮助恢复同步。
-        if (this._p2pHealthRetryCount >= 2) {
-            console.warn(`[P2P] 对方持续无回应，第 ${this._p2pHealthRetryCount} 次补救，请求全量重同步`);
-            if (p2p.sendSyncRequest) p2p.sendSyncRequest();
-        } else if (this._p2pHealthRetryCount > 0) {
-            console.warn(`[P2P] 对方暂未回执，第 ${this._p2pHealthRetryCount} 次轻量探测`);
-        }
-    }
-;
-
-// _p2pPeerActivityReset
-    // 收到对方推进（state_sync / action / health_check_ack）时重置健康监测计时
-    UIController.prototype._p2pPeerActivityReset = function() {
-        if (this._p2pHealthChecking || this._p2pWaitStartAt != null) {
-            this._p2pHealthChecking = false;
-            this._p2pWaitStartAt = Date.now();
-        }
-    }
-;
-
-// _p2pSetAwaitBanner
-    // 任何同步机制（action ack / 阶段确认 / game_init / 全量快照请求 / health_check）
-    // 在等待对方回复期间显示常驻提示"连接不稳定，正在等待对方回复…"；收到回执后隐藏。
-    UIController.prototype._p2pSetAwaitBanner = function(awaiting) {
-        const banner = document.getElementById('p2p-await-banner');
-        if (!banner) return;
-        if (awaiting) {
-            banner.style.display = 'flex';
-        } else {
-            banner.style.display = 'none';
         }
     }
 ;

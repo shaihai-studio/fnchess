@@ -100,11 +100,6 @@ class GameController {
         this._applyingRemote = false;
         // 状态快照版本号，用于 P2P 同步时拒绝旧版本覆盖新版本
         this._stateVersion = 0;
-        // 被动方复制推进（finalizeRound/startNextRound）期间抑制 P2P 阶段确认推送，
-        // 避免把本地复制推进的状态推回给操作方造成覆盖
-        this._suppressP2PSync = false;
-        // 全量快照请求节流（与 P2PController._lastFullSyncRequestAt 对齐，2s 一次，避免高频触发）
-        this._lastFullSyncRequestAt = 0;
     }
     
     /**
@@ -255,6 +250,8 @@ class GameController {
 
         // 闯关难度由关卡本身标记决定；旧数字关卡沿用原区间映射
         if (level.difficulty === 'fraction') this.difficulty = 'fraction';
+        else if (level.difficulty && level.difficulty !== 'fraction') this.difficulty = level.difficulty;
+        else if (!Number.isFinite(Number(id))) this.difficulty = 'normal';
         else if (Number(id) >= 1 && Number(id) <= 29) this.difficulty = 'easy';
         else if (Number(id) >= 30 && Number(id) <= 53) this.difficulty = 'normal';
         else if (Number(id) >= 54 && Number(id) <= 69) this.difficulty = 'hard';
@@ -490,7 +487,20 @@ class GameController {
             { allowed: 6, forbidden: 6, fixedLocks: 6, randomLocks: 0, mustLock: [] }
         ];
 
-        const config = levelConfigs[levelId - 1];
+        let config;
+        if (this.raceState && this.raceState.customConfig) {
+            // 自定义竞速关卡：直接使用用户传入的配置（不读取内置 30 关 levelConfigs）
+            const cc = this.raceState.customConfig;
+            config = {
+                allowed: Math.max(0, Number(cc.allowed) || 0),
+                forbidden: Math.max(0, Number(cc.forbidden) || 0),
+                fixedLocks: Math.max(0, Number(cc.fixedLocks) || 0),
+                randomLocks: Math.max(0, Number(cc.randomLocks) || 0),
+                mustLock: Array.isArray(cc.mustLock) ? cc.mustLock : []
+            };
+        } else {
+            config = levelConfigs[levelId - 1];
+        }
         if (!config) {
             return { targetCells: [pickCell(), pickCell()], forbiddenCells: [pickCell(), pickCell()], lockedElements: [] };
         }
@@ -559,7 +569,10 @@ class GameController {
         }
 
         // 如果固定锁定数量不足，从剩余元素中补充（不与已有元素冲突）
-        const allElements = ['+','-','*','/','^','!','sin','cos','tan','arcsin','arccos','arctan','abs','sqrt','ln','log','exp','factorial','0','1','2','3','4','5','6','7','8','9','π','e','i'];
+        // 自定义关卡：未启用反三角函数时，从锁定候选池中剔除 arcsin/arccos/arctan（锁定上限随之收紧）
+        const arcAvailable = !!(this.raceState && this.raceState.customConfig && this.raceState.customConfig.arcEnabled);
+        const _arcSet = new Set(['arcsin', 'arccos', 'arctan']);
+        const allElements = ['+','-','*','/','^','!','sin','cos','tan','arcsin','arccos','arctan','abs','sqrt','ln','log','exp','factorial','0','1','2','3','4','5','6','7','8','9','π','e','i'].filter(e => arcAvailable || !_arcSet.has(e));
         const banned = new Set(['x', '(', ')']);
         let pool = allElements.filter(el => !banned.has(el) && !lockedElements.includes(el));
 
@@ -911,12 +924,8 @@ class GameController {
                 break;
         }
 
-        // P2P：阶段切换即向对手同步最新状态（带确认重发，防关键阶段快照丢失卡死）；
-        // 被动方复制推进（finalizeRound/startNextRound）期间抑制，避免旧状态推回操作方
-        if (!this._suppressP2PSync) {
-            this._maybeSync(true);
-        }
-        this._suppressP2PSync = false;
+        // P2P：阶段切换即向对手同步最新状态
+        this._maybeSync();
     }
     
     /**
@@ -1086,19 +1095,7 @@ class GameController {
      * 确认目标选择，进入下一阶段
      */
     confirmTargetSelection() {
-        if (this.currentPhase !== this.phases.SELECT_TARGET) {
-            // P2P：currentPhase 可能被对端快照覆盖成非 SELECT_TARGET（如对方提前推进），
-            // 此时用户点确认按钮没反应会困惑。主动请求全量同步自愈（2s 节流），并提示。
-            if (this.gameMode === 'p2p' && this.p2pActionSender && typeof this.p2pActionSender.sendSyncRequest === 'function') {
-                const now = Date.now();
-                if (!this._lastFullSyncRequestAt || now - this._lastFullSyncRequestAt >= 2000) {
-                    this._lastFullSyncRequestAt = now;
-                    this.p2pActionSender.sendSyncRequest();
-                    this.emit('phaseMismatchHint', { expected: this.phases.SELECT_TARGET, actual: this.currentPhase });
-                }
-            }
-            return false;
-        }
+        if (this.currentPhase !== this.phases.SELECT_TARGET) return false;
         
         // 检查是否已选择足够的目标格
         if (this.roundState.targetCells.length < this.targetCount) {
@@ -1165,15 +1162,6 @@ class GameController {
      */
     confirmForbiddenSelection() {
         if (this.currentPhase !== this.phases.SET_FORBIDDEN) {
-            // P2P：phase 不匹配（被快照覆盖）→ 主动请求同步 + 提示（与 confirmTargetSelection 一致）
-            if (this.gameMode === 'p2p' && this.p2pActionSender && typeof this.p2pActionSender.sendSyncRequest === 'function') {
-                const now = Date.now();
-                if (!this._lastFullSyncRequestAt || now - this._lastFullSyncRequestAt >= 2000) {
-                    this._lastFullSyncRequestAt = now;
-                    this.p2pActionSender.sendSyncRequest();
-                    this.emit('phaseMismatchHint', { expected: this.phases.SET_FORBIDDEN, actual: this.currentPhase });
-                }
-            }
             return false;
         }
         
@@ -1223,15 +1211,6 @@ class GameController {
      */
     confirmLockSelection() {
         if (this.currentPhase !== this.phases.SET_LOCKS) {
-            // P2P：phase 不匹配（被快照覆盖）→ 主动请求同步 + 提示
-            if (this.gameMode === 'p2p' && this.p2pActionSender && typeof this.p2pActionSender.sendSyncRequest === 'function') {
-                const now = Date.now();
-                if (!this._lastFullSyncRequestAt || now - this._lastFullSyncRequestAt >= 2000) {
-                    this._lastFullSyncRequestAt = now;
-                    this.p2pActionSender.sendSyncRequest();
-                    this.emit('phaseMismatchHint', { expected: this.phases.SET_LOCKS, actual: this.currentPhase });
-                }
-            }
             return false;
         }
         
@@ -1271,24 +1250,7 @@ class GameController {
      * @param {Object} functionType - 函数类型信息
      */
     evaluateResult(hitTargets, hitForbidden, functionType) {
-        if (this.currentPhase !== this.phases.EVALUATE) {
-            // P2P：评估发起方在 renderAndEvaluate（异步）期间，可能被对端 finalizeRound
-            // 推送的 SELECT_TARGET 快照抢先推进了 currentPhase。此时本地无需重复推进
-            // （对端已通过快照同步了 score 与新回合状态），但必须清理 UI 残留
-            // （表达式/目标/禁止格），否则新回合会残留上一回合的 y=1 与目标格。
-            if (this.gameMode === 'p2p') {
-                console.warn('[GC] evaluateResult 时 currentPhase 已被对端推进，仅触发 UI 清理');
-                this.emit('roundComplete', {
-                    currentRound: this.currentRound,
-                    totalRounds: this.totalRounds,
-                    scores: {
-                        A: this.players.A.score,
-                        B: this.players.B.score
-                    }
-                });
-            }
-            return;
-        }
+        if (this.currentPhase !== this.phases.EVALUATE) return;
         
         // 兼容旧代码：如果 hitTargets 是布尔值，转换为数组
         if (typeof hitTargets === 'boolean') {
@@ -1357,7 +1319,7 @@ class GameController {
         if (this.campaignState && this.campaignState.active) {
             const pass = !!this.roundState.hitTarget && !hitForbidden;
             const clearedMax = this.getCampaignProgress();
-            if (pass && this.currentRound > clearedMax) {
+            if (pass && this.currentRound > clearedMax && !this.campaignState.customPack) {
                 this.setCampaignProgress(this.currentRound);
             }
             this.emit('campaignLevelResult', {
@@ -1383,7 +1345,7 @@ class GameController {
                 if (completed >= total) {
                     const best = this.getRaceBestTime(this.currentRound);
                     const isNewBest = !Number.isFinite(best) || elapsed < best;
-                    if (isNewBest) this.setRaceBestTime(this.currentRound, elapsed);
+                    if (isNewBest && !(this.raceState && this.raceState.isCustom)) this.setRaceBestTime(this.currentRound, elapsed);
                     const stars = this.getRaceStarsByElapsed(elapsed);
                     this.pauseTimer();
                     this.emit('raceLevelResult', {
@@ -1422,17 +1384,13 @@ class GameController {
             return;
         }
 
-        // P2P：发送 function_result 给对手，双方各自推进回合；状态同步通过 state_sync 保持一致。
-        // 额外携带累计总分 scoreA/scoreB：对端若因阶段快照丢失导致 currentPhase 已非 EVALUATE，
-        // 可据此直接覆盖本地分数（构造方是分数权威），避免"function_result 被静默丢弃 → 分数不同步"。
+        // P2P：发送 function_result 给对手，双方各自推进回合；状态同步通过 state_sync 保持一致
         if (this.gameMode === 'p2p') {
             this._sendP2PAction('function_result', {
                 hitTargets: this.roundState.hitTargets,
                 hitForbidden: this.roundState.hitForbidden,
                 score: score,
-                currentRound: this.currentRound,
-                scoreA: this.players.A.score,
-                scoreB: this.players.B.score
+                currentRound: this.currentRound
             });
         }
 
@@ -1528,35 +1486,29 @@ class GameController {
             this.phases.EVALUATE,
             this.phases.SWITCH_PLAYER
         ];
-
+        
         const currentIndex = phaseOrder.indexOf(this.currentPhase);
-        // 防御：currentPhase 不在合法列表（-1）或已是末位 → 不推进。
-        // P2P 中 currentPhase 可能被远端快照覆盖成非合法值（如 INIT/END/异常值），
-        // 若不防护，indexOf=-1 会让 nextPhase = phaseOrder[0] = SELECT_TARGET → 错误回退，
-        // 甚至触发 switchPlayer 导致回合错乱（截图症状的潜在根因之一）。
-        if (currentIndex < 0 || currentIndex >= phaseOrder.length - 1) {
-            console.warn(`[GC] nextPhase 跳过：currentPhase=${this.currentPhase} 不在合法列表或已是末位`);
-            return;
+        if (currentIndex < phaseOrder.length - 1) {
+            let nextPhase = phaseOrder[currentIndex + 1];
+            
+            // 如果从SET_LOCKS进入INPUT_FUNCTION，需要切换玩家
+            if (this.currentPhase === this.phases.SET_LOCKS && nextPhase === this.phases.INPUT_FUNCTION) {
+                this.switchToInputPhase();
+                return;
+            }
+            
+            // 自动跳过不需要设置的阶段（在AI确认后）
+            if (nextPhase === this.phases.SET_FORBIDDEN && this.getMaxForbiddenCount() === 0) {
+                nextPhase = this.phases.SET_LOCKS;
+            }
+            
+            if (nextPhase === this.phases.SET_LOCKS && this.getMaxLockCount() === 0) {
+                this.switchToInputPhase();
+                return;
+            }
+            
+            this.setPhase(nextPhase);
         }
-        let nextPhase = phaseOrder[currentIndex + 1];
-
-        // 如果从SET_LOCKS进入INPUT_FUNCTION，需要切换玩家
-        if (this.currentPhase === this.phases.SET_LOCKS && nextPhase === this.phases.INPUT_FUNCTION) {
-            this.switchToInputPhase();
-            return;
-        }
-
-        // 自动跳过不需要设置的阶段（在AI确认后）
-        if (nextPhase === this.phases.SET_FORBIDDEN && this.getMaxForbiddenCount() === 0) {
-            nextPhase = this.phases.SET_LOCKS;
-        }
-
-        if (nextPhase === this.phases.SET_LOCKS && this.getMaxLockCount() === 0) {
-            this.switchToInputPhase();
-            return;
-        }
-
-        this.setPhase(nextPhase);
     }
     
     /**
@@ -1681,11 +1633,11 @@ class GameController {
      * 本地状态发生变更时，若处于 P2P 模式则请求向对手同步一份完整快照。
      * 快照的构建与发送由 UIController 注入的 _syncHook 完成（需读取表达式等 UI 状态）。
      */
-    _maybeSync(confirm = false) {
+    _maybeSync() {
         if (this.gameMode !== 'p2p') return;
         if (this._applyingRemote) return;
         if (typeof this._syncHook === 'function') {
-            try { this._syncHook(confirm); } catch (e) { /* 静默失败，避免同步钩子异常影响主流程 */ }
+            try { this._syncHook(); } catch (e) { /* 静默失败，避免同步钩子异常影响主流程 */ }
         }
     }
 
@@ -1715,58 +1667,10 @@ class GameController {
             targetCount: this.targetCount,
             timeLimit: this.timeLimit,
             remainingTime: this.remainingTime,
-            // 直接引用传递（不做深拷贝）：发送端 conn.send 时会 JSON 序列化一次，
-            // 接收端 loadStateSnapshot 才深拷贝，避免生产端重复序列化白耗 CPU。
-            // buildSyncSnapshot 调用后立即同步 send，期间不会修改这些引用，安全。
-            roundState: this.roundState,
-            usedCells: this.usedCells || [],
-            // P2P 联机：历史函数只传解析式（剥离采样点，接收端本地重新采样绘制）。
-            // 每个函数原本带数千~上万个 {x,y} 采样点，若全量传输会让每条 state_sync
-            // 快照序列化体积暴涨 → 第二回合起同步明显变慢。只传表达式后体积近乎为零，
-            // 接收端 applySyncSnapshot 对缺 points 的历史函数用本地 renderer 补采样。
-            functionHistory: this._p2pFunctionHistorySnapshot(),
+            roundState: JSON.parse(JSON.stringify(this.roundState)),
+            usedCells: JSON.parse(JSON.stringify(this.usedCells || [])),
+            functionHistory: JSON.parse(JSON.stringify(this.functionHistory || [])),
             elementLockCounts: lockCountsObj
-        };
-    }
-
-    /**
-     * 返回供 P2P 快照传输的近期历史函数。
-     * 仅保留 round >= currentRound - 2 的部分（GridSystem.drawHistoryFunctions 只绘制
-     * roundDiff 1~2 的历史函数，更早的既不被绘制也不需同步）。
-     */
-    _recentFunctionHistory() {
-        const all = this.functionHistory || [];
-        if (all.length === 0) return all;
-        const cutoff = this.currentRound - 2;
-        if (cutoff <= 0) return all;
-        return all.filter(f => f.round >= cutoff);
-    }
-
-    /**
-     * 返回供 P2P 快照传输的历史函数（剥离采样点，只保留解析式与必要元数据）。
-     * P2P 下每条 state_sync 都带完整历史函数（数千~上万采样点）会令消息体积暴涨
-     * （第二回合起同步变慢）；只传 expression 后接收端用本地 renderer 重新采样绘制，
-     * 体积近乎为零且不影响历史淡化显示。
-     */
-    _p2pFunctionHistorySnapshot() {
-        const recent = this._recentFunctionHistory();
-        if (this.gameMode !== 'p2p' || !Array.isArray(recent)) return recent;
-        return recent.map(f => ({
-            expression: f.expression,
-            round: f.round,
-            color: f.color
-        }));
-    }
-
-    /**
-     * 返回轻量的状态指纹（供 P2P sync_verify 周期验证，判断双方是否同步）
-     */
-    getSyncFingerprint() {
-        return {
-            version: this._stateVersion,
-            round: this.currentRound,
-            player: this.currentPlayer,
-            phase: this.currentPhase
         };
     }
 
@@ -1776,49 +1680,13 @@ class GameController {
     bumpStateVersion() {
         this._stateVersion++;
     }
-    /**
-     * 判断远端快照的 round/phase 是否领先本地（用于被动方放宽接受旧版本快照，
-     * 避免被动方本地版本号虚高导致真实新快照被误拒 → 永远追不上）
-     */
-    _isRemoteAhead(remotePhase, remoteRound) {
-        if (remoteRound > this.currentRound) return true;
-        if (remoteRound < this.currentRound) return false;
-        return this._phaseIndex(remotePhase) > this._phaseIndex(this.currentPhase);
-    }
-
-    _phaseIndex(phase) {
-        // phases 对象键为常量名（如 SELECT_TARGET），值为阶段字符串（如 'select_target'），
-        // 需按值匹配并返回其在定义顺序中的索引
-        const names = Object.keys(this.phases || {});
-        for (let i = 0; i < names.length; i++) {
-            if (this.phases[names[i]] === phase) return i;
-        }
-        return -1;
-    }
-
     loadStateSnapshot(s) {
         if (!s) return false;
         const remoteVersion = s.version ?? -1;
-        // P2P 版本同步原则：
-        // - 操作方（快照所声明的 currentPlayer === myPlayerId）本地状态权威：仅接受对端 round/phase
-        //   前进（remoteAhead，对端已推进到下一阶段/回合）或 version 更高的快照，其余按旧快照/回声拒绝。
-        // - 被动方：操作方版本权威，无条件接受（DataChannel 保序，操作方只发其最新状态）。
-        //   被动方本地 finalizeRound/startNextRound 复制推进会令本地 _stateVersion 虚高
-        //   （setPhase 递增），若仍按 version 比较会拒绝操作方后续真实快照（选目标/禁止/锁定），
-        //   导致"被动方新回合收不到操作方状态"。故被动方无条件接受并在应用后强制对齐 version。
-        // 关键修正（方案A）：isOperator 用「远端快照声明的 currentPlayer」判定，而非本地 currentPlayer。
-        // 旧逻辑用本地 currentPlayer，若被动方因时序残留旧操作方值（如回合1 selector=B 残留），会误判
-        // 为自己是操作方 → 走版本过滤拒绝操作方的真实快照（如第二回合 A 选的目标格）→ B 端卡死且
-        // health monitor 因"我方操作"停止 → 永久卡死。改用远端快照判定后，被动方无论本地 currentPlayer
-        // 残留什么都会无条件接受操作方快照；同时 version 对齐也据此正确（被动方严格对齐、消除虚高）。
-        const _myId = this.p2pActionSender ? this.p2pActionSender.myPlayerId : null;
-        const isOperator = !!(_myId && s.currentPlayer === _myId);
-        if (remoteVersion !== -1 && isOperator) {
-            const remoteAhead = this._isRemoteAhead(s.currentPhase, s.currentRound);
-            if (!remoteAhead && remoteVersion <= this._stateVersion) {
-                console.log(`[GC][Sync] 忽略旧快照 localVersion=${this._stateVersion}, remoteVersion=${remoteVersion}`);
-                return false;
-            }
+        // P2P：远端版本低于或等于本地已知版本时，忽略旧快照，防止覆盖最新状态
+        if (remoteVersion !== -1 && remoteVersion <= this._stateVersion) {
+            console.log(`[GC][Sync] 忽略旧快照 localVersion=${this._stateVersion}, remoteVersion=${remoteVersion}`);
+            return false;
         }
         this._applyingRemote = true;
         try {
@@ -1848,12 +1716,8 @@ class GameController {
                 this.currentPlayer === this.p2pActionSender.myPlayerId) {
                 this.startTimer();
             }
-            // 应用远端快照后同步版本号：
-            // 操作方保留 max（防被对端旧快照回退）；被动方严格对齐操作方（消除本地
-            // finalizeRound 复制推进导致的 version 虚高，避免后续操作方真快照被误拒）
-            this._stateVersion = isOperator
-                ? Math.max(this._stateVersion, remoteVersion)
-                : remoteVersion;
+            // 应用远端快照后，同步本地版本号，防止后续旧快照回退
+            this._stateVersion = Math.max(this._stateVersion, remoteVersion);
         } finally {
             this._applyingRemote = false;
         }
@@ -1911,48 +1775,13 @@ class GameController {
                         }
                         return true;
                     }
-                    // 最小修复：不再因 currentPhase 非 EVALUATE 而静默丢弃（那会丢失分数与回合推进）。
-                    // 构造方（对端）是分数权威，先以累计总分覆盖本地，保证分数不丢。
-                    const sA = payload && typeof payload.scoreA === 'number' ? payload.scoreA : null;
-                    const sB = payload && typeof payload.scoreB === 'number' ? payload.scoreB : null;
-                    if (this.currentPhase === this.phases.EVALUATE) {
-                        // 本端处于评估阶段：正常完成本回合（记录历史 + 推进 + UI 事件）
-                        if (payload && payload.hitTargets !== undefined) {
-                            // 远程传来的评估结果（P6：统一按长度 >= targetCount 判定命中）
-                            this.roundState.hitTargets = payload.hitTargets || [];
-                            this.roundState.hitTarget = this.roundState.hitTargets.length >= this.targetCount;
-                            this.roundState.hitForbidden = payload.hitForbidden || false;
-                        }
-                        // 用对端累计总分覆盖本地（finalizeRound 内部通过 remoteTotal 避免重复加分）
-                        this.finalizeRound(payload.score !== undefined ? payload.score : 0,
-                            (sA != null && sB != null) ? { A: sA, B: sB } : null);
-                    } else {
-                        // 本端 finalizeRound 因 phase 检查被跳过（EVALUATE 确认快照可能丢失，
-                        // currentPhase 仍停在旧阶段）→ 只覆盖分数会导致本端 currentPlayer/回合
-                        // 不推进，双方互视对方为被动方 → health monitor 双端常驻 → 双向死锁。
-                        // 因此这里必须补齐被跳过的回合推进，否则只能等 request_sync 自愈（慢且不稳）。
-                        console.warn(`[GC][P2P] function_result 到达但 currentPhase=${this.currentPhase} 非 EVALUATE，补齐回合推进`);
-                        // 1) 分数对齐（构造方是对端，权威）
-                        if (sA != null) this.players.A.score = sA;
-                        if (sB != null) this.players.B.score = sB;
-                        this.roundState.score = (payload && typeof payload.score === 'number') ? payload.score : 0;
-                        // 2) 本端尚未推进回合（currentRound 仍等于对端评估回合）→ 补齐 finalizeRound 被跳过的推进。
-                        //    用 _suppressP2PSync 抑制推送（被动方复制推进不推回操作方，避免旧状态覆盖）。
-                        if (this.currentRound === payload.currentRound) {
-                            console.warn(`[GC][P2P] 本端仍在本回合（round=${this.currentRound}），执行 switchPlayer 补齐推进`);
-                            this._suppressP2PSync = true;
-                            try { this.switchPlayer(); }
-                            finally { this._suppressP2PSync = false; }
-                        }
-                        // 3) 请求全量快照兜底，确保与操作方完全一致（尤其 currentPlayer/阶段）。
-                        //    2s 节流防止高频触发（与 _maybeRequestFullSync 一致）。
-                        if (this.p2pActionSender && typeof this.p2pActionSender.sendSyncRequest === 'function') {
-                            const now = Date.now();
-                            if (!this._lastFullSyncRequestAt || now - this._lastFullSyncRequestAt >= 2000) {
-                                this._lastFullSyncRequestAt = now;
-                                this.p2pActionSender.sendSyncRequest();
-                            }
-                        }
+                    if (this.currentPhase !== this.phases.EVALUATE) return true;
+                    if (payload && payload.hitTargets !== undefined) {
+                        // 远程传来的评估结果（P6：统一按长度 >= targetCount 判定命中）
+                        this.roundState.hitTargets = payload.hitTargets || [];
+                        this.roundState.hitTarget = this.roundState.hitTargets.length >= this.targetCount;
+                        this.roundState.hitForbidden = payload.hitForbidden || false;
+                        this.finalizeRound(payload.score !== undefined ? payload.score : 0);
                     }
                 }
                 return true;
@@ -1987,19 +1816,12 @@ class GameController {
     /**
      * P2P：由对方传来的评估结果完成本回合（finalizeRound 缺失会导致崩溃）
      * @param {number} score - 本回合得分（由构造函数者计算后同步）
-     * @param {{A?:number,B?:number}|null} remoteTotal - 可选：对端（构造方）算好的累计总分。
-     *        传入时直接覆盖本地 A/B 总分，避免本端重复加分；不传则按旧逻辑给 currentPlayer 加分。
      */
-    finalizeRound(score = 0, remoteTotal = null) {
+    finalizeRound(score = 0) {
         if (this.currentPhase !== this.phases.EVALUATE) return;
 
         this.roundState.score = score;
-        if (remoteTotal) {
-            if (typeof remoteTotal.A === 'number') this.players.A.score = remoteTotal.A;
-            if (typeof remoteTotal.B === 'number') this.players.B.score = remoteTotal.B;
-        } else {
-            this.players[this.currentPlayer].score += score;
-        }
+        this.players[this.currentPlayer].score += score;
 
         // 远程未携带函数类型信息，构造占位（得分已由对方计算好）
         const functionType = { type: 'remote', score };
@@ -2033,12 +1855,7 @@ class GameController {
             round: this.currentRound
         });
 
-        // 仅"被动方复制推进"（currentPlayer !== myPlayerId）才抑制推送，避免把本地推进
-        // 状态推回操作方造成覆盖；操作方（构造者）自己推进必须推送告知对方，否则
-        // 双方都抑制 → 没有确认推送 → 周期兜底又被互相等待卡住 → 第2回合起死锁
-        this._suppressP2PSync = !(this.p2pActionSender && this.currentPlayer === this.p2pActionSender.myPlayerId);
         this.setPhase(this.phases.SWITCH_PLAYER);
-        this._suppressP2PSync = false;
     }
 
     /**
@@ -2047,9 +1864,7 @@ class GameController {
      */
     startNextRound() {
         if (this.currentPhase === this.phases.EVALUATE) {
-            this._suppressP2PSync = !(this.p2pActionSender && this.currentPlayer === this.p2pActionSender.myPlayerId);
             this.setPhase(this.phases.SWITCH_PLAYER);
-            this._suppressP2PSync = false;
         }
     }
 

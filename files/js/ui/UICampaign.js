@@ -201,19 +201,28 @@ if (typeof UIController === 'undefined') {
 
 // startCampaign
     UIController.prototype.startCampaign = async function(startLevelId) {
-        const pack = await this.loadCampaignPack();
+        const isCustom = !!this.campaignIsCustom;
+        const pack = isCustom ? this.importedCampaignPack : (await this.loadCampaignPack());
         if (!pack) {
             this.showMessage('关卡未加载：请先加载内置关卡数据', 'error');
             this.openCampaignUI();
             return;
         }
-        // 分数关 levelId 为字符串（e.g. "1/2"），整数关为数字
-        const isFractionLevel = typeof startLevelId === 'string' && String(startLevelId).includes('/');
-        const safeStart = isFractionLevel ? String(startLevelId) : (Number(startLevelId) || 1);
+        // 自定义包：保留原始关卡 id（可能是任意字符串，如 "adg"），不强制转数字
+        let safeStart;
+        if (isCustom) {
+            safeStart = String(startLevelId);
+        } else {
+            const isFractionLevel = typeof startLevelId === 'string' && String(startLevelId).includes('/');
+            safeStart = isFractionLevel ? String(startLevelId) : (Number(startLevelId) || 1);
+        }
         this.campaignCurrentLevelId = safeStart;
-        this.campaignCurrentLevelBestRecord = this.getCampaignLevelBestRecord(safeStart);
+        // 自定义关卡包：不记录 best（通关不写任何进度）
+        this.campaignCurrentLevelBestRecord = isCustom ? null : this.getCampaignLevelBestRecord(safeStart);
         this._markGameActive();
         this.gameController.initCampaign(pack, safeStart);
+        // 标记给 GameController：自定义包不写内置 cleared / LR∑
+        if (this.gameController.campaignState) this.gameController.campaignState.customPack = isCustom;
         if (this.gridSystem && this.gridSystem.setCampaignFixedRange) {
             this.gridSystem.setCampaignFixedRange(true);
         }
@@ -225,11 +234,17 @@ if (typeof UIController === 'undefined') {
         if (!this.campaignVictoryModal) return;
         this.campaignCurrentLevelId = data.levelId || this.campaignCurrentLevelId;
         const rawLevelId = this.campaignCurrentLevelId || data.levelId || 1;
+        const isCustom = !!this.campaignIsCustom;
         const isFraction = typeof rawLevelId === 'string' && String(rawLevelId).includes('/');
-        const levelId = isFraction ? String(rawLevelId) : Number(rawLevelId || 1);
-        const bestRecord = Number.isFinite(Number(this.campaignCurrentLevelBestRecord)) ? Number(this.campaignCurrentLevelBestRecord) : null;
+        let levelId;
+        if (isCustom) levelId = String(rawLevelId);
+        else if (isFraction) levelId = String(rawLevelId);
+        else levelId = Number(rawLevelId || 1);
+        // 自定义包：彻底隔离，不读取/不显示官方 best
+        const hasBest = !isCustom && this.campaignCurrentLevelBestRecord !== null && Number.isFinite(Number(this.campaignCurrentLevelBestRecord));
+        const bestRecord = hasBest ? Number(this.campaignCurrentLevelBestRecord) : null;
         const length = Number.isFinite(Number(data.expressionLength)) ? Number(data.expressionLength) : this.getCurrentExpressionLength();
-        const levelText = isFraction ? `分数关 ${levelId}` : `第 ${levelId} 关`;
+        const levelText = isCustom ? `关卡 ${levelId}` : (isFraction ? `分数关 ${levelId}` : `第 ${levelId} 关`);
         if (this.campaignVictoryText) {
             if (bestRecord === null || !Number.isFinite(bestRecord)) {
                 this.campaignVictoryText.innerHTML = `${levelText} 记录：<span style="color:#fff">${length}</span>`;
@@ -307,10 +322,11 @@ if (typeof UIController === 'undefined') {
 
 // retryCampaignLevel
     UIController.prototype.retryCampaignLevel = function() {
-        if (!this.campaignPack) return;
+        if (!this.campaignPack && !this.importedCampaignPack) return;
         const rawId = this.campaignCurrentLevelId || this.campaignVictoryModal?.dataset.levelId || 1;
-        const isFraction = typeof rawId === 'string' && String(rawId).includes('/');
-        const levelId = isFraction ? String(rawId) : Number(rawId || 1);
+        const levelId = this.campaignIsCustom
+            ? String(rawId)
+            : (typeof rawId === 'string' && String(rawId).includes('/') ? String(rawId) : (Number(rawId || 1)));
         this.hideCampaignVictory();
         this.startCampaign(levelId);
     }
@@ -318,10 +334,23 @@ if (typeof UIController === 'undefined') {
 
 // goToNextCampaignLevel
     UIController.prototype.goToNextCampaignLevel = async function() {
-        if (!this.campaignPack) return;
+        if (!this.campaignPack && !this.importedCampaignPack) return;
         const rawId = this.campaignCurrentLevelId || this.campaignVictoryModal?.dataset.levelId || 1;
         const isFraction = typeof rawId === 'string' && String(rawId).includes('/');
         const total = this.campaignPack && Array.isArray(this.campaignPack.levels) ? this.campaignPack.levels.length : 0;
+        // 自定义关卡包：按 js 原始顺序进入下一位；末关提示完成
+        if (this.campaignIsCustom && this.importedCampaignPack) {
+            const levels = this.importedCampaignPack.levels;
+            const idx = levels.findIndex(l => String(l.id) === String(rawId));
+            this.hideCampaignVictory();
+            if (idx >= 0 && idx + 1 < levels.length) {
+                this.startCampaign(String(levels[idx + 1].id));
+            } else {
+                this.showMessage('已完成所有自制关卡', 'success');
+                this.openCampaignLevels('custom');
+            }
+            return;
+        }
         this.hideCampaignVictory();
         if (isFraction) {
             const currentDenom = parseInt(String(rawId).split('/')[1]) || 2;
@@ -348,6 +377,11 @@ if (typeof UIController === 'undefined') {
     UIController.prototype.returnToCampaignLevelSelect = function() {
         this.hideCampaignVictory();
         if (this.campaignModal) this.showModal(this.campaignModal);
+        // 自定义关卡包：返回自制选关网格
+        if (this.campaignIsCustom) {
+            this.openCampaignLevels('custom');
+            return;
+        }
         this.showCampaignDifficulty();
         this.refreshCampaignStartUI();
     }
@@ -388,6 +422,8 @@ if (typeof UIController === 'undefined') {
     UIController.prototype.closeCampaignUI = function() {
         // ★ 强制停止当前对局（闯关中退出时）
         this.forceStopGame();
+        // ★ 退出闯关对局立即取消所有锁定（不影响文本框输入）
+        this.clearAllLocks();
         this.hideModal(this.campaignModal, () => {
             this.showModal(this.startModal);
         });
@@ -507,6 +543,7 @@ if (typeof UIController === 'undefined') {
 // openCampaignLevels
     UIController.prototype.openCampaignLevels = function(diff) {
         this.campaignDifficulty = diff;
+        this.campaignIsCustom = (diff === 'custom');
         if (this.campaignStepDifficulty) this.campaignStepDifficulty.style.display = 'none';
         if (this.campaignStepLevels) this.campaignStepLevels.style.display = 'block';
         this.renderCampaignLevelGrid();
@@ -525,15 +562,24 @@ if (typeof UIController === 'undefined') {
             return;
         }
 
+        const isCustom = (diff === 'custom') || !!this.campaignIsCustom;
         const range = this.getDifficultyRange(diff);
         const rawLevelId = levelId ?? this.campaignCurrentLevelId ?? range.start;
         const isFraction = typeof rawLevelId === 'string' && String(rawLevelId).includes('/');
-        const currentLevelId = isFraction ? String(rawLevelId) : Number(rawLevelId || range.start);
-        const bestRecord = this.getCampaignLevelBestRecord(currentLevelId);
+        let currentLevelId;
+        if (isCustom) currentLevelId = String(rawLevelId);
+        else if (isFraction) currentLevelId = String(rawLevelId);
+        else currentLevelId = Number(rawLevelId || range.start);
+        // 自定义包：隔离命名空间，绝不读取官方 best
+        const bestRecord = isCustom ? null : this.getCampaignLevelBestRecord(currentLevelId);
 
         // 根据关卡号确定颜色，而不是根据 difficulty
         let color, bgColor, borderColor;
-        if (isFraction) {
+        if (isCustom) {
+            color = '#22c55e';
+            bgColor = 'rgba(34,197,94,0.12)';
+            borderColor = 'rgba(34,197,94,0.4)';
+        } else if (isFraction) {
             color = '#14b8a6';
             bgColor = 'rgba(20, 184, 166, 0.15)';
             borderColor = 'rgba(20, 184, 166, 0.5)';
@@ -576,6 +622,8 @@ if (typeof UIController === 'undefined') {
 // renderCampaignLevelGrid
     UIController.prototype.renderCampaignLevelGrid = function() {
         if (!this.campaignLevelGrid || !this.campaignLevelTitle || !this.campaignLevelProgress) return;
+        // 自定义关卡包：按 js 原始顺序渲染，全部可玩，无解锁机制
+        if (this.campaignDifficulty === 'custom') { this.renderCustomCampaignLevelGrid(); return; }
         const range = this.getDifficultyRange(this.campaignDifficulty);
         this.campaignLevelTitle.textContent = `选择关卡：${range.label}`;
 
@@ -824,26 +872,6 @@ if (typeof UIController === 'undefined') {
         toggle.disabled = !unlocked;
         if (this.inverseTrigToggleWrap) {
             this.inverseTrigToggleWrap.classList.toggle('disabled', !unlocked);
-        }
-
-        // 已解锁但当前难度是"简单"时，对战元素面板的反三角按钮会被隐藏
-        // （isInverseTrigHideContext → isEasyMode() true → shouldHideInverseTrigElement true）。
-        // 玩家勾了开关却看不到按钮会困惑，所以在开关下方追加一行黄字提示。
-        const _diffVal = (this.difficultySelect && this.difficultySelect.value)
-            || (this.difficultyOptions && this.difficultyOptions[this.currentDifficultyIndex]
-                && this.difficultyOptions[this.currentDifficultyIndex].value);
-        const _isEasyNow = unlocked && _diffVal === 'easy';
-        let _hint = document.getElementById('inverse-trig-difficulty-hint');
-        if (_isEasyNow && this.inverseTrigToggleWrap && this.inverseTrigToggleWrap.parentNode) {
-            if (!_hint) {
-                _hint = document.createElement('div');
-                _hint.id = 'inverse-trig-difficulty-hint';
-                _hint.style.cssText = 'font-size:12px;color:#f59e0b;margin-top:6px;line-height:1.4;';
-                this.inverseTrigToggleWrap.parentNode.insertBefore(_hint, this.inverseTrigToggleWrap.nextSibling);
-            }
-            _hint.textContent = '⚠️ 当前为简单难度，不显示反三角函数。请切换至普通或专家难度。';
-        } else if (_hint) {
-            _hint.remove();
         }
     }
 ;
