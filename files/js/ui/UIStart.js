@@ -131,6 +131,7 @@ if (typeof UIController === 'undefined') {
         this.modeCampaignBtn.classList.toggle('active', this.selectedMode === 'campaign');
         this.modeRaceBtn.classList.toggle('active', this.selectedMode === 'race');
         this.modeTestBtn.classList.toggle('active', this.selectedMode === 'test');
+        if (this.modeEditorBtn) this.modeEditorBtn.classList.toggle('active', this.selectedMode === 'editor');
 
         if (this.modeAiBtn) {
             this.modeAiBtn.disabled = false;
@@ -139,7 +140,7 @@ if (typeof UIController === 'undefined') {
             this.modeAiBtn.title = '';
         }
 
-        const lockSelectors = this.selectedMode === 'campaign' || this.selectedMode === 'test' || this.selectedMode === 'race' || (this.selectedMode === 'battle' && this._battleSubMode === 'p2p');
+        const lockSelectors = this.selectedMode === 'campaign' || this.selectedMode === 'test' || this.selectedMode === 'race' || this.selectedMode === 'editor' || (this.selectedMode === 'battle' && this._battleSubMode === 'p2p');
         this.setStartSelectorsEnabled(!lockSelectors);
         [this.roundStepper, this.difficultyStepper, this.timeLimitStepper].forEach(el => {
             if (!el) return;
@@ -250,10 +251,11 @@ if (typeof UIController === 'undefined') {
         const isCampaign = mode === 'campaign';
         const isTest = mode === 'test';
         const isRace = mode === 'race';
+        const isEditor = mode === 'editor';
         if (this.roundStepper) this.roundStepper.classList.remove('selector-change');
         if (this.difficultyStepper) this.difficultyStepper.classList.remove('selector-change');
-        // 闯关模式、测试模式、竞速模式、联机对战模式禁用回合数/难度/时间选择
-        const lockSelectors = isCampaign || isTest || isRace || (mode === 'battle' && this._battleSubMode === 'p2p');
+        // 闯关模式、测试模式、竞速模式、联机对战模式、关卡编辑器禁用回合数/难度/时间选择
+        const lockSelectors = isCampaign || isTest || isRace || isEditor || (mode === 'battle' && this._battleSubMode === 'p2p');
         if (this.roundStepper) {
             this.roundStepper.classList.toggle('disabled', lockSelectors);
         }
@@ -269,7 +271,7 @@ if (typeof UIController === 'undefined') {
         this.updateCampaignDrawDelayToggleVisibility();
 
         // 重置所有模式按钮的高亮
-        const allModeBtns = [this.modeBattleBtn, this.modeCampaignBtn, this.modeRaceBtn, this.modeTestBtn];
+        const allModeBtns = [this.modeBattleBtn, this.modeCampaignBtn, this.modeRaceBtn, this.modeTestBtn, this.modeEditorBtn];
         allModeBtns.forEach(btn => { if (btn) btn.classList.remove('active'); });
 
         if (mode === 'battle') {
@@ -306,6 +308,13 @@ if (typeof UIController === 'undefined') {
             this.hideRaceUI();
             this.setStartSelectorsEnabled(false);
             this.restoreBattleUI();
+        } else if (mode === 'editor') {
+            if (this.modeEditorBtn) this.modeEditorBtn.classList.add('active');
+            if (this._battleSubmenu) this._battleSubmenu.style.display = 'none';
+            this.modeHint.textContent = '关卡编辑器：创造属于你自己的关卡';
+            if (this.campaignPanel) this.campaignPanel.style.display = 'none';
+            this.hideRaceUI();
+            this.setStartSelectorsEnabled(false);
         }
     }
 ;
@@ -493,6 +502,12 @@ if (typeof UIController === 'undefined') {
             window.audioManager.playClick();
         }
         
+        // 关卡编辑器：仅选中模式，点击「开始游戏」才打开编辑器（就地显示，不再独立页面）
+        if (this.selectedMode === 'editor') {
+            this.openEditor();
+            return;
+        }
+
         // 闯关模式：进入关卡选择界面（难度选择）
         if (this.selectedMode === 'campaign') {
             this.openCampaignUI();

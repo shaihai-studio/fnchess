@@ -37,6 +37,14 @@ if (typeof UIController === 'undefined') {
 
 // handleKeyboardInput
     UIController.prototype.handleKeyboardInput = function(e) {
+        // 关卡编辑器输入框聚焦时，交还浏览器原生处理：允许 textarea 换行、input 正常录入，
+        // 避免被全局键盘监听（捕获阶段）拦截 Enter 等按键导致无法换行。
+        // 任何文本框（输入框/文本域/可编辑区）一律交还浏览器原生处理，
+        // 确保锁定等游戏键盘逻辑不会拦截或影响文本框输入（编辑器、Summa 对话框、联机房间码等）
+        const _edT = e.target;
+        if (_edT && _edT.tagName && (_edT.tagName === 'TEXTAREA' || _edT.tagName === 'INPUT' || _edT.isContentEditable)) {
+            return;
+        }
         const phase = this.gameController.currentPhase;
         const key = e.key;
 

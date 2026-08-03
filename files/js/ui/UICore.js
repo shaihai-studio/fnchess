@@ -177,6 +177,8 @@ if (typeof UIController === 'undefined') {
             });
         }
         this.initStartSelectors();
+        this.initEditor();
+        this.initCampaignImport();
         this.refreshStartSelectorDisplay();
         
         
@@ -209,7 +211,8 @@ if (typeof UIController === 'undefined') {
                 this.modeHint.textContent = '联机对战：与远方好友同台竞技';
             });
         }
-        // modeEditorBtn 现为指向 level-editor.html 的 <a> 链接，不需要 JS 事件绑定
+        // 关卡编辑器：选中模式，点击「开始游戏」后才打开编辑器
+        if (this.modeEditorBtn) this.modeEditorBtn.addEventListener('click', () => this.selectMode('editor'));
         if (this.raceBackBtn) this.raceBackBtn.addEventListener('click', () => this.showRaceLevelList());
         if (this.raceCloseBtn) this.raceCloseBtn.addEventListener('click', () => this.closeRaceUI());
 
@@ -226,10 +229,10 @@ if (typeof UIController === 'undefined') {
             if (el) el.addEventListener('click', fn);
         };
         bind('campaign-close-btn', () => this.closeCampaignUI());
-        bind('campaign-close-btn2', () => this.closeCampaignUI());
         bind('campaign-back-btn', () => this.playUIButtonSound(() => this.showCampaignDifficulty()));
         bind('campaign-reset-btn', () => this.playUIButtonSound(() => this.resetCampaignProgress()));
         bind('race-reset-btn', () => this.playUIButtonSound(() => this.resetRaceProgress()));
+        bind('race-custom-btn', () => this.playUIButtonSound(() => this.openRaceCustomModal()));
         bind('campaign-diff-fraction', () => this.playUIButtonSound(() => this.openCampaignLevels('fraction')));
         bind('campaign-diff-easy', () => this.playUIButtonSound(() => this.openCampaignLevels('easy')));
         bind('campaign-return-difficulty-btn', () => this.playUIButtonSound(() => this.returnCampaignToDifficulty()));
@@ -246,6 +249,7 @@ if (typeof UIController === 'undefined') {
         this.refreshUnsovableDifficultyVisibility();
         this.addCampaignDrawDelayToggle();
         this.updateCampaignDrawDelayToggleVisibility();
+        this.initRaceCustom();
         this.bindBackgroundMusicControls();
         this.initBackgroundMusic();
 
@@ -615,10 +619,11 @@ if (typeof UIController === 'undefined') {
 
         // 闯关：关卡结果与自动进入下一关/重试
         this.gameController.on('campaignLevelResult', (data) => {
-            this.refreshCampaignStartUI();
+            if (!this.campaignIsCustom) this.refreshCampaignStartUI();
             const rawLevelId = data.levelId || this.campaignCurrentLevelId || 1;
             const isFraction = typeof rawLevelId === 'string' && String(rawLevelId).includes('/');
             const levelId = isFraction ? String(rawLevelId) : Number(rawLevelId || 1);
+            if (!this.campaignIsCustom) {
             let isNewRecord = false;
             let previousBest = this.getCampaignLevelBestRecord(levelId);
             if (data.pass) {
@@ -663,6 +668,7 @@ if (typeof UIController === 'undefined') {
                         }
                     }
                 }
+            }
             }
             setTimeout(() => {
                 try {
@@ -780,8 +786,14 @@ if (typeof UIController === 'undefined') {
                 if (data.pass) {
                     this.clearRaceCountdown();
                     this.stopRaceElapsedTimer();
-                    if (data.isNewBest) this.playRaceNewRecordIntro(() => { if (window.audioManager) window.audioManager.playRaceFanfare?.(); this.unlockNextRaceLevel(data.levelId); this.showRaceVictory(data); });
-                    else { if (window.audioManager) window.audioManager.playRaceFinish?.(); this.unlockNextRaceLevel(data.levelId); this.showRaceVictory(data); }
+                    const afterWin = () => {
+                        // 自定义竞速关不解锁内置 30 关进度
+                        if (!this.raceIsCustom) this.unlockNextRaceLevel(data.levelId);
+                        this.showRaceVictory(data);
+                    };
+                    // 自定义关不记录最佳成绩，故不播放 NEW RECORD 过场
+                    if (data.isNewBest && !this.raceIsCustom) this.playRaceNewRecordIntro(() => { if (window.audioManager) window.audioManager.playRaceFanfare?.(); afterWin(); });
+                    else { if (window.audioManager) window.audioManager.playRaceFinish?.(); afterWin(); }
                 } else {
                     this.showMessage('挑战失败，请重试本关', 'error');
                     this.gameController.prepareInputPhase();
@@ -1296,6 +1308,16 @@ if (typeof UIController === 'undefined') {
     }
 ;
 
+// clearAllLocks — 退出对局后立即取消所有锁定，且锁定逻辑永不作用于文本框输入
+    UIController.prototype.clearAllLocks = function() {
+        const gc = this.gameController;
+        if (!gc) return;
+        if (gc.roundState) gc.roundState.lockedElements = [];
+        if (gc.elementLockCounts && typeof gc.elementLockCounts.clear === 'function') gc.elementLockCounts.clear();
+        if (gc.parser && typeof gc.parser.clearLockedElements === 'function') gc.parser.clearLockedElements();
+    }
+;
+
 // handleExit
     UIController.prototype.handleExit = function() {
         if (window.audioManager) window.audioManager.playClick();
@@ -1303,6 +1325,9 @@ if (typeof UIController === 'undefined') {
 
         // ★ 先强制停止游戏运行（停计时器、清AI队列、标记非活跃）
         this.forceStopGame();
+
+        // ★ 退出对局立即取消所有锁定（覆盖所有模式），且不影响任何文本框输入
+        this.clearAllLocks();
 
         // P2P 联机模式：断开连接并返回开始界面
         if (this.isP2PMode || this.gameController.gameMode === 'p2p') {
@@ -1479,6 +1504,7 @@ if (typeof UIController === 'undefined') {
 
 // getDifficultyRange
     UIController.prototype.getDifficultyRange = function(diff) {
+        if (diff === 'custom') return { start: 1, end: (this.importedCampaignPack && this.importedCampaignPack.levels ? this.importedCampaignPack.levels.length : 1), cls: 'custom', label: (this.importedCampaignName || '自制关卡') };
         if (diff === 'easy') return { start: 1, end: 29, cls: 'easy', label: '简单（1-29）' };
         if (diff === 'normal') return { start: 30, end: 53, cls: 'normal', label: '普通（30-53）' };
         if (diff === 'hard') return { start: 54, end: 69, cls: 'hard', label: '困难（54-69）' };
@@ -1501,9 +1527,14 @@ if (typeof UIController === 'undefined') {
         const showUnsolvable = cleared >= 81;
         if (fractionBtn) fractionBtn.style.display = showFraction ? '' : 'none';
         if (unsolvableBtn) unsolvableBtn.style.display = showUnsolvable ? '' : 'none';
+        const customBtn = document.getElementById('campaign-diff-custom');
+        if (customBtn) {
+            customBtn.style.display = this.importedCampaignPack ? '' : 'none';
+        }
         let visibleCount = 4; // easy / normal / hard / expert 始终可见
         if (showFraction) visibleCount++;
         if (showUnsolvable) visibleCount++;
+        if (this.importedCampaignPack) visibleCount++; // 自定义关卡入口
         grid.style.gridTemplateColumns = `repeat(${visibleCount}, minmax(0, 1fr))`;
     }
 ;
