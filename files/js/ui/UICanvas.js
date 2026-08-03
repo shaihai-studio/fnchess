@@ -168,6 +168,8 @@ if (typeof UIController === 'undefined') {
 
 // handleCanvasClick
     UIController.prototype.handleCanvasClick = function(e) {
+        // 观战模式：棋盘只读，禁止点击
+        if (this._isSpectating) return;
         if (this.gameController?.gameMode === 'race' && this._raceCountdownActive) return;
         const canvas = this.gridSystem.canvas;
         const rect = canvas.getBoundingClientRect();
@@ -219,6 +221,15 @@ if (typeof UIController === 'undefined') {
 
 // handleCanvasHover
     UIController.prototype.handleCanvasHover = function(e) {
+        // 观战模式：禁用悬停效果
+        if (this._isSpectating) {
+            if (this._lastHoverKey !== 'spectating') {
+                this.gridSystem.canvas.style.cursor = 'not-allowed';
+                this.gridSystem.canvas.title = '观战模式（只读）';
+                this._lastHoverKey = 'spectating';
+            }
+            return;
+        }
         const canvas = this.gridSystem.canvas;
         const rect = canvas.getBoundingClientRect();
         

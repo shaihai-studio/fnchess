@@ -12,6 +12,8 @@ if (typeof UIController === 'undefined') {
         }
         // 退出可能残留的关卡编辑器 UI
         if (this.levelEditor) this.levelEditor.deactivate();
+        // 观战开关默认开启（房主默认允许观战，进入大厅建房时可取消勾选）
+        if (this._spectateEnabled === undefined) this._spectateEnabled = true;
         // 房主有活跃等待房间时保留既有连接（PeerJS 建房等待不能断），只重绑回调
         const hasActiveHostRoom = this._lobby && this._lobby.myRoomCode &&
             this.p2pController && this.p2pController.isHost && !this.p2pController.isConnected;
@@ -46,9 +48,16 @@ if (typeof UIController === 'undefined') {
         p2p.onConnected = () => {
             this._updateP2PStatus('connected', '对手已连接！');
             this.showMessage('对手已加入，游戏开始！');
-            // 若从匹配大厅创建的房间，开局后通知服务器从列表移除
+            // 若从匹配大厅创建的房间，开局后通知服务器：
+            //  - 开启观战（默认）→ 房间保留在大厅，观众可直接加入
+            //  - 关闭观战 → 房间从大厅移除
             if (this._lobby && this._lobby.myRoomCode) {
-                this._lobby.notifyStarted();
+                this._p2pRoomCode = this._lobby.myRoomCode;
+                // 默认开启观战：仅当建房时显式取消勾选才关闭
+                this._spectateEnabled = this._spectateEnabled !== false;
+                this._lobby.notifyStarted(this._p2pRoomCode, this._spectateEnabled);
+                // 显示"对战中"状态条（含观战开关），房主对局中可随时切换
+                this._showHostGameBanner(this._p2pRoomCode);
             }
             // 隐藏所有模态框：P2P房间 + 开始界面
             const p2pModal = document.getElementById('p2p-room-modal');
@@ -293,6 +302,8 @@ if (typeof UIController === 'undefined') {
         this._startP2PPeriodicSync();
         // 健康监测：被动方等待对方回合超时（倒计时卡住 / 3s 未选格）→ 探测 + 多次补救 + 提示
         this._startP2PHealthMonitor();
+        // 观战同步：开启观战且本端为房主（大厅登记的房主）时，每 500ms 经 Lobby WS 推送快照给观众
+        this._startSpectateSync();
         // 房主在这里初始化游戏（访客在 onGameInit 中初始化），并发送游戏初始化给访客。
         // 首局与 Rematch 复用同一路径：sendGameInit 每次递增 _gen，
         // 保证 Rematch 后新旧对局消息能正确过滤（BUG-15）。
@@ -520,6 +531,14 @@ if (typeof UIController === 'undefined') {
         this._stopP2PPeriodicSync();
         // 清理健康监测定时器
         this._stopP2PHealthMonitor();
+        // 清理观战同步定时器
+        this._stopSpectateSync();
+        // 对局中退出：告知服务器关闭观战（踢掉观众），房间随大厅连接断开自动清理。
+        // 随后 _closeLobby 在 myRoomCode 为空（开局后已清空）时会真正断开大厅连接。
+        if (this._lobby && this._p2pRoomCode) {
+            this._lobby.setSpectateEnabled(this._p2pRoomCode, false);
+            this._p2pRoomCode = null;
+        }
         // 隐藏"连接不稳定，正在等待"提示条
         if (typeof this._p2pSetAwaitBanner === 'function') this._p2pSetAwaitBanner(false);
         // 房主有活跃等待房间（尚未开局）时，保留 PeerJS 建房连接、大厅 WS 与顶部状态条
@@ -602,6 +621,65 @@ if (typeof UIController === 'undefined') {
         if (this._p2pSyncInterval) {
             clearInterval(this._p2pSyncInterval);
             this._p2pSyncInterval = null;
+        }
+    }
+;
+
+// _startSpectateSync
+    // 观战同步：仅「大厅登记的房主 + 开启观战 + 大厅连接在线」时生效，
+    // 每 500ms 将 buildSyncSnapshot() 经 Lobby WS 推给服务器，由其广播给观众。
+    // 复用 WebRTC 的 P2P 快照构建逻辑，观众端无需任何 WebRTC 连接。
+    UIController.prototype._startSpectateSync = function() {
+        this._stopSpectateSync();
+        if (!this._spectateEnabled || !this._p2pRoomCode) return;
+        this._spectateSyncTimer = setInterval(() => {
+            if (!this.isP2PMode) return;
+            const lobby = this._lobby;
+            if (!lobby || !lobby.isConnected || !this._spectateEnabled) return;
+            try {
+                lobby.sendSpectateSync(this.buildSyncSnapshot());
+            } catch (e) { /* 快照构建失败时静默跳过本次推送 */ }
+        }, 500);
+    }
+;
+
+// _stopSpectateSync
+    UIController.prototype._stopSpectateSync = function() {
+        if (this._spectateSyncTimer) {
+            clearInterval(this._spectateSyncTimer);
+            this._spectateSyncTimer = null;
+        }
+    }
+;
+
+// _toggleSpectate
+    // 房主对局中切换观战开关：开启 → 恢复大厅展示；关闭 → 立即隐藏房间并踢掉观众
+    UIController.prototype._toggleSpectate = function(enabled) {
+        this._spectateEnabled = !!enabled;
+        const lobby = this._lobby;
+        if (lobby && this._p2pRoomCode) {
+            lobby.setSpectateEnabled(this._p2pRoomCode, this._spectateEnabled);
+        }
+        this._startSpectateSync();
+        this._updateSpectateBar();
+    }
+;
+
+// _updateSpectateBar
+    // 对局中房主顶部的观战开关指示（lobby-host-banner 内嵌）
+    UIController.prototype._updateSpectateBar = function() {
+        const bar = document.getElementById('lobby-host-banner');
+        const toggle = document.getElementById('lobby-spectate-toggle');
+        const label = document.getElementById('lobby-spectate-label');
+        if (!bar) return;
+        if (!this._spectateEnabled) {
+            if (toggle) toggle.checked = false;
+            if (label) label.textContent = '观战关闭';
+            bar.classList.remove('lobby-host-banner-playing');
+        } else {
+            if (toggle) toggle.checked = true;
+            if (label) label.textContent = '观战开启';
+            bar.classList.add('lobby-host-banner-playing');
         }
     }
 ;

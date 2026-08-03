@@ -17,10 +17,19 @@
         </div>
     </div>
 
-    <!-- 房主常驻状态条（关闭联机弹窗/返回主菜单后仍显示，房间存活指示） -->
+    <!-- 房主常驻状态条（关闭联机弹窗/返回主菜单后仍显示，房间存活指示；
+         开局后切换为"对战中"并显示观战开关） -->
     <div class="lobby-host-banner" id="lobby-host-banner" style="display:none;">
         <span class="lobby-host-banner-dot"></span>
-        <span class="lobby-host-banner-text">[<span id="lobby-banner-code">------</span>] 等待玩家加入 剩余时间：<span id="lobby-banner-time">05:00</span></span>
+        <span class="lobby-host-banner-text">
+            [<span id="lobby-banner-code">------</span>]
+            <span id="lobby-banner-status">等待玩家加入</span>
+            <span id="lobby-banner-waiting">剩余时间：<span id="lobby-banner-time">05:00</span></span>
+        </span>
+        <label class="lobby-spectate-toggle" id="lobby-spectate-toggle-wrap" style="display:none;" title="对局中切换观战开关">
+            <input type="checkbox" id="lobby-spectate-toggle" checked>
+            <span id="lobby-spectate-label">观战开启</span>
+        </label>
     </div>
 
     <!-- P2P 等待对方回执提示条（任何同步机制等待对方回复时显示） -->
@@ -519,6 +528,10 @@
                             <input type="checkbox" id="lobby-long-lived-toggle">
                             <span>长效模式（30分钟，房间号以00开头）</span>
                         </label>
+                        <label class="lobby-long-lived-label">
+                            <input type="checkbox" id="lobby-allow-spectate-toggle" checked>
+                            <span>允许观战（开局后房间保留在大厅，其他玩家可直接观看）</span>
+                        </label>
                         <div class="lobby-list" id="lobby-list"></div>
                         <div class="p2p-battle-hint">
                             <small>创建房间后进入等待列表，其他玩家可点击你的房间加入</small><br>
@@ -557,6 +570,15 @@
             </div>
         </div>
     </div>
+
+    <!-- 观战模式覆盖层：顶部提示条 + 退出按钮（观众端） -->
+    <div class="spectator-overlay" id="spectator-overlay" style="display:none;">
+        <span class="spectator-dot"></span>
+        <span>观战中 · 房间 <span id="spectator-room-code">------</span>（只读）</span>
+        <button type="button" class="btn btn-small spectator-exit-btn" id="spectator-exit-btn">退出观战</button>
+    </div>
+    <!-- 观战水印（右下角半透明） -->
+    <div class="spectator-watermark" id="spectator-watermark" style="display:none;">观战中</div>
 
     <!-- 加载 JavaScript 模块 -->
     <!-- KaTeX 数学排版引擎（本地 vendor，离线可用） -->
@@ -637,6 +659,7 @@
     <script src="files/js/ui/UIRace.js"></script>
     <script src="files/js/ui/UIP2P.js"></script>
     <script src="files/js/ui/UILobby.js"></script>
+    <script src="files/js/ui/UISpectator.js"></script>
 <script src="files/js/ui/UICore.js"></script>
     <script src="files/js/SummaTrainer.js"></script>
     

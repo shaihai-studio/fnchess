@@ -2691,6 +2691,38 @@ body::before {
 .lobby-host-banner-dot { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 8px #22c55e; animation: lobby-pulse 1.2s infinite; }
 @keyframes lobby-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
 
+/* 对战中状态条（房主开局后显示，含观战开关） */
+.lobby-host-banner.lobby-host-banner-playing { border-color: rgba(96, 165, 250, 0.6); }
+.lobby-host-banner.lobby-host-banner-playing .lobby-host-banner-dot { background: #3b82f6; box-shadow: 0 0 8px #3b82f6; }
+.lobby-spectate-toggle { display: inline-flex; align-items: center; gap: 6px; margin-left: 8px; padding: 3px 10px; font-family: inherit; font-size: 12px; color: #93c5fd; background: rgba(59,130,246,0.15); border: 1px solid rgba(59,130,246,0.4); border-radius: 999px; cursor: pointer; white-space: nowrap; }
+.lobby-spectate-toggle input { accent-color: #3b82f6; margin: 0; }
+.lobby-spectate-toggle input:not(:checked) + span { color: #f87171; }
+
+/* 对战中（可观战）房间行 */
+.lobby-room-row.lobby-room-playing { border-color: rgba(59,130,246,0.35); background: rgba(59,130,246,0.07); }
+.lobby-room-row.lobby-room-playing .lobby-room-desc { color: #93c5fd; }
+
+/* 观战模式覆盖层（顶部提示条 + 退出按钮） */
+.spectator-overlay {
+    position: fixed; top: 12px; left: 50%; transform: translateX(-50%);
+    z-index: 9997; display: flex; align-items: center; gap: 10px;
+    padding: 8px 16px; background: rgba(30, 41, 59, 0.92);
+    border: 1px solid rgba(96, 165, 250, 0.55); border-radius: 999px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    font-size: 13px; color: #93c5fd; white-space: nowrap; letter-spacing: 0.3px;
+}
+.spectator-dot { width: 8px; height: 8px; border-radius: 50%; background: #3b82f6; box-shadow: 0 0 8px #3b82f6; animation: lobby-pulse 1.2s infinite; }
+.spectator-exit-btn { flex: 0 0 auto; padding: 4px 12px; }
+
+/* 观战水印（右下角半透明） */
+.spectator-watermark {
+    position: fixed; right: 24px; bottom: 24px;
+    z-index: 9996; pointer-events: none; user-select: none;
+    font-size: 22px; font-weight: bold; letter-spacing: 4px;
+    color: rgba(147, 197, 253, 0.18); text-shadow: 0 0 12px rgba(59, 130, 246, 0.25);
+    transform: rotate(-8deg);
+}
+
 /* P2P 等待对方回执提示条（屏幕底部中央，避免与顶部房间状态条重叠） */
 .p2p-await-banner {
     position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%);

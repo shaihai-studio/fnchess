@@ -77,6 +77,9 @@ if (typeof UIController === 'undefined') {
 ;
 
 // _renderLobbyRooms
+    // 房间列表两种状态：
+    //  - waiting：等待加入 → 「加入」按钮
+    //  - playing（开启观战）：对战中 → 「观战」按钮
     UIController.prototype._renderLobbyRooms = function(rooms) {
         const list = document.getElementById('lobby-list');
         if (!list) return;
@@ -87,19 +90,49 @@ if (typeof UIController === 'undefined') {
         list.innerHTML = '';
         rooms.forEach((room) => {
             if (!room || !room.code) return;
+            const playing = room.status === 'playing';
             const row = document.createElement('div');
-            row.className = 'lobby-room-row';
+            row.className = 'lobby-room-row' + (playing ? ' lobby-room-playing' : '');
+            const desc = playing
+                ? `对战中 · 观众 ${room.spectatorCount || 0} 人 · ${this._escapeHtml(this._formatLobbyRoomDesc(room.options))}`
+                : this._escapeHtml(this._formatLobbyRoomDesc(room.options));
             row.innerHTML = `
                 <div class="lobby-room-info">
                     <span class="lobby-room-code">${this._escapeHtml(String(room.code))}</span>
-                    <span class="lobby-room-desc">${this._escapeHtml(this._formatLobbyRoomDesc(room.options))}</span>
+                    <span class="lobby-room-desc">${desc}</span>
                 </div>
-                <button type="button" class="btn btn-small lobby-join-btn">加入</button>
+                <button type="button" class="btn btn-small lobby-join-btn">${playing ? '观战' : '加入'}</button>
             `;
             const btn = row.querySelector('.lobby-join-btn');
-            btn.onclick = () => this._lobbyJoin(room.code);
+            if (playing) {
+                btn.onclick = () => this._lobbySpectate(room.code);
+            } else {
+                btn.onclick = () => this._lobbyJoin(room.code);
+            }
             list.appendChild(row);
         });
+    }
+;
+
+// _lobbySpectate
+    // 观众从大厅列表点击「观战」按钮：关闭联机弹窗 → 进入观战模式
+    UIController.prototype._lobbySpectate = function(code) {
+        const lobby = this._lobby;
+        if (!lobby || !lobby.isConnected) {
+            this.showMessage('大厅未连接，请稍候再试', 'error');
+            return;
+        }
+        if (this.p2pController && (this.p2pController.isConnecting || this.p2pController.isConnected)) {
+            this.showMessage('你正在对局中，无法观战', 'error');
+            return;
+        }
+        if (typeof this.enterSpectatorMode !== 'function') {
+            this.showMessage('观战模块未加载', 'error');
+            return;
+        }
+        const p2pModal = document.getElementById('p2p-room-modal');
+        if (p2pModal) this.hideModal(p2pModal);
+        this.enterSpectatorMode(String(code));
     }
 ;
 
@@ -140,10 +173,13 @@ if (typeof UIController === 'undefined') {
         const timeLimitMode = this._getP2PTimeLimitMode();
         // 长效模式：有效期 30 分钟、房间号以 00 开头
         const longLived = !!(document.getElementById('lobby-long-lived-toggle') || {}).checked;
+        // 允许观战：默认开启（未显式取消勾选即为开启）
+        const allowSpectate = (document.getElementById('lobby-allow-spectate-toggle') || {}).checked !== false;
+        this._spectateEnabled = allowSpectate;
         const btn = document.getElementById('lobby-create-btn');
         if (btn) btn.disabled = true;
         this._updateLobbyStatus('creating', '正在向大厅登记房间...');
-        lobby.hostRegister({ rounds, difficulty, timeLimitMode, longLived });
+        lobby.hostRegister({ rounds, difficulty, timeLimitMode, longLived, allowSpectate });
     }
 ;
 
@@ -222,6 +258,9 @@ if (typeof UIController === 'undefined') {
         // 长效模式开关（30 分钟，房间号以 00 开头）
         const longToggle = $('lobby-long-lived-toggle');
         if (longToggle) longToggle.onchange = () => {};
+        // 对局中观战开关（开局后状态条显示；关闭 → 立即隐藏房间并踢观众）
+        const spectateToggle = $('lobby-spectate-toggle');
+        if (spectateToggle) spectateToggle.onchange = () => this._toggleSpectate(spectateToggle.checked);
     }
 ;
 
@@ -299,8 +338,37 @@ if (typeof UIController === 'undefined') {
     UIController.prototype._stopHostRoomBanner = function() {
         this._stopHostRoomBannerTimer();
         const banner = document.getElementById('lobby-host-banner');
-        if (banner) banner.style.display = 'none';
+        if (banner) {
+            banner.style.display = 'none';
+            banner.classList.remove('lobby-host-banner-playing');
+        }
+        const waitingEl = document.getElementById('lobby-banner-waiting');
+        if (waitingEl) waitingEl.style.display = '';
+        const statusEl = document.getElementById('lobby-banner-status');
+        if (statusEl) statusEl.textContent = '等待玩家加入';
+        const toggleWrap = document.getElementById('lobby-spectate-toggle-wrap');
+        if (toggleWrap) toggleWrap.style.display = 'none';
         this._hostRoomExpiresAt = 0;
+    }
+;
+
+// _showHostGameBanner
+    // 开局后房主状态条切换为"对战中"，并显示观战开关（对局中随时切换）
+    UIController.prototype._showHostGameBanner = function(code) {
+        const banner = document.getElementById('lobby-host-banner');
+        if (!banner) return;
+        const codeEl = document.getElementById('lobby-banner-code');
+        if (codeEl) codeEl.textContent = String(code || '------');
+        const statusEl = document.getElementById('lobby-banner-status');
+        if (statusEl) statusEl.textContent = '对战中';
+        const waitingEl = document.getElementById('lobby-banner-waiting');
+        if (waitingEl) waitingEl.style.display = 'none';
+        const toggleWrap = document.getElementById('lobby-spectate-toggle-wrap');
+        if (toggleWrap) toggleWrap.style.display = 'inline-flex';
+        this._stopHostRoomBannerTimer(); // 对局中无等待倒计时
+        banner.style.display = 'flex';
+        banner.classList.add('lobby-host-banner-playing');
+        this._updateSpectateBar();
     }
 ;
 
@@ -389,6 +457,8 @@ if (typeof UIController === 'undefined') {
     UIController.prototype._p2pCloseRoomModal = function() {
         const p2pModal = document.getElementById('p2p-room-modal');
         if (p2pModal) this.hideModal(p2pModal);
+        // 对局中（PeerJS 已连接）该弹窗本不可见，保险起见不得清理对局连接与观战同步
+        if (this.p2pController && this.p2pController.isConnected) return;
         this._cleanupP2P();
     }
 ;

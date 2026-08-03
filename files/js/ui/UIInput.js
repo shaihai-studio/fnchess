@@ -585,6 +585,8 @@ if (typeof UIController === 'undefined') {
 
 // addElementToExpression
     UIController.prototype.addElementToExpression = function(element) {
+        // 观战模式：只读，禁止输入表达式
+        if (this._isSpectating) return;
         if (this.gameController?.gameMode === 'race' && this._raceCountdownActive) return;
         const phase = this.gameController.currentPhase;
         if (phase !== 'input_function') {

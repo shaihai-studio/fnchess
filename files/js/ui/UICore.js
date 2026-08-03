@@ -1333,6 +1333,8 @@ if (typeof UIController === 'undefined') {
 
 // handleClear
     UIController.prototype.handleClear = function() {
+        // 观战模式：只读，禁止清除
+        if (this._isSpectating) return;
         const state = this.gameController.getGameState();
 
         // AI 正在输入时，禁止清除 Summa 的表达式，避免误删 AI 当前回合输入

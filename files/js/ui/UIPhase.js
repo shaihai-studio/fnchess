@@ -45,6 +45,8 @@ if (typeof UIController === 'undefined') {
 
 // handleConfirm
     UIController.prototype.handleConfirm = function() {
+        // 观战模式：只读，禁止提交
+        if (this._isSpectating) return;
         if (this.gameController?.gameMode === 'race' && this._raceCountdownActive) return;
         if (window.audioManager) window.audioManager.playClick();
         const phase = this.gameController.currentPhase;
@@ -165,6 +167,25 @@ if (typeof UIController === 'undefined') {
 // updatePhaseUI
     UIController.prototype.updatePhaseUI = function(phase) {
         const state = this.gameController.getGameState();
+        // 观战模式：只读展示，禁止一切操作控件
+        const spectating = !!this._isSpectating;
+        if (spectating) {
+            this.currentPlayerElement.textContent = this.getPlayerDisplayName(state.currentPlayer, true);
+            this.confirmBtn.disabled = true;
+            this.confirmBtn.textContent = '确认';
+            if (this.elementsContainer) {
+                this.elementsContainer.style.pointerEvents = 'none';
+                this.elementsContainer.style.opacity = '0.5';
+            }
+            // 棋盘范围更新仍需进行（历史函数重新采样）
+            const rangeChanged = this.gridSystem.updateRange(state.currentRound);
+            if (rangeChanged) {
+                this.refreshHistoryFunctionPoints();
+                this.gridSystem.draw();
+            }
+            this.phaseHintElement.textContent = `[观战·只读] ${this._phaseHintFor(state, phase)}`;
+            return;
+        }
         
         // 测试模式：简化UI显示
         if (state.isTestMode) {
@@ -247,6 +268,25 @@ if (typeof UIController === 'undefined') {
             this.refreshHistoryFunctionPoints();
             // 采样完成后立即重绘，确保历史图像在回合开始时就可见，而不是等待下一次点击
             this.gridSystem.draw();
+        }
+    }
+;
+
+// _phaseHintFor
+    // 观战模式下的阶段提示（不依赖本地可操作性，仅展示当前回合进行到哪一步）
+    UIController.prototype._phaseHintFor = function(state, phase) {
+        const n = state.roundState && state.roundState.targetCells ? state.roundState.targetCells.length : 0;
+        const forb = state.roundState && state.roundState.forbiddenCells ? state.roundState.forbiddenCells.length : 0;
+        const locks = state.roundState && state.roundState.lockedElements ? state.roundState.lockedElements.length : 0;
+        switch (phase) {
+            case 'select_target': return `选择目标格 (${n}/${state.targetCount})`;
+            case 'set_forbidden': return `设置禁止区 (${forb}/${state.maxForbidden})`;
+            case 'set_locks': return `锁定元素 (${locks}/${state.maxLocks})`;
+            case 'input_function': return state.roundState && state.roundState.functionExpression ? '已提交函数，等待结算…' : '构造方输入函数中…';
+            case 'evaluate': case 'init': return '正在评估…';
+            case 'switch_player': return '回合切换中…';
+            case 'end': return '对局结束';
+            default: return phase;
         }
     }
 ;
