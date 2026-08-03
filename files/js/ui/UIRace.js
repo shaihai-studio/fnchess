@@ -7,7 +7,8 @@ if (typeof UIController === 'undefined') {
 // _raceTotalLevels
     UIController.prototype._raceTotalLevels = function() {
         return (this.raceLevels && this.raceLevels.length) ? this.raceLevels.length : 30;
-    };
+    }
+;
 
 // openRaceUI
     UIController.prototype.openRaceUI = function() {
@@ -22,7 +23,8 @@ if (typeof UIController === 'undefined') {
         this.hideBattleUI();
         this.updateCampaignDrawDelayToggleVisibility();
         setTimeout(() => this.showRaceLevelList(), 0);
-    };
+    }
+;
 
 // startRaceLevel
     UIController.prototype.startRaceLevel = function(levelId) {
@@ -39,15 +41,29 @@ if (typeof UIController === 'undefined') {
             this.gridSystem.setRaceFixedRange(true);
         }
         if (this.gameController && typeof this.gameController.initRace === 'function') {
+            // 进入内置关卡前，先清除自定义关标记，避免污染内置 30 关进度
+            this.raceIsCustom = false;
+            if (this.gameController.raceState) {
+                this.gameController.raceState.isCustom = false;
+                this.gameController.raceState.customConfig = null;
+            }
             this.gameController.initRace(safeLevelId);
         }
         this.hideModal(this.raceModal);
         this.hideModal(this.startModal);
-    };
+    }
+;
 
 // closeRaceUI
     UIController.prototype.closeRaceUI = function() {
         this.raceCurrentLevelId = null;
+        this.raceIsCustom = false;
+        // 退出竞速对局立即取消所有锁定（不影响文本框输入）
+        this.clearAllLocks();
+        if (this.gameController && this.gameController.raceState) {
+            this.gameController.raceState.isCustom = false;
+            this.gameController.raceState.customConfig = null;
+        }
         this.clearRaceCountdown();
         if (this._raceElapsedTimer) {
             clearInterval(this._raceElapsedTimer);
@@ -63,23 +79,27 @@ if (typeof UIController === 'undefined') {
             this.gridSystem.setRaceFixedRange(false);
         }
         this.restoreBattleUI();
-    };
+    }
+;
 
 // showRaceUI
     UIController.prototype.showRaceUI = function() {
         this.openRaceUI();
-    };
+    }
+;
 
 // hideRaceUI
     UIController.prototype.hideRaceUI = function() {
         if (this.raceLivePanel) this.raceLivePanel.style.display = 'none';
         if (this.raceModal) this.hideModal(this.raceModal);
-    };
+    }
+;
 
 // getRaceLevels
     UIController.prototype.getRaceLevels = function() {
         return Array.from({ length: 30 }, (_, i) => ({ id: i + 1 }));
-    };
+    }
+;
 
 // updateRaceTimerStyle
     UIController.prototype.updateRaceTimerStyle = function(remainingTime) {
@@ -87,7 +107,8 @@ if (typeof UIController === 'undefined') {
         this.timerElement.classList.toggle('race-hyper', remainingTime > 20);
         this.timerElement.classList.toggle('race-critical', remainingTime <= 20 && remainingTime > 5);
         this.timerElement.classList.toggle('race-final', remainingTime <= 5);
-    };
+    }
+;
 
 // renderRaceLevelList
     UIController.prototype.renderRaceLevelList = function() {
@@ -126,7 +147,8 @@ if (typeof UIController === 'undefined') {
             };
             this.raceLevelGrid.appendChild(cell);
         });
-    };
+    }
+;
 
 // updateRaceTTSigmaDisplay
     UIController.prototype.updateRaceTTSigmaDisplay = function(sum = 0) {
@@ -140,7 +162,8 @@ if (typeof UIController === 'undefined') {
         }
         display.style.display = 'flex';
         display.innerHTML = `<span class="lrsigma-label">TTΣ =</span> <span class="lrsigma-int">${total.toFixed(2).split('.')[0]}</span><span class="lrsigma-dec">.${total.toFixed(2).split('.')[1]}</span>`;
-    };
+    }
+;
 
 // showRaceLevelList
     UIController.prototype.showRaceLevelList = function() {
@@ -149,7 +172,8 @@ if (typeof UIController === 'undefined') {
         if (this.raceModal) this.showModal(this.raceModal);
         this.hideBattleUI();
         this.updateRaceModalBackground();
-    };
+    }
+;
 
 // getRaceUnlockedLevels
     UIController.prototype.getRaceUnlockedLevels = function() {
@@ -163,7 +187,8 @@ if (typeof UIController === 'undefined') {
             }
         } catch {}
         return unlocked;
-    };
+    }
+;
 
 // saveRaceUnlockedLevels
     UIController.prototype.saveRaceUnlockedLevels = function(levels) {
@@ -171,7 +196,8 @@ if (typeof UIController === 'undefined') {
             const arr = Array.from(new Set([...(levels || [])])).filter(v => Number.isFinite(Number(v))).map(v => Math.max(1, Math.min(30, Number(v))));
             localStorage.setItem('function_chess_race_unlocked_levels', JSON.stringify(arr));
         } catch {}
-    };
+    }
+;
 
 // unlockNextRaceLevel
     UIController.prototype.unlockNextRaceLevel = function(levelId) {
@@ -179,7 +205,8 @@ if (typeof UIController === 'undefined') {
         const levels = this.getRaceUnlockedLevels();
         levels.add(next);
         this.saveRaceUnlockedLevels(levels);
-    };
+    }
+;
 
 // resetRaceProgress
     UIController.prototype.resetRaceProgress = async function() {
@@ -228,14 +255,16 @@ if (typeof UIController === 'undefined') {
         } catch (e) {
             this.showMessage('❌ 重置失败', 'error');
         }
-    };
+    }
+;
 
 // updateRaceModalBackground
     UIController.prototype.updateRaceModalBackground = function() {
         if (!this.raceModal) return;
         const content = this.raceModal.querySelector('.modal-content');
         if (content) content.classList.add('campaign-modal-content');
-    };
+    }
+;
 
 // showRaceBattleUI
     UIController.prototype.showRaceBattleUI = function(data) {
@@ -251,10 +280,23 @@ if (typeof UIController === 'undefined') {
         this.updateRaceBattleUI(data?.currentRound || this.raceCurrentLevelId || 1, 0);
         if (this._raceElapsedTimer) clearInterval(this._raceElapsedTimer);
         this._raceElapsedTimer = null;
-    };
+    }
+;
 
 // updateRaceBattleUI
     UIController.prototype.updateRaceBattleUI = function(levelId, elapsedSeconds = 0) {
+        if (this.raceIsCustom) {
+            // 自定义竞速：显示「自定义」徽标，不展示内置最佳成绩
+            if (this.roundElement) this.roundElement.textContent = '自定义';
+            const badge = document.getElementById('campaign-level-badge');
+            const value = document.getElementById('campaign-level-value');
+            if (badge && value) {
+                badge.style.display = 'inline-flex';
+                value.textContent = '自定义竞速';
+            }
+            if (this.raceLiveTimeValue) this.raceLiveTimeValue.textContent = `${Number(elapsedSeconds || 0).toFixed(2)}s / ${this.gameController?.raceState?.puzzlesPerLevel || 10}`;
+            return;
+        }
         this.roundElement.textContent = levelId;
         this.totalRoundsElement.textContent = this._raceTotalLevels();
         const badge = document.getElementById('campaign-level-badge');
@@ -266,7 +308,8 @@ if (typeof UIController === 'undefined') {
             value.textContent = Number.isFinite(displayBest) && displayBest > 0 ? `Lv. ${levelId}  best:${displayBest.toFixed(2)}s` : `Lv. ${levelId}`;
         }
         if (this.raceLiveTimeValue) this.raceLiveTimeValue.textContent = `${Number(elapsedSeconds || 0).toFixed(2)}s / ${this.gameController?.raceState?.puzzlesPerLevel || 10}`;
-    };
+    }
+;
 
 // updateRaceProgressUI
     UIController.prototype.updateRaceProgressUI = function(data) {
@@ -274,7 +317,8 @@ if (typeof UIController === 'undefined') {
         this.raceCurrentLevelId = data.levelId;
         if (this.raceLevelProgress) this.raceLevelProgress.textContent = `已通关 ${progress.cleared}/${this._raceTotalLevels()}，TT∑分：${progress.stars}`;
         this.renderRaceLevelList();
-    };
+    }
+;
 
 // updateRacePuzzleProgress
     UIController.prototype.updateRacePuzzleProgress = function(solved, total) {
@@ -285,7 +329,8 @@ if (typeof UIController === 'undefined') {
             const elapsed = this.gameController?.getRaceElapsedSeconds?.() || 0;
             this.raceLiveTimeValue.textContent = `${elapsed.toFixed(2)}s`;
         }
-    };
+    }
+;
 
 // showRaceVictory
     UIController.prototype.showRaceVictory = function(data) {
@@ -302,7 +347,7 @@ if (typeof UIController === 'undefined') {
         const diffEl = this.raceVictoryDiff;
         const bestEl = this.raceVictoryBest;
         const levelEl = this.raceVictoryLevel;
-        const levelText = `LEVEL ${String(levelId).padStart(2, '0')}`;
+        const levelText = this.raceIsCustom ? '自定义' : `LEVEL ${String(levelId).padStart(2, '0')}`;
 
         if (levelEl) levelEl.textContent = levelText;
         if (timeEl) timeEl.textContent = `${elapsed.toFixed(2)}s`;
@@ -322,9 +367,12 @@ if (typeof UIController === 'undefined') {
             bestEl.textContent = hasPreviousBest ? `当前最佳：${previousBestTime.toFixed(2)}s` : `首次通关！`;
         }
 
+        const nextBtn = document.getElementById('race-victory-next-btn');
+        if (nextBtn) nextBtn.textContent = this.raceIsCustom ? '返回选关' : '进入下一等级';
         this.renderRaceVictoryDetails(data, { levelId, elapsed, totalSolved, previousBestTime, hasPreviousBest, diff, isNewRecord });
         this.showModal(this.raceVictoryModal);
-    };
+    }
+;
 
 // startRaceElapsedTimer
     UIController.prototype.startRaceElapsedTimer = function() {
@@ -341,7 +389,8 @@ if (typeof UIController === 'undefined') {
             this.updateRaceBattleUI(this.raceCurrentLevelId || this.gameController?.currentRound || 1, elapsed);
             this.updateRaceCountdownElapsed(elapsed);
         }, 50);
-    };
+    }
+;
 
 // stopRaceElapsedTimer
     UIController.prototype.stopRaceElapsedTimer = function() {
@@ -350,7 +399,8 @@ if (typeof UIController === 'undefined') {
             this._raceElapsedTimer = null;
         }
         this._raceElapsedFrozen = true;
-    };
+    }
+;
 
 // playRaceNewRecordIntro
     UIController.prototype.playRaceNewRecordIntro = function(done) {
@@ -382,7 +432,8 @@ if (typeof UIController === 'undefined') {
         };
 
         window.setTimeout(finish, 1400);
-    };
+    }
+;
 
 // startRaceCountdown
     UIController.prototype.startRaceCountdown = function() {
@@ -462,7 +513,8 @@ if (typeof UIController === 'undefined') {
             this._raceCountdownTimer = window.setTimeout(step, 850);
         };
         step();
-    };
+    }
+;
 
 // clearRaceCountdown
     UIController.prototype.clearRaceCountdown = function() {
@@ -472,7 +524,8 @@ if (typeof UIController === 'undefined') {
             this._raceCountdownTimer = null;
         }
         this.hideRaceCountdownOverlay(false);
-    };
+    }
+;
 
 // startRaceElapsedTimer
     UIController.prototype.startRaceElapsedTimer = function() {
@@ -492,7 +545,8 @@ if (typeof UIController === 'undefined') {
             this.updateRaceBattleUI(levelId, elapsed);
             this.updateRaceCountdownElapsed(elapsed);
         }, 50);
-    };
+    }
+;
 
 // stopRaceElapsedTimer
     UIController.prototype.stopRaceElapsedTimer = function() {
@@ -500,7 +554,8 @@ if (typeof UIController === 'undefined') {
             clearInterval(this._raceElapsedTimer);
             this._raceElapsedTimer = null;
         }
-    };
+    }
+;
 
 // disableRaceInput
     UIController.prototype.disableRaceInput = function(disabled) {
@@ -512,7 +567,8 @@ if (typeof UIController === 'undefined') {
         });
         if (this.elementsContainer) this.elementsContainer.style.pointerEvents = disabled ? 'none' : '';
         if (this.expressionDisplay) this.expressionDisplay.style.pointerEvents = disabled ? 'none' : '';
-    };
+    }
+;
 
 // ensureRaceCountdownOverlay
     UIController.prototype.ensureRaceCountdownOverlay = function() {
@@ -531,7 +587,8 @@ if (typeof UIController === 'undefined') {
         document.body.appendChild(overlay);
         this._raceCountdownOverlay = overlay;
         return overlay;
-    };
+    }
+;
 
 // updateRaceCountdownOverlay
     UIController.prototype.updateRaceCountdownOverlay = function(value) {
@@ -548,7 +605,8 @@ if (typeof UIController === 'undefined') {
             else if (value === 2) window.audioManager.playRaceBeep?.();
             else if (value === 1) window.audioManager.playRaceAlert?.();
         }
-    };
+    }
+;
 
 // hideRaceCountdownOverlay
     UIController.prototype.hideRaceCountdownOverlay = function(fade = false) {
@@ -559,7 +617,8 @@ if (typeof UIController === 'undefined') {
             overlay.remove();
             if (this._raceCountdownOverlay === overlay) this._raceCountdownOverlay = null;
         }, fade ? 380 : 0);
-    };
+    }
+;
 
 // playRaceCountdownTick
     UIController.prototype.playRaceCountdownTick = function(num) {
@@ -568,7 +627,8 @@ if (typeof UIController === 'undefined') {
         else if (num === 2) window.audioManager.playRaceBeep?.();
         else if (num === 1) window.audioManager.playRaceAlert?.();
         else window.audioManager.playRaceLaunch?.();
-    };
+    }
+;
 
 // updateRaceCountdownElapsed
     UIController.prototype.updateRaceCountdownElapsed = function(elapsed) {
@@ -583,7 +643,8 @@ if (typeof UIController === 'undefined') {
                 this.showRaceThresholdReminder(threshold);
             }
         }
-    };
+    }
+;
 
 // showRaceThresholdReminder
     UIController.prototype.showRaceThresholdReminder = function(threshold) {
@@ -621,7 +682,8 @@ if (typeof UIController === 'undefined') {
             badge.style.transform = 'translate(-50%, -50%) scale(0.96)';
             window.setTimeout(() => badge.remove(), 420);
         }, 1000);
-    };
+    }
+;
 
 // renderRaceVictoryDetails
     UIController.prototype.renderRaceVictoryDetails = function(data, meta) {
@@ -633,28 +695,42 @@ if (typeof UIController === 'undefined') {
             <div class="race-victory-extra-line">${isNewRecord ? 'NEW BEST' : '稳定发挥'} · ${hasPreviousBest ? `PB ${previousBestTime.toFixed(2)}s` : 'PB 未记录'}</div>
             <div class="race-victory-extra-line">${diff === null ? '首通记录已建立' : (diff <= 0 ? '领先最佳成绩' : '仍可再快一点')}</div>
         `;
-    };
+    }
+;
 
 // backToRaceLevelListFromVictory
     UIController.prototype.backToRaceLevelListFromVictory = function() {
         this.hideRaceVictory();
         this.showRaceLevelList();
-    };
+    }
+;
 
 // hideRaceVictory
     UIController.prototype.hideRaceVictory = function() {
         if (this.raceVictoryModal) this.hideModal(this.raceVictoryModal);
-    };
+    }
+;
 
 // retryRaceLevel
     UIController.prototype.retryRaceLevel = function() {
+        this.hideRaceVictory();
+        if (this.raceIsCustom && this._lastRaceCustomConfig) {
+            this._replayCustomRace();
+            return;
+        }
         const levelId = this.raceCurrentLevelId || 1;
         this.hideRaceVictory();
         this.startRaceLevel(levelId);
-    };
+    }
+;
 
 // goToNextRaceLevel
     UIController.prototype.goToNextRaceLevel = function() {
+        if (this.raceIsCustom) {
+            // 自定义关无下一内置关：返回选关列表
+            this.backToRaceLevelListFromVictory();
+            return;
+        }
         const next = Math.min(30, (this.raceCurrentLevelId || 1) + 1);
         const unlocked = this.getRaceUnlockedLevels();
         if (!unlocked.has(next)) {
@@ -663,5 +739,222 @@ if (typeof UIController === 'undefined') {
         }
         this.hideRaceVictory();
         this.startRaceLevel(next);
-    };
+    }
+;
+
+// _replayCustomRace — 重玩上一次的自定义竞速配置
+    UIController.prototype._replayCustomRace = function() {
+        const config = this._lastRaceCustomConfig;
+        if (!config) { this.backToRaceLevelListFromVictory(); return; }
+        this.gameController.raceState.customConfig = config;
+        this.gameController.raceState.isCustom = true;
+        this.raceIsCustom = true;
+        this._markGameActive();
+        this.clearRaceCountdown();
+        if (this.gridSystem && typeof this.gridSystem.setRaceFixedRange === 'function') {
+            this.gridSystem.setRaceFixedRange(true);
+        }
+        this.gameController.initRace(1);
+        this.gameController.raceState.currentLevelId = 0;
+        this.gameController.currentRound = 0;
+        this.raceCurrentLevelId = 0;
+        this.hideModal(this.raceModal);
+        this.hideModal(this.startModal);
+        if (window.audioManager) window.audioManager.playClick();
+    }
+;
+
+// initRaceCustom — 绑定竞速自定义弹窗内的按钮与实时校验
+    UIController.prototype.initRaceCustom = function() {
+        this.raceIsCustom = false;
+        const startBtn = document.getElementById('race-custom-start');
+        const cancelBtn = document.getElementById('race-custom-cancel');
+        const allowedEl = document.getElementById('race-custom-allowed');
+        const forbiddenEl = document.getElementById('race-custom-forbidden');
+        const locksEl = document.getElementById('race-custom-locks');
+        if (!startBtn || !cancelBtn) return;
+
+        // 反三角函数是否启用：完全跟随主界面开关（不在自定义界面内选择）
+        const syncArcNote = () => {
+            const arcOn = this.getInverseTrigEnabled ? this.getInverseTrigEnabled() : false;
+            const maxLocks = arcOn ? 23 : 20;
+            if (locksEl) locksEl.max = String(maxLocks);
+            const renderLocks = this._raceStepperRenders && this._raceStepperRenders['race-custom-locks'];
+            if (renderLocks) renderLocks();
+            this._refreshRaceCustomHint();
+        };
+        [allowedEl, forbiddenEl, locksEl].forEach(el => {
+            if (el) el.addEventListener('input', () => this._refreshRaceCustomHint());
+        });
+        cancelBtn.addEventListener('click', () => this.closeRaceCustomModal());
+        startBtn.addEventListener('click', () => this.startCustomRace());
+        this._raceCustomSyncArcNote = syncArcNote;
+        this.initRaceCustomSteppers();
+        syncArcNote();
+    }
+;
+
+// initRaceCustomSteppers — 把数字输入做成与主界面回合数同款的左右箭头步进器（支持长按连续增减，且中间数字可直接键入）
+    UIController.prototype.initRaceCustomSteppers = function() {
+        this._raceStepperRenders = {};
+        const defs = [
+            { id: 'race-custom-allowed', min: 1 },
+            { id: 'race-custom-forbidden', min: 0 },
+            { id: 'race-custom-locks', min: 0 },
+        ];
+        const self = this;
+        defs.forEach(def => {
+            const input = document.getElementById(def.id);
+            const prev = document.getElementById(def.id + '-prev');
+            const next = document.getElementById(def.id + '-next');
+            if (!input || !prev || !next) return;
+            const maxOf = () => Number(input.max) || 9999;
+            const clamp = v => Math.max(def.min, Math.min(maxOf(), v));
+            // 仅更新左右箭头可用状态（不覆盖输入框内容，避免干扰直接键入）
+            const updateArrows = () => {
+                const raw = Number(input.value);
+                const cur = isNaN(raw) ? def.min : raw;
+                prev.disabled = cur <= def.min;
+                next.disabled = cur >= maxOf();
+            };
+            // 步进 / 失焦归一化：钳制到 [min, max] 并写回输入框
+            const commit = (delta) => {
+                let v = Number(input.value);
+                if (isNaN(v)) v = def.min;
+                if (typeof delta === 'number') v = clamp(v + delta);
+                else v = clamp(v);
+                input.value = String(v);
+                updateArrows();
+                self._refreshRaceCustomHint();
+            };
+            const step = delta => commit(delta);
+            const attach = (btn, delta) => {
+                let timer = null, interval = null;
+                const start = () => {
+                    step(delta);
+                    timer = setTimeout(() => { interval = setInterval(() => step(delta), 70); }, 300);
+                };
+                const stop = () => {
+                    if (timer) { clearTimeout(timer); timer = null; }
+                    if (interval) { clearInterval(interval); interval = null; }
+                };
+                btn.addEventListener('mousedown', e => { e.preventDefault(); start(); });
+                btn.addEventListener('touchstart', e => { e.preventDefault(); start(); }, { passive: false });
+                ['mouseup', 'mouseleave', 'touchend', 'touchcancel', 'blur'].forEach(ev => btn.addEventListener(ev, stop));
+                btn.addEventListener('click', e => e.preventDefault());
+            };
+            attach(prev, -1);
+            attach(next, 1);
+            // 直接键入：实时更新箭头与提示，但不在输入过程中覆盖内容；失焦时归一化
+            input.addEventListener('input', () => { updateArrows(); self._refreshRaceCustomHint(); });
+            input.addEventListener('blur', () => commit());
+            input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); self.startCustomRace(); } });
+            self._raceStepperRenders[def.id] = commit;
+            commit();
+        });
+    }
+;
+
+// openRaceCustomModal — 打开竞速自定义弹窗
+    UIController.prototype.openRaceCustomModal = function() {
+        const modal = document.getElementById('race-custom-modal');
+        if (!modal) return;
+        if (this._raceCustomSyncArcNote) this._raceCustomSyncArcNote();
+        if (this._raceStepperRenders) { for (const k in this._raceStepperRenders) this._raceStepperRenders[k](); }
+        this.showModal(modal);
+    }
+;
+
+// closeRaceCustomModal
+    UIController.prototype.closeRaceCustomModal = function() {
+        const modal = document.getElementById('race-custom-modal');
+        if (modal) this.hideModal(modal);
+    }
+;
+
+// _getRaceCustomArcEnabled — 反三角函数是否启用：跟随主界面开关，不在弹窗内选择
+    UIController.prototype._getRaceCustomArcEnabled = function() {
+        return !!(this.getInverseTrigEnabled && this.getInverseTrigEnabled());
+    }
+;
+
+// _refreshRaceCustomHint — 实时校验并给出提示
+    UIController.prototype._refreshRaceCustomHint = function() {
+        const allowedEl = document.getElementById('race-custom-allowed');
+        const forbiddenEl = document.getElementById('race-custom-forbidden');
+        const locksEl = document.getElementById('race-custom-locks');
+        const hintEl = document.getElementById('race-custom-hint');
+        if (!hintEl) return;
+        const arcEnabled = this._getRaceCustomArcEnabled();
+        const maxLocks = arcEnabled ? 23 : 20;
+        const allowed = Number(allowedEl && allowedEl.value);
+        const forbidden = Number(forbiddenEl && forbiddenEl.value);
+        const locks = Number(locksEl && locksEl.value);
+        const msgs = [];
+        if (!Number.isInteger(allowed) || allowed < 1) msgs.push('允许区数量需为 ≥1 的整数');
+        if (!Number.isInteger(forbidden) || forbidden < 0) msgs.push('禁止区数量需为 ≥0 的整数');
+        if (allowed + forbidden >= 400) msgs.push('允许区 + 禁止区 数量之和须 < 400');
+        if (!Number.isInteger(locks) || locks < 0) msgs.push('锁定元素数量需为 ≥0 的整数');
+        if (locks > maxLocks) msgs.push(`锁定元素数量上限为 ${maxLocks}（${arcEnabled ? '已启用 arc' : '未启用 arc'}）`);
+        const ok = msgs.length === 0;
+        hintEl.textContent = ok
+            ? `配置有效：允许 ${allowed} + 禁止 ${forbidden} = ${allowed + forbidden}，锁定 ${locks}${arcEnabled ? '（含 arc）' : ''}`
+            : msgs.join('；');
+        hintEl.style.color = ok ? '#22c55e' : '#f87171';
+        const startBtn = document.getElementById('race-custom-start');
+        if (startBtn) startBtn.disabled = !ok;
+    }
+;
+
+// startCustomRace — 读取校验并生成自定义竞速关卡
+    UIController.prototype.startCustomRace = function() {
+        const allowedEl = document.getElementById('race-custom-allowed');
+        const forbiddenEl = document.getElementById('race-custom-forbidden');
+        const locksEl = document.getElementById('race-custom-locks');
+        if (!allowedEl || !forbiddenEl || !locksEl) return;
+        const arcEnabled = this._getRaceCustomArcEnabled();
+        const maxLocks = arcEnabled ? 23 : 20;
+        const allowed = Number(allowedEl.value);
+        const forbidden = Number(forbiddenEl.value);
+        const locks = Number(locksEl.value);
+        if (!Number.isInteger(allowed) || allowed < 1
+            || !Number.isInteger(forbidden) || forbidden < 0
+            || allowed + forbidden >= 400
+            || !Number.isInteger(locks) || locks < 0 || locks > maxLocks) {
+            this._refreshRaceCustomHint();
+            this.showMessage('配置无效，请检查输入', 'warning');
+            return;
+        }
+        const config = {
+            allowed,
+            forbidden,
+            fixedLocks: locks,
+            randomLocks: 0,
+            mustLock: [],
+            arcEnabled
+        };
+        this._lastRaceCustomConfig = config;
+        // 先写入自定义配置（buildRaceLevel 在 initRace 内读取），并标记自定义关
+        this.gameController.raceState.customConfig = config;
+        this.gameController.raceState.isCustom = true;
+        this.raceIsCustom = true;
+
+        this._markGameActive();
+        this.clearRaceCountdown();
+        if (this.gridSystem && typeof this.gridSystem.setRaceFixedRange === 'function') {
+            this.gridSystem.setRaceFixedRange(true);
+        }
+        // 自定义关使用 customConfig 生成，levelId 仅作占位（1~30 之外）
+        this.gameController.initRace(1);
+        this.gameController.raceState.currentLevelId = 0;
+        this.gameController.currentRound = 0;
+        this.raceCurrentLevelId = 0;
+
+        this.closeRaceCustomModal();
+        this.hideModal(this.raceModal);
+        this.hideModal(this.startModal);
+        if (window.audioManager) window.audioManager.playClick();
+    }
+;
+
 

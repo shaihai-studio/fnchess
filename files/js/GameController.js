@@ -255,6 +255,8 @@ class GameController {
 
         // 闯关难度由关卡本身标记决定；旧数字关卡沿用原区间映射
         if (level.difficulty === 'fraction') this.difficulty = 'fraction';
+        else if (level.difficulty && level.difficulty !== 'fraction') this.difficulty = level.difficulty;
+        else if (!Number.isFinite(Number(id))) this.difficulty = 'normal';
         else if (Number(id) >= 1 && Number(id) <= 29) this.difficulty = 'easy';
         else if (Number(id) >= 30 && Number(id) <= 53) this.difficulty = 'normal';
         else if (Number(id) >= 54 && Number(id) <= 69) this.difficulty = 'hard';
@@ -490,7 +492,20 @@ class GameController {
             { allowed: 6, forbidden: 6, fixedLocks: 6, randomLocks: 0, mustLock: [] }
         ];
 
-        const config = levelConfigs[levelId - 1];
+        let config;
+        if (this.raceState && this.raceState.customConfig) {
+            // 自定义竞速关卡：直接使用用户传入的配置（不读取内置 30 关 levelConfigs）
+            const cc = this.raceState.customConfig;
+            config = {
+                allowed: Math.max(0, Number(cc.allowed) || 0),
+                forbidden: Math.max(0, Number(cc.forbidden) || 0),
+                fixedLocks: Math.max(0, Number(cc.fixedLocks) || 0),
+                randomLocks: Math.max(0, Number(cc.randomLocks) || 0),
+                mustLock: Array.isArray(cc.mustLock) ? cc.mustLock : []
+            };
+        } else {
+            config = levelConfigs[levelId - 1];
+        }
         if (!config) {
             return { targetCells: [pickCell(), pickCell()], forbiddenCells: [pickCell(), pickCell()], lockedElements: [] };
         }
@@ -559,7 +574,10 @@ class GameController {
         }
 
         // 如果固定锁定数量不足，从剩余元素中补充（不与已有元素冲突）
-        const allElements = ['+','-','*','/','^','!','sin','cos','tan','arcsin','arccos','arctan','abs','sqrt','ln','log','exp','factorial','0','1','2','3','4','5','6','7','8','9','π','e','i'];
+        // 自定义关卡：未启用反三角函数时，从锁定候选池中剔除 arcsin/arccos/arctan（锁定上限随之收紧）
+        const arcAvailable = !!(this.raceState && this.raceState.customConfig && this.raceState.customConfig.arcEnabled);
+        const _arcSet = new Set(['arcsin', 'arccos', 'arctan']);
+        const allElements = ['+','-','*','/','^','!','sin','cos','tan','arcsin','arccos','arctan','abs','sqrt','ln','log','exp','factorial','0','1','2','3','4','5','6','7','8','9','π','e','i'].filter(e => arcAvailable || !_arcSet.has(e));
         const banned = new Set(['x', '(', ')']);
         let pool = allElements.filter(el => !banned.has(el) && !lockedElements.includes(el));
 
@@ -1357,7 +1375,7 @@ class GameController {
         if (this.campaignState && this.campaignState.active) {
             const pass = !!this.roundState.hitTarget && !hitForbidden;
             const clearedMax = this.getCampaignProgress();
-            if (pass && this.currentRound > clearedMax) {
+            if (pass && this.currentRound > clearedMax && !this.campaignState.customPack) {
                 this.setCampaignProgress(this.currentRound);
             }
             this.emit('campaignLevelResult', {
@@ -1383,7 +1401,7 @@ class GameController {
                 if (completed >= total) {
                     const best = this.getRaceBestTime(this.currentRound);
                     const isNewBest = !Number.isFinite(best) || elapsed < best;
-                    if (isNewBest) this.setRaceBestTime(this.currentRound, elapsed);
+                    if (isNewBest && !(this.raceState && this.raceState.isCustom)) this.setRaceBestTime(this.currentRound, elapsed);
                     const stars = this.getRaceStarsByElapsed(elapsed);
                     this.pauseTimer();
                     this.emit('raceLevelResult', {

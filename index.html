@@ -6,6 +6,7 @@
     <title>函数棋 - Function Chess</title>
     <link rel="stylesheet" href="files/css/style.css">
     <link rel="stylesheet" href="files/css/shaihai-theme.css">
+    <link rel="stylesheet" href="files/css/editor.css">
     <link rel="stylesheet" href="files/vendor/katex/katex.min.css">
 </head>
 <body>
@@ -232,7 +233,7 @@
                             <button class="mode-btn" id="mode-race" data-mode="race">竞速模式</button>
                             <div class="mode-toggle-row">
                                 <button class="mode-btn" id="mode-test" data-mode="test">测试模式</button>
-                                <a class="mode-btn" id="mode-editor" href="level-editor.html" target="_blank" style="text-decoration:none;">关卡编辑器</a>
+                                <button class="mode-btn" id="mode-editor" type="button">关卡编辑器</button>
                             </div>
                         </div>
                         <small id="mode-hint" style="display: block; margin-top: 5px; opacity: 0.7;">选择对战模式</small>
@@ -266,14 +267,19 @@
         <div class="modal-content campaign-modal-content" style="max-width: 900px;">
             <h2>竞速模式</h2>
             <div id="race-step-levels">
+                <!-- 左上角圆形返回箭头 -->
+                <button class="race-back-circle" id="race-close-btn" title="返回" aria-label="返回">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+                </button>
+                <!-- 右上角圆形重置按钮 -->
+                <button class="race-reset-circle" id="race-reset-btn" title="重置竞速进度" aria-label="重置进度">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+                </button>
                 <div style="display:flex; justify-content: space-between; align-items:center; margin-bottom: 10px;">
                     <div>
                         <div id="race-level-title" style="font-weight:bold; margin-bottom: 2px;">选择等级</div>
                     </div>
-                    <div style="display:flex; gap:8px;">
-                        <button class="btn btn-secondary" id="race-reset-btn">重置进度</button>
-                        <button class="btn btn-exit" id="race-close-btn">关闭</button>
-                    </div>
+                    <div></div>
                 </div>
                 <div id="race-level-grid" class="campaign-level-grid"></div>
                 <div style="display:flex; align-items:center; gap:10px; flex:1; min-width: 260px; margin-top: 10px;">
@@ -281,6 +287,9 @@
                 </div>
                 <small id="race-level-progress" style="display:block; text-align:left; margin-top:4px; opacity:0.75;"></small>
                 <div id="race-ttsigma-display" class="campaign-lrsigma-display" style="margin-top:4px;"></div>
+                <div style="display:flex; justify-content:flex-end; margin-top:10px;">
+                    <button class="btn race-custom-btn" id="race-custom-btn">自定义</button>
+                </div>
             </div>
         </div>
     </div>
@@ -310,12 +319,57 @@
         </div>
     </div>
 
+    <!-- 竞速自定义关卡弹窗 -->
+    <div class="modal" id="race-custom-modal" style="display:none;">
+        <div class="modal-content race-custom-content">
+            <h2>自定义竞速关卡</h2>
+            <div class="race-custom-field">
+                <label for="race-custom-allowed">允许区数量</label>
+                <div class="stepper-selector race-custom-stepper" id="race-custom-allowed-stepper">
+                    <button type="button" class="stepper-arrow" id="race-custom-allowed-prev" aria-label="减少">←</button>
+                    <input type="number" class="stepper-value-input" id="race-custom-allowed" min="1" max="398" step="1" value="3">
+                    <button type="button" class="stepper-arrow" id="race-custom-allowed-next" aria-label="增加">→</button>
+                </div>
+            </div>
+            <div class="race-custom-field">
+                <label for="race-custom-forbidden">禁止区数量</label>
+                <div class="stepper-selector race-custom-stepper" id="race-custom-forbidden-stepper">
+                    <button type="button" class="stepper-arrow" id="race-custom-forbidden-prev" aria-label="减少">←</button>
+                    <input type="number" class="stepper-value-input" id="race-custom-forbidden" min="0" max="398" step="1" value="5">
+                    <button type="button" class="stepper-arrow" id="race-custom-forbidden-next" aria-label="增加">→</button>
+                </div>
+            </div>
+            <div class="race-custom-field">
+                <label for="race-custom-locks">锁定元素数量</label>
+                <div class="stepper-selector race-custom-stepper" id="race-custom-locks-stepper">
+                    <button type="button" class="stepper-arrow" id="race-custom-locks-prev" aria-label="减少">←</button>
+                    <input type="number" class="stepper-value-input" id="race-custom-locks" min="0" max="20" step="1" value="6">
+                    <button type="button" class="stepper-arrow" id="race-custom-locks-next" aria-label="增加">→</button>
+                </div>
+            </div>
+            <div class="race-custom-hint" id="race-custom-hint"></div>
+            <div class="race-custom-actions">
+                <button class="btn btn-secondary" id="race-custom-cancel">取消</button>
+                <button class="btn btn-primary" id="race-custom-start">开始</button>
+            </div>
+        </div>
+    </div>
+
     <!-- 闯关模式模态框 -->
     <div class="modal" id="campaign-modal" style="display:none;">
         <div class="modal-content" style="max-width: 900px;">
             <h2>闯关模式</h2>
             
             <div id="campaign-step-difficulty">
+                <!-- 右上角圆形重置 -->
+                <button class="campaign-reset-circle" id="campaign-reset-btn" title="重置闯关进度" aria-label="重置进度">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+                </button>
+                <!-- 左上角返回箭头 -->
+                <button class="campaign-back-circle" id="campaign-close-btn" title="返回" aria-label="返回">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+                </button>
+
                 <div class="campaign-difficulty-grid" id="campaign-difficulty-grid" style="margin-bottom: 10px;">
                     <button class="btn" id="campaign-diff-fraction" style="display:none;">分数（1/2-1/20）</button>
                     <button class="btn" id="campaign-diff-easy">简单（1-29）</button>
@@ -324,31 +378,31 @@
                     <button class="btn" id="campaign-diff-expert">专家（70-81）</button>
                     <button class="btn" id="campaign-diff-unsolvable" style="display:none;">无解（82-90）</button>
                 </div>
-                <div style="display:flex; gap:10px; justify-content: space-between; align-items:center; flex-wrap: wrap;">
+
+                <!-- 进度行 -->
+                <div style="display:flex; gap:10px; align-items:center; flex-wrap: wrap; margin-top: 6px;">
                     <div style="display:flex; align-items:center; gap:10px; flex:1; min-width: 260px;">
                         <div id="campaign-star-progress" class="campaign-star-progress"></div>
                         <small id="campaign-global-progress" style="opacity:0.75;"></small>
                     </div>
-                    <div id="campaign-lrsigma-container" style="width: 100%; text-align: center; margin-top: 4px;">
+                </div>
+
+                <!-- 底部行：LR∑（左）+ 导入按钮（右） -->
+                <div style="display:flex; gap:10px; justify-content: space-between; align-items:center; flex-wrap: wrap; margin-top: 8px;">
+                    <div id="campaign-lrsigma-container" style="text-align: left;">
                         <small id="campaign-lrsigma-display" style="color: #a78bfa; font-weight: 500;"></small>
                     </div>
-                    <div style="display:flex; gap:8px;">
-                        <button class="btn btn-secondary" id="campaign-reset-btn">重置进度</button>
-                        <button class="btn btn-exit" id="campaign-close-btn">返回</button>
-                    </div>
+                    <div id="campaign-import-slot"></div>
                 </div>
             </div>
 
             <div id="campaign-step-levels" style="display:none;">
-                <div style="display:flex; justify-content: space-between; align-items:center; margin-bottom: 10px;">
-                    <div>
-                        <div id="campaign-level-title" style="font-weight:bold;"></div>
-                        <small id="campaign-level-progress" style="opacity:0.75;"></small>
-                    </div>
-                    <div style="display:flex; gap:8px;">
-                        <button class="btn btn-secondary" id="campaign-back-btn">返回难度</button>
-                        <button class="btn btn-exit" id="campaign-close-btn2">关闭</button>
-                    </div>
+                <button class="campaign-back-circle" id="campaign-back-btn" title="返回难度" aria-label="返回难度">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+                </button>
+                <div class="campaign-levels-head">
+                    <div id="campaign-level-title" style="font-weight:bold;"></div>
+                    <small id="campaign-level-progress" style="opacity:0.75;"></small>
                 </div>
                 <div id="campaign-level-grid" class="campaign-level-grid"></div>
             </div>
@@ -582,6 +636,124 @@
 
     <!-- 加载 JavaScript 模块 -->
     <!-- KaTeX 数学排版引擎（本地 vendor，离线可用） -->
+    <!-- 关卡编辑器（已收编进主程序，作为 #editor-view 就地显示，不再独立页面） -->
+    <div id="editor-view" style="display:none;">
+      <header>
+        <div>
+          <h1>函数棋关卡编辑器</h1>
+          <div class="subtitle">关卡编辑器：创造属于你自己的关卡</div>
+        </div>
+        <div class="btnrow">
+          <button class="ghost" id="btnBack">← 返回主界面</button>
+          <button class="ghost" id="btnCopyOne">复制当前关卡文本</button>
+        </div>
+      </header>
+
+      <div class="wrap">
+        <div class="left card">
+          <button class="panel-close" id="btnCloseLeft" title="隐藏左栏">×</button>
+          <div class="section">
+            <label>关卡 ID</label>
+            <input id="id" value="1/2" />
+            <div class="row" style="margin-top:8px;">
+              <div>
+                <label>难度</label>
+                <input id="difficulty" value="fraction" />
+              </div>
+              <div>
+                <label>nextId</label>
+                <input id="nextId" value="1/3" />
+              </div>
+            </div>
+          </div>
+          <div class="section">
+            <label>targetCells（每行一个，支持小数）</label>
+            <textarea id="targetCells" rows="4" wrap="soft"></textarea>
+            <div class="tiny">格式示例：<code>{"x": -0.5, "y": 0}</code></div>
+          </div>
+          <div class="section">
+            <label>forbiddenCells（每行一个，支持小数）</label>
+            <textarea id="forbiddenCells" rows="4" wrap="soft"></textarea>
+          </div>
+          <div class="section">
+            <label>lockedElements（每行一个）</label>
+            <textarea id="lockedElements" rows="4" wrap="soft"></textarea>
+          </div>
+          <div class="section">
+            <label>关卡列表</label>
+            <div class="list" id="levelList"></div>
+            <div class="toolbar">
+              <button class="primary" id="btnAdd">新增空关卡</button>
+              <button class="danger" id="btnDelete">删除当前关卡</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="center card">
+          <div class="canvas-wrap">
+            <div class="legend">
+              <span class="chip"><span class="dot target"></span>目标格 targetCells</span>
+              <span class="chip"><span class="dot forbid"></span>禁止格 forbiddenCells</span>
+              <span class="chip"><span class="dot lock"></span>锁定元素 lockedElements</span>
+            </div>
+            <div class="canvas-frame">
+              <canvas id="gridCanvas"></canvas>
+              <button class="toggle mode-toggle" id="btnSwapMouse" type="button" title="切换左右键放置类型">左键:目标 右键:禁止</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="right card">
+          <button class="panel-close" id="btnCloseRight" title="隐藏右栏">×</button>
+          <div class="section tools-section">
+            <label>选项</label>
+            <div class="row">
+              <div>
+                <label>点击精度</label>
+                <select id="precisionSelect">
+                  <option value="2">1/2</option>
+                  <option value="3">1/3</option>
+                  <option value="4" selected>1/4</option>
+                  <option value="5">1/5</option>
+                  <option value="6">1/6</option>
+                  <option value="8">1/8</option>
+                  <option value="10">1/10</option>
+                </select>
+              </div>
+              <div>
+                <label>点击基准</label>
+                <select id="anchorModeSelect">
+                  <option value="corner" selected>左下角</option>
+                  <option value="center">中心</option>
+                </select>
+              </div>
+            </div>
+            <div class="btnrow">
+              <button class="toggle" id="btnBoxSelect" type="button">框选</button>
+              <button class="toggle" id="btnPathPaint" type="button">路径涂满</button>
+            </div>
+            <div class="help" style="margin-top:8px;">左键目标 / 右键禁止（网格右上角按钮可互换）；长按拖动可框选或路径涂满。支持 Ctrl+Z 撤回。</div>
+          </div>
+          <div class="section export-section stretch">
+            <label>导出内容</label>
+            <textarea id="exportBox" class="export-box" wrap="soft" placeholder="点击「复制导出文本」生成"></textarea>
+            <div style="display:flex; gap:6px; align-items:center; margin: 6px 0;">
+              <label style="flex:0 0 auto; margin:0;">下载文件名</label>
+              <input id="fileNameInput" value="campaignLevels.fragment.js" style="flex:1;" />
+            </div>
+            <div class="toolbar">
+              <button class="primary" id="btnCopyExport">复制导出文本</button>
+              <button class="ghost" id="btnDownload">下载 .js 片段</button>
+              <div class="status" id="status"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <button class="panel-open panel-open-left" id="btnShowLeft" title="显示左栏"></button>
+      <button class="panel-open panel-open-right" id="btnShowRight" title="显示右栏"></button>
+    </div>
+
     <script src="files/vendor/katex/katex.min.js"></script>
     <!-- 响应式布局管理器（优先加载） -->
     <script src="files/js/ResponsiveLayout.js"></script>
@@ -656,11 +828,13 @@
     <script src="files/js/ui/UICanvas.js"></script>
     <script src="files/js/ui/UIPhase.js"></script>
     <script src="files/js/ui/UICampaign.js"></script>
+    <script src="files/js/ui/UICampaignImport.js"></script>
     <script src="files/js/ui/UIRace.js"></script>
     <script src="files/js/ui/UIP2P.js"></script>
     <script src="files/js/ui/UILobby.js"></script>
     <script src="files/js/ui/UISpectator.js"></script>
 <script src="files/js/ui/UICore.js"></script>
+<script src="files/js/ui/UIEditor.js"></script>
     <script src="files/js/SummaTrainer.js"></script>
     
     <script>

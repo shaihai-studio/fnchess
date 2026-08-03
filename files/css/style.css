@@ -4435,3 +4435,238 @@ body.device-mobile {
     margin-bottom: 22px;
     text-align: left;
 }
+
+/* 闯关自定义难度入口：黑色背景 + 白字 + 白色边框 */
+#campaign-diff-custom {
+    background: #000 !important;
+    color: #fff !important;
+    border: 1px solid #fff !important;
+}
+#campaign-diff-custom:hover {
+    background: #1c1c1c !important;
+    border-color: #fff !important;
+}
+
+/* 闯关难度选择界面：右上角圆形重置按钮（圆圈内箭头） */
+#campaign-reset-btn.campaign-reset-circle {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(15, 23, 42, 0.75);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    color: #fff;
+    cursor: pointer;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    transition: background .2s, border-color .2s, transform .2s;
+    z-index: 5;
+}
+#campaign-reset-btn.campaign-reset-circle:hover {
+    background: rgba(239, 68, 68, 0.28);
+    border-color: rgba(239, 68, 68, 0.65);
+    transform: rotate(-30deg);
+}
+#campaign-reset-btn.campaign-reset-circle svg { display: block; }
+
+/* 闯关模式：左上角圆形返回按钮（圆圈内向左箭头，难度界面与选关界面共用） */
+.campaign-back-circle {
+    position: absolute;
+    top: 14px;
+    left: 14px;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(15, 23, 42, 0.75);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    color: #fff;
+    cursor: pointer;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    transition: background .2s, border-color .2s, transform .2s;
+    z-index: 5;
+}
+.campaign-back-circle:hover {
+    background: rgba(255, 255, 255, 0.18);
+    border-color: rgba(255, 255, 255, 0.6);
+    transform: rotate(30deg);
+}
+.campaign-back-circle svg { display: block; }
+
+/* 竞速模式「选择等级」界面：圆形按钮（与闯关模式一致的排版） */
+#race-reset-btn.race-reset-circle {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(15, 23, 42, 0.75);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    color: #fff;
+    cursor: pointer;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    transition: background .2s, border-color .2s, transform .2s;
+    z-index: 5;
+}
+#race-reset-btn.race-reset-circle:hover {
+    background: rgba(239, 68, 68, 0.28);
+    border-color: rgba(239, 68, 68, 0.65);
+    transform: rotate(-30deg);
+}
+#race-reset-btn.race-reset-circle svg { display: block; }
+
+/* 竞速模式「选择等级」界面：左上角圆形返回按钮（向左箭头） */
+#race-close-btn.race-back-circle {
+    position: absolute;
+    top: 14px;
+    left: 14px;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(15, 23, 42, 0.75);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    color: #fff;
+    cursor: pointer;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    transition: background .2s, border-color .2s, transform .2s;
+    z-index: 5;
+}
+#race-close-btn.race-back-circle:hover {
+    background: rgba(255, 255, 255, 0.18);
+    border-color: rgba(255, 255, 255, 0.6);
+    transform: rotate(30deg);
+}
+#race-close-btn.race-back-circle svg { display: block; }
+
+/* 闯关难度选择界面：右下角「导入 .js 关卡」与「粘贴文本」按钮文字改为白色 */
+#campaign-import-slot .btn,
+#campaign-import-row .btn {
+    color: #fff !important;
+}
+
+/* 竞速自定义关卡弹窗 */
+.race-custom-btn {
+    background: rgba(255,255,255,.1);
+    color: #fff !important;
+    min-width: 120px;
+}
+.race-custom-content {
+    max-width: 460px;
+}
+.race-custom-field {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 10px 0;
+}
+.race-custom-field label {
+    color: #e5e7eb;
+    font-size: 14px;
+    white-space: nowrap;
+}
+.race-custom-field input[type="number"] {
+    width: 140px;
+    padding: 8px 10px;
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,.18);
+    background: rgba(255,255,255,.06);
+    color: #f8fafc;
+    font-size: 14px;
+    text-align: right;
+}
+.race-custom-field input[type="number"]:focus {
+    outline: none;
+    border-color: #22c55e;
+    box-shadow: 0 0 0 2px rgba(34,197,94,.25);
+}
+.race-custom-arc {
+    margin: 12px 0 4px;
+}
+.race-custom-arc label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #e5e7eb;
+    font-size: 13px;
+    cursor: pointer;
+}
+.race-custom-arc input {
+    width: 16px;
+    height: 16px;
+    accent-color: #22c55e;
+}
+.race-custom-arc input:disabled {
+    opacity: .4;
+    cursor: not-allowed;
+}
+.race-custom-hint {
+    min-height: 20px;
+    margin-top: 8px;
+    font-size: 13px;
+    line-height: 1.4;
+}
+.race-custom-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 14px;
+}
+.race-custom-actions .btn:disabled {
+    opacity: .5;
+    cursor: not-allowed;
+}
+
+/* 自定义竞速：数字输入改为与主界面回合数同款的左右箭头步进器（中间数字可直接键入） */
+.race-custom-field .stepper-selector { flex: 1; margin: 0; }
+.race-custom-field .stepper-arrow { flex: 0 0 auto; }
+.race-custom-field .stepper-selector .stepper-value-input {
+    flex: 1;
+    width: auto;
+    min-height: 46px;
+    margin: 0;
+    padding: 10px 14px;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    background: rgba(2, 6, 23, 0.8);
+    color: #b0bdd0;
+    font-size: 15px;
+    font-weight: 600;
+    text-align: center;
+    -moz-appearance: textfield;
+}
+.race-custom-field .stepper-selector .stepper-value-input::-webkit-outer-spin-button,
+.race-custom-field .stepper-selector .stepper-value-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+.race-custom-field .stepper-selector .stepper-value-input:focus {
+    outline: none;
+    border-color: #22c55e;
+    box-shadow: 0 0 0 2px rgba(34, 197, 94, .25);
+    color: #e2e8f0;
+}
+
+/* 闯关选关界面头部（返回难度圆形箭头已绝对定位在左上角） */
+.campaign-levels-head { margin-bottom: 10px; text-align: left; padding-left: 4px; }
