@@ -604,30 +604,21 @@ if (typeof UIController === 'undefined') {
 
 // _cleanupP2P
     UIController.prototype._cleanupP2P = function() {
-        // 对局进行中 + 主动退出（点退出/解散/返回主菜单）→ 先弹二次确认
-        // - 房主（Host）→"解散房间"（本局作废、不扣 ELO）
-        // - 访客（Guest）→"退出对局"（判负、扣 ELO）
-        // 确认后才真正执行；取消则中止退出。非对局中（等待/已结算）直接清理，无需确认。
-        if (this.isP2PMode && this._p2pMatchStarted && !this._p2pEloSettled && !this._p2pRoomDissolved
-            && !this._p2pExitConfirmed && !this._p2pExitingAfterConfirm) {
-            this._p2pExitConfirmed = true; // 本次退出尝试已弹过确认，防止递归重入
-            this._showP2PExitConfirm();
-            return; // 等待确认，不继续清理
-        }
-        this._p2pExitConfirmed = false;
-        this._p2pExitingAfterConfirm = false;
-
-        // 排行榜：确认退出后的主动退出结算
-        // - 房主（Host）退出：解散房间、不扣 ELO；对战方/观众会收到"房主已解散该房间"
-        // - 访客（Guest）退出：判负并扣 ELO
+        // 对局进行中 + 主动退出（点退出/解散/返回主菜单）→ 立即结算并弹 disconnect-modal
+        // - 房主（Host）退出：通知对手解散（不扣 ELO），弹"房主已解散该房间"
+        // - 访客（Guest）退出：判负扣 ELO，弹"你已中途退出判负"
+        // 让用户先看完 disconnect-modal 上的"返回主菜单"按钮再回主菜单，
+        // 避免被 handleExit 后续的 showModal(startModal) 覆盖。
         if (this.isP2PMode && this._p2pMatchStarted && !this._p2pEloSettled && !this._p2pRoomDissolved) {
             const p2p = this.p2pController;
             if (p2p && p2p.isHost) {
                 if (this._lobby) this._lobby.notifyRoomDissolve();
                 this._p2pRoomDissolved = true; // 本局作废，不再结算
+                this._showP2PDisconnectModal('dissolved');
             } else {
                 this._reportP2PForfeit(true);
             }
+            this._p2pShowDisconnectReturnToMenu = true; // 告知 handleExit 跳过弹主菜单
         }
         // 清理断线重连等待/提示弹窗与定时器
         this._hideP2PReconnectWait();
@@ -689,86 +680,15 @@ if (typeof UIController === 'undefined') {
 // _bindP2PDisconnectButtons
     UIController.prototype._bindP2PDisconnectButtons = function() {
         const menu = document.getElementById('p2p-disc-menu-btn');
-        if (menu) menu.onclick = () => this.playUIButtonSound(() => this._p2pReturnToMenu());
-    }
-;
-
-// _showP2PExitConfirm
-    UIController.prototype._showP2PExitConfirm = function() {
-        const modal = document.getElementById('p2p-exit-confirm-modal');
-        if (!modal) return;
-        const isHost = this.p2pController && this.p2pController.isHost;
-        const titleEl = document.getElementById('p2p-exit-confirm-title');
-        const detailEl = document.getElementById('p2p-exit-confirm-detail');
-        if (titleEl) titleEl.textContent = isHost ? '解散房间' : '退出对局';
-        if (detailEl) {
-            detailEl.textContent = isHost
-                ? '解散后本局作废，不扣除 ELO 积分。确定解散房间吗？'
-                : '退出后本局判负，将扣除 ELO 积分。确定退出吗？';
-        }
-        this.showModal(modal);
-        const okBtn = document.getElementById('p2p-exit-confirm-ok');
-        const cancelBtn = document.getElementById('p2p-exit-confirm-cancel');
-        if (okBtn) {
-            okBtn.onclick = () => this._confirmP2PExit();
-        }
-        if (cancelBtn) {
-            cancelBtn.onclick = () => this._cancelP2PExit();
-        }
-    }
-;
-
-// _confirmP2PExit
-    UIController.prototype._confirmP2PExit = function() {
-        if (window.audioManager) window.audioManager.playClick();
-        const modal = document.getElementById('p2p-exit-confirm-modal');
-        if (modal) this.hideModal(modal);
-        this._p2pExitingAfterConfirm = true;
-        this._p2pExitConfirmed = false;
-        // 直接执行主动退出结算（房主解散不扣分 / 访客判负扣分）并返回主菜单，
-        // 不重复弹"判负"窗（确认弹窗里已说明后果）
-        this._p2pDoSettleAndExit();
-    }
-;
-
-// _p2pDoSettleAndExit
-    UIController.prototype._p2pDoSettleAndExit = function() {
-        const p2p = this.p2pController;
-        const isHost = p2p && p2p.isHost;
-        if (this.isP2PMode && this._p2pMatchStarted && !this._p2pEloSettled && !this._p2pRoomDissolved) {
-            if (isHost) {
-                if (this._lobby) this._lobby.notifyRoomDissolve();
-                this._p2pRoomDissolved = true; // 本局作废，不结算
-            } else if (this._leaderboardService && this._p2pOpponentProfile
-                       && typeof PlayerProfile !== 'undefined' && p2p) {
-                const profile = PlayerProfile.getProfile();
-                const opp = this._p2pOpponentProfile;
-                const roomKey = (p2p.roomCode || 'room') + '#' + (p2p._gen || 0);
-                this._leaderboardService.submitScore({
-                    boardType: 'elo',
-                    playerId: profile.playerId,
-                    nickname: profile.nickname,
-                    opponentPlayerId: opp.playerId,
-                    opponentNickname: opp.nickname || '棋手',
-                    scoreA: 0, scoreB: 1,
-                    winner: 'B',
-                    roomCode: roomKey
-                });
-                this._p2pEloSettled = true;
-            }
-        }
-        // 清理 P2P 并回主菜单（复用 _cleanupP2P 的清理逻辑，但因 _p2pExitingAfterConfirm=true 不会再弹确认）
-        if (typeof this._p2pReturnToMenu === 'function') this._p2pReturnToMenu();
-    }
-;
-
-// _cancelP2PExit
-    UIController.prototype._cancelP2PExit = function() {
-        if (window.audioManager) window.audioManager.playClick();
-        const modal = document.getElementById('p2p-exit-confirm-modal');
-        if (modal) this.hideModal(modal);
-        this._p2pExitConfirmed = false;
-        this._p2pExitingAfterConfirm = false;
+        if (menu) menu.onclick = () => {
+            if (window.audioManager) window.audioManager.playClick();
+            // 统一处理：弹窗点击"返回主菜单" → 关闭弹窗 + 清理 P2P + 返回主菜单
+            // 不依赖 _p2pReturnToMenu（避免 hide disconnect-modal 后又弹 startModal 覆盖）
+            const disc = document.getElementById('p2p-disconnect-modal');
+            if (disc) this.hideModal(disc);
+            if (typeof this._cleanupP2P === 'function') this._cleanupP2P();
+            this.handleRestart();
+        };
     }
 ;
 
@@ -937,19 +857,27 @@ if (typeof UIController === 'undefined') {
         if (!opp || !opp.playerId) return;
         const myId = PlayerProfile.getPlayerId();
         const self = this;
+        let shown = false;
+        const show = (myElo, oppElo) => {
+            if (shown) return;
+            shown = true;
+            if (self._p2pEloSettled || !self.isP2PMode) return; // 已结束则不再播放
+            self._showP2PVSIntro(
+                PlayerProfile.getNickname(),
+                Number.isFinite(myElo) ? myElo : null,
+                opp.nickname || '棋手',
+                Number.isFinite(oppElo) ? oppElo : null
+            );
+        };
         // 异步查询双方 ELO（服务器不可用时 ELO 显示为 —，动画照常播放）
         this._leaderboardService.queryPlayerElo([myId, opp.playerId], (data) => {
-            if (self._p2pEloSettled || !self.isP2PMode) return; // 已结束则不再播放
             const map = (data && data.players) || {};
             const my = map[myId] || {};
             const op = map[opp.playerId] || {};
-            self._showP2PVSIntro(
-                PlayerProfile.getNickname(),
-                Number.isFinite(my.elo) ? my.elo : null,
-                opp.nickname || '棋手',
-                Number.isFinite(op.elo) ? op.elo : null
-            );
+            show(my.elo, op.elo);
         });
+        // 兜底：2 秒内 ELO 若未返回（服务器不可达/连接慢），直接播放动画（ELO 显示为 —）
+        setTimeout(() => show(null, null), 2000);
     }
 ;
 

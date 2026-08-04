@@ -1533,6 +1533,13 @@ if (typeof UIController === 'undefined') {
             this.hideModal(this.gameOverModal);
             const p2pModal = document.getElementById('p2p-room-modal');
             if (p2pModal) this.hideModal(p2pModal);
+            // 对局中主动退出：_cleanupP2P 已弹 disconnect-modal（"你已中途退出判负"/
+            // "房主已解散该房间"），让用户先看完再点"返回主菜单"按钮 → 不弹主菜单；
+            // 非对局中（等待/已结算）正常弹主菜单。
+            if (this._p2pShowDisconnectReturnToMenu) {
+                this._p2pShowDisconnectReturnToMenu = false;
+                return;
+            }
             this.showModal(this.startModal);
             return;
         }
