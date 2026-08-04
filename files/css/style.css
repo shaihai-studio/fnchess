@@ -4816,3 +4816,126 @@ body.device-mobile {
     margin-top: 8px;
     line-height: 1.5;
 }
+
+/* ── 首次进入昵称设置弹窗 ─────────────────────────────── */
+#nickname-modal .modal-content {
+    max-width: 420px;
+}
+.nickname-prompt-desc {
+    color: #94a3b8;
+    font-size: 14px;
+    line-height: 1.6;
+    margin-bottom: 14px;
+    text-align: left;
+}
+.nickname-prompt-input {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid rgba(255,255,255,0.16);
+    border-radius: 8px;
+    background: rgba(0,0,0,0.35);
+    color: #fff;
+    font-size: 15px;
+    outline: none;
+    box-sizing: border-box;
+}
+.nickname-prompt-input:focus {
+    border-color: rgba(59,130,246,0.7);
+}
+.nickname-prompt-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+}
+.nickname-prompt-actions .btn {
+    flex: 1;
+}
+
+/* ── 联机对战开场 VS 动画 ─────────────────────────────── */
+#p2p-vs-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.p2p-vs-backdrop {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at center, rgba(15,23,42,0.92) 0%, rgba(2,6,23,0.97) 100%);
+}
+.p2p-vs-core {
+    position: relative;
+    text-align: center;
+    z-index: 1;
+}
+.p2p-vs-players {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 24px;
+    margin-bottom: 40px;
+}
+.p2p-vs-player {
+    min-width: 150px;
+    padding: 14px 20px;
+    border-radius: 14px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.12);
+}
+.p2p-vs-nickname {
+    font-size: 22px;
+    font-weight: 800;
+    color: #fff;
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-bottom: 6px;
+}
+.p2p-vs-elo {
+    font-size: 15px;
+    font-weight: 700;
+    color: #fbbf24;
+}
+.p2p-vs-vs {
+    font-size: 44px;
+    font-weight: 900;
+    font-style: italic;
+    color: #f43f5e;
+    text-shadow: 0 0 24px rgba(244,63,94,0.7);
+}
+.p2p-vs-countdown {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+}
+.p2p-vs-number {
+    font-size: 96px;
+    font-weight: 900;
+    line-height: 1;
+    color: #22c55e;
+    text-shadow: 0 0 32px rgba(34,197,94,0.8);
+    transition: transform .15s;
+}
+.p2p-vs-number.pop { transform: scale(1.35); }
+.p2p-vs-sub {
+    font-size: 16px;
+    font-weight: 700;
+    color: #94a3b8;
+    letter-spacing: 4px;
+}
+
+/* ── 打开联机模式提示 ─────────────────────────────── */
+#p2p-warning-modal .modal-content {
+    max-width: 400px;
+}
+.p2p-warning-text {
+    color: #fbbf24;
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 1.7;
+    text-align: center;
+}

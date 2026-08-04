@@ -537,6 +537,23 @@ lobbyWss.on('connection', (ws, req) => {
                 try { handleQueryLeaderboard(ws, msg); } catch (e) { console.warn('[LB] query_leaderboard 处理异常:', e.message); }
                 break;
             }
+
+            // 排行榜：批量查询玩家 ELO（联机开场 VS 动画用）→ player_elo_result
+            case 'query_player_elo': {
+                try {
+                    const ids = (Array.isArray(msg.playerIds) ? msg.playerIds : [])
+                        .map((id) => String(id).slice(0, 64)).filter(Boolean);
+                    const players = {};
+                    for (const id of ids) {
+                        const p = leaderboards.elo.get(id);
+                        players[id] = p
+                            ? { elo: p.elo, nickname: p.nickname, wins: p.wins, losses: p.losses, draws: p.draws }
+                            : { elo: ELO_INIT, nickname: '棋手', wins: 0, losses: 0, draws: 0 };
+                    }
+                    send(ws, { type: 'player_elo_result', id: String(msg.id || ''), players });
+                } catch (e) { console.warn('[LB] query_player_elo 处理异常:', e.message); }
+                break;
+            }
         }
     });
 

@@ -33,6 +33,20 @@ if (typeof UIController === 'undefined') {
         this._bindLobbyEvents();
         // 进入联机模式即打开匹配大厅连接（切到大厅页签时通常已连好，无需等待）
         if (typeof this._openLobby === 'function') this._openLobby();
+        // 打开联机模式弹提示：切勿消极比赛，中途退出扣 ELO（每个会话只提醒一次，且非对局中）
+        if (!this._p2pWarningShown) {
+            this._p2pWarningShown = true;
+            const wm = document.getElementById('p2p-warning-modal');
+            if (wm) {
+                this.showModal(wm);
+                const wc = document.getElementById('p2p-warning-confirm-btn');
+                if (wc) {
+                    const close = () => { if (window.audioManager) window.audioManager.playClick(); this.hideModal(wm); };
+                    wc.addEventListener('click', close, { once: true });
+                    this.bindModalDismiss(wm, close);
+                }
+            }
+        }
     }
 ;
 
@@ -40,6 +54,10 @@ if (typeof UIController === 'undefined') {
     UIController.prototype._setupP2PCallbacks = function() {
         const p2p = this.p2pController;
         if (!p2p) return;
+        // 每次进入联机界面重置对局状态（开场 VS / 中途退出结算标志）
+        this._p2pMatchStarted = false;
+        this._p2pEloSettled = false;
+        this._p2pOpponentProfile = null;
         // 状态变化回调
         p2p.onStatusChange = (status, message) => {
             this._updateP2PStatus(status, message);
@@ -81,13 +99,18 @@ if (typeof UIController === 'undefined') {
                 this.gameController.timeLimitMode = config.timeLimitMode;
             }
             this.gameController.initGame(config.rounds || 8, config.difficulty || 'normal', 'p2p');
+            this._p2pMatchStarted = true;
             this.showMessage('收到对手游戏配置，开始对战！');
+            // 排行榜：开场 VS 动画（访客侧）
+            this._startP2PVSIntro();
         };
         // 排行榜：房主收到访客回传的身份
         p2p.onPlayerInfo = (info) => {
             if (info && info.playerId) {
                 this._p2pOpponentProfile = { playerId: String(info.playerId), nickname: info.nickname || '棋手' };
             }
+            // 排行榜：开场 VS 动画（房主侧，等访客身份回传后再播放）
+            this._startP2PVSIntro();
         };
         // 计时同步：非操作方仅显示对手驱动的倒计时
         p2p.onTimerSync = (remainingTime) => {
@@ -111,7 +134,8 @@ if (typeof UIController === 'undefined') {
         p2p.onDisconnected = () => {
             console.log('[UI][P2P] onDisconnected 触发');
             this._updateP2PStatus('disconnected', '对手已断开连接');
-            this._showP2PDisconnectModal();
+            // 排行榜：对局中途对手退出 → 判对手弃权（本局获胜）+ 弹窗；非对局中断线弹普通弹窗
+            this._reportP2PForfeit(false);
         };
         // 错误回调
         p2p.onError = (err) => {
@@ -327,6 +351,7 @@ if (typeof UIController === 'undefined') {
             const timeLimitMode = this._getP2PTimeLimitMode();
             if (this.gameController) this.gameController.timeLimitMode = timeLimitMode;
             this.gameController.initGame(rounds, difficulty, 'p2p');
+            this._p2pMatchStarted = true;
             // 排行榜：房主把自己的身份随 game_init 发给访客，供访客回传身份（ELO 上报需要）
             let hostProfile = null;
             if (typeof PlayerProfile !== 'undefined') hostProfile = PlayerProfile.getProfile();
@@ -548,6 +573,12 @@ if (typeof UIController === 'undefined') {
 
 // _cleanupP2P
     UIController.prototype._cleanupP2P = function() {
+        // 排行榜：对局中途被清理（未正常结算）→ 视为本方中途退出，判负上报 + 弹窗
+        this._reportP2PForfeit(true);
+        // 清理开场 VS 动画残留
+        if (this._p2pVSTimer) { clearTimeout(this._p2pVSTimer); this._p2pVSTimer = null; }
+        const vsOverlay = document.getElementById('p2p-vs-overlay');
+        if (vsOverlay) vsOverlay.style.display = 'none';
         // 清理周期同步定时器，避免残留后台发送
         this._stopP2PPeriodicSync();
         // 清理健康监测定时器
@@ -606,9 +637,125 @@ if (typeof UIController === 'undefined') {
 ;
 
 // _showP2PDisconnectModal
-    UIController.prototype._showP2PDisconnectModal = function() {
+    UIController.prototype._showP2PDisconnectModal = function(opponentLeft) {
+        // opponentLeft: true=对手中途退出(本局获胜) / false=自己中途退出(判负) / null=普通断线
+        const titleEl = document.getElementById('p2p-disc-title');
+        const detailEl = document.getElementById('p2p-disc-detail');
+        if (titleEl && detailEl) {
+            if (opponentLeft === true) {
+                titleEl.textContent = '对手中途退出';
+                detailEl.textContent = '对手已中途退出，本局判你获胜，对手将扣除 ELO 积分。';
+            } else if (opponentLeft === false) {
+                titleEl.textContent = '中途退出';
+                detailEl.textContent = '你已中途退出，本局判负，将扣除 ELO 积分。';
+            } else {
+                titleEl.textContent = '对手已断开连接';
+                detailEl.textContent = '联机对局已中断';
+            }
+        }
         const disc = document.getElementById('p2p-disconnect-modal');
         if (disc) this.showModal(disc);
+    }
+;
+
+// _reportP2PForfeit
+    UIController.prototype._reportP2PForfeit = function(isForfeitSelf) {
+        // 非对局中（建房等待/加入等待阶段）断线 → 弹普通断线弹窗即可
+        if (!this.isP2PMode || !this._p2pMatchStarted || this._p2pEloSettled) {
+            this._showP2PDisconnectModal(null);
+            return;
+        }
+        if (typeof PlayerProfile === 'undefined') return;
+        const p2p = this.p2pController;
+        const opp = this._p2pOpponentProfile;
+        if (!p2p || !opp || !opp.playerId) return;
+        if (!this._leaderboardService) return;
+        const profile = PlayerProfile.getProfile();
+        const roomKey = (p2p.roomCode || 'room') + '#' + (p2p._gen || 0);
+        // isForfeitSelf=true：本方弃权判负（对手胜）；false：对手弃权（本方胜）
+        this._leaderboardService.submitScore({
+            boardType: 'elo',
+            playerId: profile.playerId,
+            nickname: profile.nickname,
+            opponentPlayerId: opp.playerId,
+            opponentNickname: opp.nickname || '棋手',
+            scoreA: isForfeitSelf ? 0 : 1,
+            scoreB: isForfeitSelf ? 1 : 0,
+            winner: isForfeitSelf ? 'B' : 'A',
+            roomCode: roomKey
+        });
+        this._p2pEloSettled = true;
+        this._showP2PDisconnectModal(!isForfeitSelf);
+    }
+;
+
+// _startP2PVSIntro
+    UIController.prototype._startP2PVSIntro = function() {
+        if (typeof PlayerProfile === 'undefined') return;
+        if (!this._leaderboardService) return;
+        const opp = this._p2pOpponentProfile;
+        if (!opp || !opp.playerId) return;
+        const myId = PlayerProfile.getPlayerId();
+        const self = this;
+        // 异步查询双方 ELO（服务器不可用时 ELO 显示为 —，动画照常播放）
+        this._leaderboardService.queryPlayerElo([myId, opp.playerId], (data) => {
+            if (self._p2pEloSettled || !self.isP2PMode) return; // 已结束则不再播放
+            const map = (data && data.players) || {};
+            const my = map[myId] || {};
+            const op = map[opp.playerId] || {};
+            self._showP2PVSIntro(
+                PlayerProfile.getNickname(),
+                Number.isFinite(my.elo) ? my.elo : null,
+                opp.nickname || '棋手',
+                Number.isFinite(op.elo) ? op.elo : null
+            );
+        });
+    }
+;
+
+// _showP2PVSIntro
+    UIController.prototype._showP2PVSIntro = function(myNick, myElo, oppNick, oppElo) {
+        const overlay = document.getElementById('p2p-vs-overlay');
+        if (!overlay) return;
+        const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = String(v); };
+        set('p2p-vs-my-nick', myNick);
+        set('p2p-vs-my-elo', 'ELO ' + (myElo != null ? myElo : '—'));
+        set('p2p-vs-opp-nick', oppNick);
+        set('p2p-vs-opp-elo', 'ELO ' + (oppElo != null ? oppElo : '—'));
+        overlay.style.display = 'flex';
+        const numEl = document.getElementById('p2p-vs-number');
+        const subEl = document.getElementById('p2p-vs-sub');
+        const playTick = (n) => {
+            if (!window.audioManager) return;
+            if (n === 3) window.audioManager.playRaceCountdown?.();
+            else if (n === 2) window.audioManager.playRaceBeep?.();
+            else if (n === 1) window.audioManager.playRaceAlert?.();
+            else window.audioManager.playRaceLaunch?.();
+        };
+        const self = this;
+        let count = 3;
+        const pop = () => {
+            if (numEl) {
+                numEl.textContent = String(count);
+                numEl.classList.remove('pop');
+                void numEl.offsetWidth; // 重新触发动画
+                numEl.classList.add('pop');
+            }
+            playTick(count);
+        };
+        pop();
+        const finish = () => {
+            if (subEl) subEl.textContent = '开始！';
+            playTick(0);
+            setTimeout(() => { overlay.style.display = 'none'; }, 700);
+        };
+        const tick = () => {
+            count--;
+            if (count > 0) { pop(); self._p2pVSTimer = setTimeout(tick, 850); }
+            else finish();
+        };
+        if (this._p2pVSTimer) clearTimeout(this._p2pVSTimer);
+        this._p2pVSTimer = setTimeout(tick, 850);
     }
 ;
 

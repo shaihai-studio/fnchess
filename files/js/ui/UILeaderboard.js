@@ -41,6 +41,62 @@ if (typeof UIController === 'undefined') {
         if (this.leaderboardModal) {
             this.bindModalDismiss(this.leaderboardModal, () => this.hideModal(this.leaderboardModal));
         }
+
+        // 首次进入昵称设置弹窗（之后仍可在排行榜里修改昵称）
+        this.initNicknamePrompt();
+        this.maybeShowNicknamePrompt();
+    }
+;
+
+// initNicknamePrompt
+    UIController.prototype.initNicknamePrompt = function() {
+        this.nicknameModal = document.getElementById('nickname-modal');
+        this.nicknameInput = document.getElementById('nickname-input');
+        if (!this.nicknameModal || !this.nicknameInput) return;
+        const confirmBtn = document.getElementById('nickname-confirm-btn');
+        const cancelBtn = document.getElementById('nickname-cancel-btn');
+        if (confirmBtn) confirmBtn.addEventListener('click', () => this._nicknamePromptConfirm());
+        if (cancelBtn) cancelBtn.addEventListener('click', () => this._nicknamePromptCancel());
+        this.nicknameInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') this._nicknamePromptConfirm();
+        });
+        // 点击遮罩关闭 = 取消
+        this.bindModalDismiss(this.nicknameModal, () => this._nicknamePromptCancel());
+    }
+;
+
+// maybeShowNicknamePrompt
+    UIController.prototype.maybeShowNicknamePrompt = function() {
+        if (typeof PlayerProfile === 'undefined') return;
+        if (PlayerProfile.hasProfile()) return; // 非首次进入，不再弹
+        if (!this.nicknameModal || !this.nicknameInput) return;
+        const self = this;
+        // 等主菜单入场动画结束后再弹出，避免抢焦点
+        setTimeout(() => {
+            if (self.nicknameInput) self.nicknameInput.value = PlayerProfile.getNickname();
+            self.showModal(self.nicknameModal);
+        }, 900);
+    }
+;
+
+// _nicknamePromptConfirm
+    UIController.prototype._nicknamePromptConfirm = function() {
+        if (window.audioManager) window.audioManager.playClick();
+        let name = null;
+        if (this.nicknameInput && typeof PlayerProfile !== 'undefined') {
+            name = PlayerProfile.setNickname(this.nicknameInput.value);
+        }
+        this.hideModal(this.nicknameModal);
+        if (name && typeof this.showMessage === 'function') {
+            this.showMessage(`昵称已设置：${name}`, 'success');
+        }
+    }
+;
+
+// _nicknamePromptCancel
+    UIController.prototype._nicknamePromptCancel = function() {
+        if (window.audioManager) window.audioManager.playClick();
+        this.hideModal(this.nicknameModal);
     }
 ;
 

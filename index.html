@@ -512,6 +512,19 @@
         </div>
     </div>
 
+    <!-- 首次进入昵称设置弹窗 -->
+    <div class="modal" id="nickname-modal" style="display:none;">
+        <div class="modal-content">
+            <h2>设置昵称</h2>
+            <p class="nickname-prompt-desc">首次进入游戏，给自己起个昵称吧！之后可在排行榜随时修改。</p>
+            <input type="text" id="nickname-input" class="nickname-prompt-input" maxlength="16" placeholder="输入昵称（留空使用默认昵称）" autocomplete="off">
+            <div class="nickname-prompt-actions">
+                <button class="btn btn-secondary" id="nickname-cancel-btn" type="button">取消</button>
+                <button class="btn btn-primary" id="nickname-confirm-btn" type="button">确认</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Summa训练选择弹窗 -->
     <div class="modal" id="summa-train-dialog" style="display: none;">
         <div class="modal-content summa-dialog-content">
@@ -537,6 +550,17 @@
         </div>
     </div>
     
+    <!-- 打开联机模式时的提示弹窗 -->
+    <div class="modal" id="p2p-warning-modal" style="display:none;">
+        <div class="modal-content" style="max-width:400px;text-align:center;">
+            <h2>联机对战提示</h2>
+            <p class="p2p-warning-text">请勿消极比赛，对局中途退出（包括关闭标签页）将判负并扣除 ELO 积分。</p>
+            <div style="margin-top:18px;">
+                <button class="btn btn-primary" id="p2p-warning-confirm-btn">知道了</button>
+            </div>
+        </div>
+    </div>
+
     <!-- P2P 联机对战模态框 -->
     <div class="modal" id="p2p-room-modal" style="display:none;">
         <div class="modal-content p2p-room-content" style="max-width: 760px;">
@@ -638,13 +662,35 @@
         </div>
     </div>
 
-    <!-- 联机对手掉线：仅返回主菜单 -->
+    <!-- 联机对手掉线/中途退出：仅返回主菜单 -->
     <div class="modal" id="p2p-disconnect-modal" style="display:none;">
         <div class="modal-content" style="max-width:360px;text-align:center;">
-            <h2>对手已断开连接</h2>
-            <p>联机对局已中断</p>
+            <h2 id="p2p-disc-title">对手已断开连接</h2>
+            <p id="p2p-disc-detail">联机对局已中断</p>
             <div style="display:flex;flex-direction:column;gap:10px;margin-top:16px;">
                 <button class="btn btn-primary" id="p2p-disc-menu-btn">返回主菜单</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 联机对战开场 VS 动画（昵称 + ELO + 321 倒计时） -->
+    <div id="p2p-vs-overlay" style="display:none;">
+        <div class="p2p-vs-backdrop"></div>
+        <div class="p2p-vs-core">
+            <div class="p2p-vs-players">
+                <div class="p2p-vs-player">
+                    <div class="p2p-vs-nickname" id="p2p-vs-my-nick"></div>
+                    <div class="p2p-vs-elo" id="p2p-vs-my-elo"></div>
+                </div>
+                <div class="p2p-vs-vs">VS</div>
+                <div class="p2p-vs-player">
+                    <div class="p2p-vs-nickname" id="p2p-vs-opp-nick"></div>
+                    <div class="p2p-vs-elo" id="p2p-vs-opp-elo"></div>
+                </div>
+            </div>
+            <div class="p2p-vs-countdown">
+                <div class="p2p-vs-number" id="p2p-vs-number">3</div>
+                <div class="p2p-vs-sub" id="p2p-vs-sub"></div>
             </div>
         </div>
     </div>

@@ -72,6 +72,7 @@ class MatchLobbyController {
         this.onSpectateJoinRejected = null;// (code, reason) => void（观众加入被拒）
         // ── 排行榜回调 ─────────────────────────────────────────
         this.onLeaderboardResult = null;  // (data) => void（收到排行榜查询结果）
+        this.onPlayerEloResult = null;    // (data) => void（收到批量 ELO 查询结果）
     }
 
     // ─── 连接管理 ────────────────────────────────────────────
@@ -206,6 +207,9 @@ class MatchLobbyController {
             case 'leaderboard_result':
                 if (this.onLeaderboardResult) this.onLeaderboardResult(data);
                 break;
+            case 'player_elo_result':
+                if (this.onPlayerEloResult) this.onPlayerEloResult(data);
+                break;
         }
     }
 
@@ -290,5 +294,10 @@ class MatchLobbyController {
     /** 查询榜单 → 服务器回 leaderboard_result */
     queryLeaderboard(boardType, playerId, id) {
         this._send({ type: 'query_leaderboard', boardType: String(boardType), playerId: String(playerId), id: String(id) });
+    }
+
+    /** 批量查询玩家 ELO → 服务器回 player_elo_result */
+    queryPlayerElo(playerIds, id) {
+        this._send({ type: 'query_player_elo', playerIds: Array.isArray(playerIds) ? playerIds : [], id: String(id) });
     }
 }

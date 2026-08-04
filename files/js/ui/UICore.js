@@ -269,12 +269,19 @@ if (typeof UIController === 'undefined') {
         // 修复 #45：原本 overflow-y: auto 在不超高时也会渲染出空滚动条（Windows 上尤其明显）
         this.initControlPanelAutoScroll();
 
-        // 退出函数棋（关闭页面/标签页/刷新）前：房主有活跃房间时弹浏览器确认提醒
-        // （房间将失效）。确认后页面才真正关闭；关闭时服务器因 WS 断开会自动清理房间。
+        // 退出函数棋（关闭页面/标签页/刷新）前：房主有活跃房间或联机对局进行中时弹浏览器确认提醒。
+        // ① 房主有房间：退出后房间失效；② 对局进行中：退出判负并扣 ELO。
+        // 确认后页面才真正关闭；关闭时服务器因 WS 断开会自动清理房间。
         window.addEventListener('beforeunload', (e) => {
             if (this._lobby && this._lobby.myRoomCode) {
                 e.preventDefault();
                 e.returnValue = '退出后，您创建的房间将立即失效。是否确认退出？';
+                return e.returnValue;
+            }
+            // 联机对局进行中（开局后、未结算）：关闭/刷新=中途退出，判负扣 ELO
+            if (this.isP2PMode && this._p2pMatchStarted && !this._p2pEloSettled) {
+                e.preventDefault();
+                e.returnValue = '对局进行中，退出将判负并扣除 ELO 积分，是否确认离开？';
                 return e.returnValue;
             }
         });
@@ -884,6 +891,9 @@ if (typeof UIController === 'undefined') {
         this.gameController.on('gameEnd', (data) => {
             if (window.audioManager) window.audioManager.playGameWin();
             const finishGameOver = () => this.showGameOver(data);
+
+            // 对局正常结束 → 双方都标记已结算，防止"中途退出判负"逻辑误触发
+            this._p2pEloSettled = true;
 
             // 排行榜：联机对局结束，仅房主（Host）唯一上报 ELO 结果（服务器按房间码去重）
             if (this.isP2PMode && this.p2pController && this.p2pController.isHost && this._leaderboardService) {

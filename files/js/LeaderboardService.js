@@ -82,4 +82,11 @@ class LeaderboardService {
         if (typeof callback === 'function') this._pendingQueries.set(id, callback);
         this._send({ type: 'query_leaderboard', boardType: String(boardType), playerId: String(playerId || ''), id: String(id) });
     }
+
+    /** 批量查询玩家 ELO（联机开场 VS 用）；回调收到 { id, players: {playerId: {elo,nickname,...}} } */
+    queryPlayerElo(playerIds, callback) {
+        const id = 'pelo' + (++this._querySeq);
+        if (typeof callback === 'function') this._pendingQueries.set(id, callback);
+        this._send({ type: 'query_player_elo', playerIds: Array.isArray(playerIds) ? playerIds : [], id: String(id) });
+    }
 }
