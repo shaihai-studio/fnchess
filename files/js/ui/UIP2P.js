@@ -57,7 +57,12 @@ if (typeof UIController === 'undefined') {
         // 每次进入联机界面重置对局状态（开场 VS / 中途退出结算标志）
         this._p2pMatchStarted = false;
         this._p2pEloSettled = false;
+        this._p2pRoomDissolved = false;
         this._p2pOpponentProfile = null;
+        // 对战方/观众收到"房主已解散该房间"（大厅模式经 lobby WS；房间码模式靠 Peer 断开兜底）
+        if (this._lobby) {
+            this._lobby.onRoomDissolved = (data) => this._onRoomDissolved(data);
+        }
         // 状态变化回调
         p2p.onStatusChange = (status, message) => {
             this._updateP2PStatus(status, message);
@@ -132,11 +137,37 @@ if (typeof UIController === 'undefined') {
         };
         // 断开连接回调
         p2p.onDisconnected = () => {
-            console.log('[UI][P2P] onDisconnected 触发');
+            console.log('[UI][P2P] onDisconnected 触发', reason || '');
             this._updateP2PStatus('disconnected', '对手已断开连接');
-            // 排行榜：对局中途对手退出 → 判对手弃权（本局获胜）+ 弹窗；非对局中断线弹普通弹窗
-            this._reportP2PForfeit(false);
+            // 我是访客（对端是房主）
+            if (!this.p2pController || !this.p2pController.isHost) {
+                // 自己掉线后重连失败 → 判本方负（除非已收到房主解散通知）
+                if (reason === 'self_reconnect_failed') {
+                    if (this._p2pRoomDissolved) { this._showP2PDisconnectModal('dissolved'); return; }
+                    if (this.isP2PMode && this._p2pMatchStarted && !this._p2pEloSettled) {
+                        this._reportP2PForfeit(true);
+                    }
+                    return;
+                }
+                // 房主退出/解散 → 本局作废、不判负不扣 ELO，提示"房主已解散该房间"
+                if (this._p2pRoomDissolved) return; // 已收到解散通知，弹窗已显示，避免重复
+                if (this.isP2PMode && this._p2pMatchStarted && !this._p2pEloSettled) {
+                    this._p2pRoomDissolved = true;
+                    this._showP2PDisconnectModal('dissolved');
+                } else {
+                    this._showP2PDisconnectModal(null); // 非对局中 → 普通断线弹窗
+                }
+                return;
+            }
+            // 我是房主（对端是访客）：访客中途退出/重连超时 → 判访客弃权（本局获胜）+ 弹窗；
+            // 非对局中断线（建房等待/加入等待）→ 弹普通断线弹窗
+            if (!this._reportP2PForfeit(false)) {
+                this._showP2PDisconnectModal(null);
+            }
         };
+        // 访客掉线重连：房主等待（倒计时弹窗）/ 访客自动重连提示
+        p2p.onReconnectingChange = (isReconnecting) => this._onP2PReconnectingChange(isReconnecting);
+        p2p.onReconnected = () => this._onP2PReconnected();
         // 错误回调
         p2p.onError = (err) => {
             console.error('[UI][P2P] onError:', err);
@@ -573,8 +604,34 @@ if (typeof UIController === 'undefined') {
 
 // _cleanupP2P
     UIController.prototype._cleanupP2P = function() {
-        // 排行榜：对局中途被清理（未正常结算）→ 视为本方中途退出，判负上报 + 弹窗
-        this._reportP2PForfeit(true);
+        // 对局进行中 + 主动退出（点退出/解散/返回主菜单）→ 先弹二次确认
+        // - 房主（Host）→"解散房间"（本局作废、不扣 ELO）
+        // - 访客（Guest）→"退出对局"（判负、扣 ELO）
+        // 确认后才真正执行；取消则中止退出。非对局中（等待/已结算）直接清理，无需确认。
+        if (this.isP2PMode && this._p2pMatchStarted && !this._p2pEloSettled && !this._p2pRoomDissolved
+            && !this._p2pExitConfirmed && !this._p2pExitingAfterConfirm) {
+            this._p2pExitConfirmed = true; // 本次退出尝试已弹过确认，防止递归重入
+            this._showP2PExitConfirm();
+            return; // 等待确认，不继续清理
+        }
+        this._p2pExitConfirmed = false;
+        this._p2pExitingAfterConfirm = false;
+
+        // 排行榜：确认退出后的主动退出结算
+        // - 房主（Host）退出：解散房间、不扣 ELO；对战方/观众会收到"房主已解散该房间"
+        // - 访客（Guest）退出：判负并扣 ELO
+        if (this.isP2PMode && this._p2pMatchStarted && !this._p2pEloSettled && !this._p2pRoomDissolved) {
+            const p2p = this.p2pController;
+            if (p2p && p2p.isHost) {
+                if (this._lobby) this._lobby.notifyRoomDissolve();
+                this._p2pRoomDissolved = true; // 本局作废，不再结算
+            } else {
+                this._reportP2PForfeit(true);
+            }
+        }
+        // 清理断线重连等待/提示弹窗与定时器
+        this._hideP2PReconnectWait();
+        this._hideP2PReconnectingToast();
         // 清理开场 VS 动画残留
         if (this._p2pVSTimer) { clearTimeout(this._p2pVSTimer); this._p2pVSTimer = null; }
         const vsOverlay = document.getElementById('p2p-vs-overlay');
@@ -636,6 +693,85 @@ if (typeof UIController === 'undefined') {
     }
 ;
 
+// _showP2PExitConfirm
+    UIController.prototype._showP2PExitConfirm = function() {
+        const modal = document.getElementById('p2p-exit-confirm-modal');
+        if (!modal) return;
+        const isHost = this.p2pController && this.p2pController.isHost;
+        const titleEl = document.getElementById('p2p-exit-confirm-title');
+        const detailEl = document.getElementById('p2p-exit-confirm-detail');
+        if (titleEl) titleEl.textContent = isHost ? '解散房间' : '退出对局';
+        if (detailEl) {
+            detailEl.textContent = isHost
+                ? '解散后本局作废，不扣除 ELO 积分。确定解散房间吗？'
+                : '退出后本局判负，将扣除 ELO 积分。确定退出吗？';
+        }
+        this.showModal(modal);
+        const okBtn = document.getElementById('p2p-exit-confirm-ok');
+        const cancelBtn = document.getElementById('p2p-exit-confirm-cancel');
+        if (okBtn) {
+            okBtn.onclick = () => this._confirmP2PExit();
+        }
+        if (cancelBtn) {
+            cancelBtn.onclick = () => this._cancelP2PExit();
+        }
+    }
+;
+
+// _confirmP2PExit
+    UIController.prototype._confirmP2PExit = function() {
+        if (window.audioManager) window.audioManager.playClick();
+        const modal = document.getElementById('p2p-exit-confirm-modal');
+        if (modal) this.hideModal(modal);
+        this._p2pExitingAfterConfirm = true;
+        this._p2pExitConfirmed = false;
+        // 直接执行主动退出结算（房主解散不扣分 / 访客判负扣分）并返回主菜单，
+        // 不重复弹"判负"窗（确认弹窗里已说明后果）
+        this._p2pDoSettleAndExit();
+    }
+;
+
+// _p2pDoSettleAndExit
+    UIController.prototype._p2pDoSettleAndExit = function() {
+        const p2p = this.p2pController;
+        const isHost = p2p && p2p.isHost;
+        if (this.isP2PMode && this._p2pMatchStarted && !this._p2pEloSettled && !this._p2pRoomDissolved) {
+            if (isHost) {
+                if (this._lobby) this._lobby.notifyRoomDissolve();
+                this._p2pRoomDissolved = true; // 本局作废，不结算
+            } else if (this._leaderboardService && this._p2pOpponentProfile
+                       && typeof PlayerProfile !== 'undefined' && p2p) {
+                const profile = PlayerProfile.getProfile();
+                const opp = this._p2pOpponentProfile;
+                const roomKey = (p2p.roomCode || 'room') + '#' + (p2p._gen || 0);
+                this._leaderboardService.submitScore({
+                    boardType: 'elo',
+                    playerId: profile.playerId,
+                    nickname: profile.nickname,
+                    opponentPlayerId: opp.playerId,
+                    opponentNickname: opp.nickname || '棋手',
+                    scoreA: 0, scoreB: 1,
+                    winner: 'B',
+                    roomCode: roomKey
+                });
+                this._p2pEloSettled = true;
+            }
+        }
+        // 清理 P2P 并回主菜单（复用 _cleanupP2P 的清理逻辑，但因 _p2pExitingAfterConfirm=true 不会再弹确认）
+        if (typeof this._p2pReturnToMenu === 'function') this._p2pReturnToMenu();
+    }
+;
+
+// _cancelP2PExit
+    UIController.prototype._cancelP2PExit = function() {
+        if (window.audioManager) window.audioManager.playClick();
+        const modal = document.getElementById('p2p-exit-confirm-modal');
+        if (modal) this.hideModal(modal);
+        this._p2pExitConfirmed = false;
+        this._p2pExitingAfterConfirm = false;
+    }
+;
+
 // _showP2PDisconnectModal
     UIController.prototype._showP2PDisconnectModal = function(opponentLeft) {
         // opponentLeft: true=对手中途退出(本局获胜) / false=自己中途退出(判负) / null=普通断线
@@ -648,6 +784,9 @@ if (typeof UIController === 'undefined') {
             } else if (opponentLeft === false) {
                 titleEl.textContent = '中途退出';
                 detailEl.textContent = '你已中途退出，本局判负，将扣除 ELO 积分。';
+            } else if (opponentLeft === 'dissolved') {
+                titleEl.textContent = '房间已解散';
+                detailEl.textContent = '房主已解散该房间，本局不结算 ELO。';
             } else {
                 titleEl.textContent = '对手已断开连接';
                 detailEl.textContent = '联机对局已中断';
@@ -658,18 +797,118 @@ if (typeof UIController === 'undefined') {
     }
 ;
 
+// _onRoomDissolved
+    UIController.prototype._onRoomDissolved = function(data) {
+        // 对战方收到"房主已解散该房间"（大厅模式经 lobby WS 通知）
+        this._p2pRoomDissolved = true; // 本局作废，不再结算 ELO
+        this._hideP2PReconnectWait();
+        // 房主已退出：访客侧停止重连尝试，避免 90s 后重连失败重复弹窗
+        if (this.p2pController && !this.p2pController.isHost) {
+            this.p2pController.disconnect();
+        }
+        this._showP2PDisconnectModal('dissolved');
+    }
+;
+
+// _onP2PReconnectingChange
+    UIController.prototype._onP2PReconnectingChange = function(isReconnecting) {
+        if (!this.isP2PMode) return;
+        if (isReconnecting) {
+            this._p2pReconnectStartAt = Date.now();
+            if (this.p2pController && this.p2pController.isHost) {
+                this._showP2PReconnectWait();       // 房主：等待访客重连（90s 倒计时）
+            } else {
+                this._showP2PReconnectingToast();   // 访客：自动重连提示
+            }
+        } else {
+            this._hideP2PReconnectWait();
+            this._hideP2PReconnectingToast();
+        }
+    }
+;
+
+// _onP2PReconnected
+    UIController.prototype._onP2PReconnected = function() {
+        this._hideP2PReconnectWait();
+        this._hideP2PReconnectingToast();
+        const p2p = this.p2pController;
+        if (!p2p) return;
+        if (p2p.isHost) {
+            // 房主：把当前对局状态完整同步给访客（继续原对局，不重新开局、不扣分）
+            if (typeof this._syncToPeer === 'function') this._syncToPeer();
+            // 稍后再补发一次，确保访客收到（重连后首包可能不稳）
+            setTimeout(() => { if (typeof this._syncToPeer === 'function') this._syncToPeer(); }, 300);
+        } else {
+            // 访客：请求房主补发完整状态快照以恢复原对局
+            if (p2p.sendSyncRequest) p2p.sendSyncRequest();
+        }
+        this.showMessage('连接已恢复，继续对局', 'success');
+    }
+;
+
+// _showP2PReconnectWait / _hideP2PReconnectWait（房主等待访客重连）
+    UIController.prototype._showP2PReconnectWait = function() {
+        const modal = document.getElementById('p2p-reconnect-modal');
+        if (!modal) return;
+        this.showModal(modal);
+        const self = this;
+        const el = document.getElementById('p2p-reconnect-countdown');
+        const start = Date.now();
+        const total = 90;
+        const update = () => {
+            const left = Math.max(0, total - Math.round((Date.now() - start) / 1000));
+            if (el) el.textContent = String(left);
+            if (left > 0 && self._p2pReconnectingNow) {
+                self._p2pReconnectCountTimer = setTimeout(update, 500);
+            }
+        };
+        this._p2pReconnectingNow = true;
+        this._p2pReconnectCountTimer = setTimeout(update, 500);
+        const exitBtn = document.getElementById('p2p-reconnect-exit-btn');
+        if (exitBtn) {
+            const onExit = () => {
+                if (window.audioManager) window.audioManager.playClick();
+                self._p2pReconnectingNow = false;
+                self._p2pReturnToMenu();
+            };
+            exitBtn.addEventListener('click', onExit, { once: true });
+        }
+    }
+;
+
+    UIController.prototype._hideP2PReconnectWait = function() {
+        this._p2pReconnectingNow = false;
+        if (this._p2pReconnectCountTimer) { clearTimeout(this._p2pReconnectCountTimer); this._p2pReconnectCountTimer = null; }
+        const modal = document.getElementById('p2p-reconnect-modal');
+        if (modal) this.hideModal(modal);
+    }
+;
+
+// _showP2PReconnectingToast / _hideP2PReconnectingToast（访客自动重连提示）
+    UIController.prototype._showP2PReconnectingToast = function() {
+        const modal = document.getElementById('p2p-reconnecting-modal');
+        if (modal) this.showModal(modal);
+    }
+;
+
+    UIController.prototype._hideP2PReconnectingToast = function() {
+        const modal = document.getElementById('p2p-reconnecting-modal');
+        if (modal) this.hideModal(modal);
+    }
+;
+
 // _reportP2PForfeit
     UIController.prototype._reportP2PForfeit = function(isForfeitSelf) {
-        // 非对局中（建房等待/加入等待阶段）断线 → 弹普通断线弹窗即可
+        // 非对局中（未开局/建房等待/已结算）不处理，返回 false；
+        // 调用方（如 onDisconnected）据此决定是否弹普通断线弹窗
         if (!this.isP2PMode || !this._p2pMatchStarted || this._p2pEloSettled) {
-            this._showP2PDisconnectModal(null);
-            return;
+            return false;
         }
-        if (typeof PlayerProfile === 'undefined') return;
+        if (typeof PlayerProfile === 'undefined') return false;
         const p2p = this.p2pController;
         const opp = this._p2pOpponentProfile;
-        if (!p2p || !opp || !opp.playerId) return;
-        if (!this._leaderboardService) return;
+        if (!p2p || !opp || !opp.playerId) return false;
+        if (!this._leaderboardService) return false;
         const profile = PlayerProfile.getProfile();
         const roomKey = (p2p.roomCode || 'room') + '#' + (p2p._gen || 0);
         // isForfeitSelf=true：本方弃权判负（对手胜）；false：对手弃权（本方胜）
@@ -686,6 +925,7 @@ if (typeof UIController === 'undefined') {
         });
         this._p2pEloSettled = true;
         this._showP2PDisconnectModal(!isForfeitSelf);
+        return true;
     }
 ;
 

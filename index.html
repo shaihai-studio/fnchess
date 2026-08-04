@@ -673,6 +673,44 @@
         </div>
     </div>
 
+    <!-- 访客掉线：房主等待重连（倒计时，超时判访客负；期间退出不扣分） -->
+    <div class="modal" id="p2p-reconnect-modal" style="display:none;">
+        <div class="modal-content" style="max-width:380px;text-align:center;">
+            <h2>访客掉线</h2>
+            <p class="p2p-reconnect-text">访客已断开连接，正在等待重连…</p>
+            <div class="p2p-reconnect-countdown" id="p2p-reconnect-countdown">90</div>
+            <p class="p2p-reconnect-tip">超时后判访客负；期间退出本局不扣分。</p>
+            <div style="margin-top:14px;">
+                <button class="btn btn-secondary" id="p2p-reconnect-exit-btn">返回主菜单</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 访客掉线：访客自动重连提示 -->
+    <div class="modal" id="p2p-reconnecting-modal" style="display:none;">
+        <div class="modal-content" style="max-width:320px;text-align:center;">
+            <h2>网络断开</h2>
+            <p class="p2p-reconnect-text">正在自动重连…</p>
+        </div>
+    </div>
+
+    <!-- 联机对局主动退出确认：房主=解散房间 / 访客=判负扣 ELO -->
+    <div class="modal" id="p2p-exit-confirm-modal" style="display:none;">
+        <div class="modal-content" style="max-width:380px;text-align:center;">
+            <h2 id="p2p-exit-confirm-title">退出对局</h2>
+            <p id="p2p-exit-confirm-detail" class="p2p-exit-confirm-text">退出后本局将判负并扣除 ELO 积分。</p>
+            <div style="display:flex;gap:10px;margin-top:18px;">
+                <button class="btn btn-secondary" id="p2p-exit-confirm-cancel" style="flex:1;">继续对局</button>
+                <button class="btn btn-danger" id="p2p-exit-confirm-ok" style="flex:1;">确认退出</button>
+            </div>
+        </div>
+    </div>
+        <div class="modal-content" style="max-width:320px;text-align:center;">
+            <h2>网络断开</h2>
+            <p class="p2p-reconnect-text">正在自动重连…</p>
+        </div>
+    </div>
+
     <!-- 联机对战开场 VS 动画（昵称 + ELO + 321 倒计时） -->
     <div id="p2p-vs-overlay" style="display:none;">
         <div class="p2p-vs-backdrop"></div>

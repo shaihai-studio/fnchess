@@ -107,6 +107,13 @@ class P2PController {
         this._gameInitConfig = null;  // 最近一次 init 的原始配置（供重发/重建）
         this._handledInitGen = 0;     // Guest 已处理过的 init gen（去重，避免重复重置对局）
 
+        // 断线重连（访客掉线后自动重连 / 房主等待访客回来）：3 秒一次，最多 30 次 ≈ 90 秒
+        this._reconnecting = false;        // 是否处于重连/等待重连
+        this._reconnectTimer = null;       // 重连尝试定时器
+        this._reconnectAttempts = 0;       // 已尝试次数
+        this.onReconnectingChange = null;  // (isReconnecting) => void，UI 显示等待/重连提示
+        this.onReconnected = null;         // () => void，重连成功，UI 恢复对局
+
         // sync_verify 周期验证（固定频率核对双方状态，发现不同步即重发/补发）
         this._syncVerifyInterval = null;
         this._lastRemoteVerify = null;   // 对方最近一次 verify 报告
@@ -381,6 +388,8 @@ class P2PController {
             this._syncVerifyInterval = setInterval(() => this._sendSyncVerify(), 3000);
             console.log(`[P2P] DataChannel 已打开，isHost=${this.isHost}, myPlayerId=${this.myPlayerId}`);
             this._notifyStatus('connected', this.isHost ? '对手已加入！游戏即将开始...' : '已连接到房间！游戏即将开始...');
+            // 重连成功后：清除重连状态并通知 UI（Host 会重发 game_init，双方从新一局开始）
+            this._handleReconnectSuccess();
             if (this.onConnected) this.onConnected();
         });
         conn.on('data', (data) => {
@@ -883,7 +892,7 @@ class P2PController {
         this.isConnected = false;
         this.isConnecting = false;
         this._guestConnecting = false;
-        this.conn = null;
+        if (this.conn) { try { this.conn.close(); } catch (e) {} this.conn = null; }
         clearTimeout(this._watchdogId);  this._watchdogId = null;
         clearInterval(this._pingInterval); this._pingInterval = null;
         clearInterval(this._syncVerifyInterval); this._syncVerifyInterval = null;
@@ -902,10 +911,18 @@ class P2PController {
             this._awaitingPeer = false;
             if (this.onAwaitChange) this.onAwaitChange(false);
         }
+        if (this._pendingAck) { clearTimeout(this._pendingAck.timer); this._pendingAck = null; }
+
+        // 对局中断线（曾建立过连接且仍有房间码）→ 保留 peer/roomCode/_gameInitConfig，进入重连等待
+        if (wasConnected && this.roomCode) {
+            this._startReconnect();
+            return;
+        }
+
+        // 非对局中断线（连接失败 / 建房等待阶段）→ 完整清理
         this._gameInitConfig = null;
         this._handledInitGen = 0;
         this._lastRemoteVerify = null;
-        if (this._pendingAck) { clearTimeout(this._pendingAck.timer); this._pendingAck = null; }
         if (this.peer) { this.peer.destroy(); this.peer = null; }
         this.roomCode = '';
         if (wasConnected) {
@@ -917,9 +934,69 @@ class P2PController {
         }
     }
 
+    // ─── 断线重连（访客掉线后自动重连 / 房主等待访客回来） ──────────────
+
+    _startReconnect() {
+        if (this._reconnecting) return;
+        this._reconnecting = true;
+        this._reconnectAttempts = 0;
+        if (this.onReconnectingChange) this.onReconnectingChange(true);
+        this._scheduleReconnectAttempt();
+    }
+
+    _scheduleReconnectAttempt() {
+        if (this._disconnecting || this.isConnected) { this._clearReconnectState(); return; }
+        // 30 次 × 3 秒 ≈ 90 秒；超时未恢复 → 放弃重连，判对应方负
+        if (this._reconnectAttempts >= 30) { this._giveUpReconnect(); return; }
+        this._reconnectTimer = setTimeout(() => {
+            if (this._disconnecting || this.isConnected) { this._clearReconnectState(); return; }
+            this._reconnectAttempts++;
+            // 复用 peer 重新连接（PeerJS 会重新打洞建 DataChannel；房间码即目标 peer id）
+            if (this.peer && !this.peer.destroyed && this.roomCode) {
+                try {
+                    const conn = this.peer.connect(this.roomCode, { reliable: true });
+                    this._setupConnection(conn);
+                } catch (e) { console.warn('[P2P] 重连尝试失败:', e.message); }
+            }
+            this._scheduleReconnectAttempt();
+        }, 3000);
+    }
+
+    _giveUpReconnect() {
+        if (!this._reconnecting) return;
+        this._reconnecting = false;
+        clearTimeout(this._reconnectTimer); this._reconnectTimer = null;
+        if (this.onReconnectingChange) this.onReconnectingChange(false);
+        this._gameInitConfig = null;
+        this._handledInitGen = 0;
+        this._lastRemoteVerify = null;
+        if (this.peer) { try { this.peer.destroy(); } catch (e) {} this.peer = null; }
+        this.roomCode = '';
+        // reason='self_reconnect_failed'：自己掉线后重连失败（UI 据此判本方负；
+        // 房主侧等待超时同样走到这里，由 UI 按身份判断：房主→判访客负）
+        this._notifyStatus('disconnected', '连接已断开');
+        if (this.onDisconnected) this.onDisconnected('self_reconnect_failed');
+    }
+
+    _handleReconnectSuccess() {
+        if (!this._reconnecting) return;
+        this._reconnecting = false;
+        clearTimeout(this._reconnectTimer); this._reconnectTimer = null;
+        if (this.onReconnectingChange) this.onReconnectingChange(false);
+        if (this.onReconnected) this.onReconnected();
+        // 重新开局由 UI 层处理：房主端调用 sendGameInit 产生新 gen，
+        // 访客端收到后重新 initGame（避免旧 gen 被去重忽略）
+    }
+
+    _clearReconnectState() {
+        this._reconnecting = false;
+        clearTimeout(this._reconnectTimer); this._reconnectTimer = null;
+    }
+
     disconnect() {
         this._disconnecting = true;
         this._disconnectHandled = true; // 主动断开后，DataChannel close/error 回调不得再重复清理
+        this._clearReconnectState();    // 主动断开时取消重连
         this._clearTimeout();
         clearTimeout(this._watchdogId);  this._watchdogId = null;
         clearInterval(this._pingInterval); this._pingInterval = null;

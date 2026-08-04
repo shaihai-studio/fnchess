@@ -73,6 +73,9 @@ class MatchLobbyController {
         // ── 排行榜回调 ─────────────────────────────────────────
         this.onLeaderboardResult = null;  // (data) => void（收到排行榜查询结果）
         this.onPlayerEloResult = null;    // (data) => void（收到批量 ELO 查询结果）
+
+        // ── 房间解散回调 ───────────────────────────────────────
+        this.onRoomDissolved = null;      // (data) => void（对战方收到房主解散房间）
     }
 
     // ─── 连接管理 ────────────────────────────────────────────
@@ -210,6 +213,9 @@ class MatchLobbyController {
             case 'player_elo_result':
                 if (this.onPlayerEloResult) this.onPlayerEloResult(data);
                 break;
+            case 'room_dissolved':
+                if (this.onRoomDissolved) this.onRoomDissolved(data);
+                break;
         }
     }
 
@@ -299,5 +305,10 @@ class MatchLobbyController {
     /** 批量查询玩家 ELO → 服务器回 player_elo_result */
     queryPlayerElo(playerIds, id) {
         this._send({ type: 'query_player_elo', playerIds: Array.isArray(playerIds) ? playerIds : [], id: String(id) });
+    }
+
+    /** 房主主动解散房间（对局中/等待中退出），服务器会通知对战方与观众 */
+    notifyRoomDissolve() {
+        this._send({ type: 'room_dissolve' });
     }
 }

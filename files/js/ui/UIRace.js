@@ -385,8 +385,13 @@ if (typeof UIController === 'undefined') {
                 }
                 const ttSigma = this.calculateTTSigma();
                 if (Number.isFinite(ttSigma) && ttSigma > 0) {
-                    const profile = PlayerProfile.getProfile();
-                    this._leaderboardService.submitTTSigma(ttSigma, profile.nickname);
+                    // 仅当 TT∑ 星分高于上次已上报值才上报，避免重复请求
+                    const last = Number(localStorage.getItem('function_chess_tt_last_upload') || 0);
+                    if (ttSigma > last) {
+                        try { localStorage.setItem('function_chess_tt_last_upload', String(ttSigma)); } catch (e2) { /* 忽略 */ }
+                        const profile = PlayerProfile.getProfile();
+                        this._leaderboardService.submitTTSigma(ttSigma, profile.nickname);
+                    }
                 }
             } catch (e) { /* 上报失败静默降级，不影响结算界面 */ }
         }

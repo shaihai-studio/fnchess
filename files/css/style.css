@@ -4939,3 +4939,41 @@ body.device-mobile {
     line-height: 1.7;
     text-align: center;
 }
+
+/* ── 访客掉线等待重连 ─────────────────────────────── */
+.p2p-reconnect-text {
+    color: #94a3b8;
+    font-size: 14px;
+    line-height: 1.6;
+    text-align: center;
+}
+.p2p-reconnect-countdown {
+    font-size: 64px;
+    font-weight: 900;
+    line-height: 1.2;
+    color: #fbbf24;
+    margin: 8px 0;
+}
+.p2p-reconnect-tip {
+    color: #f59e0b;
+    font-size: 13px;
+    line-height: 1.6;
+    text-align: center;
+}
+
+/* ── 联机对局主动退出确认 ─────────────────────────────── */
+.p2p-exit-confirm-text {
+    color: #fbbf24;
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1.7;
+    text-align: center;
+}
+.btn-danger {
+    background: rgba(220,38,38,0.85) !important;
+    border-color: rgba(239,68,68,0.8) !important;
+    color: #fff !important;
+}
+.btn-danger:hover {
+    background: rgba(220,38,38,1) !important;
+}

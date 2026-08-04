@@ -311,10 +311,11 @@ function handleQueryLeaderboard(ws, msg) {
     });
 }
 
-/** 若该连接是某房间的房主，移除其房间并通知观众 */
+/** 若该连接是某房间的房主，移除其房间并通知对战方与观众（房主退出不判负，本局作废） */
 function cleanupHost(ws) {
     for (const [code, room] of rooms) {
         if (room.hostWs === ws) {
+            if (room.guestWs) send(room.guestWs, { type: 'room_dissolved', code, reason: 'host_left' });
             for (const sp of room.spectators) {
                 send(sp, { type: 'spectate_ended', code, reason: 'host_left' });
             }
@@ -535,6 +536,25 @@ lobbyWss.on('connection', (ws, req) => {
             // 排行榜：查询榜单 → leaderboard_result
             case 'query_leaderboard': {
                 try { handleQueryLeaderboard(ws, msg); } catch (e) { console.warn('[LB] query_leaderboard 处理异常:', e.message); }
+                break;
+            }
+
+            // 房主主动解散房间（对局中/等待中退出）：通知对战方与观众，房间作废
+            case 'room_dissolve': {
+                try {
+                    for (const [code, room] of rooms) {
+                        if (room.hostWs === ws) {
+                            if (room.guestWs) send(room.guestWs, { type: 'room_dissolved', code, reason: 'host_dissolved' });
+                            for (const sp of room.spectators) {
+                                send(sp, { type: 'spectate_ended', code, reason: 'host_dissolved' });
+                            }
+                            room.spectators.clear();
+                            rooms.delete(code);
+                            console.log(`[Lobby] 房主主动解散房间 ${code}`);
+                            break;
+                        }
+                    }
+                } catch (e) { console.warn('[Lobby] room_dissolve 处理异常:', e.message); }
                 break;
             }
 

@@ -56,7 +56,7 @@ if (typeof UIController === 'undefined') {
             this.exitSpectatorMode();
         };
         lobby.onSpectateEnded = (roomCode, reason) => {
-            this.showMessage('观战结束：房主已关闭观战或离开', 'warning');
+            this.showMessage('观战结束：房主已解散该房间', 'warning');
             this.exitSpectatorMode();
         };
 
