@@ -198,7 +198,7 @@ class GameController {
      * @param {Object} levelPack - levels.txt 解析后的对象
      * @param {number} startLevelId - 起始关卡编号
      */
-    initCampaign(levelPack, startLevelId = 1) {
+    initCampaign(levelPack, startLevelId = 1, isCustom = false) {
         if (!levelPack || !Array.isArray(levelPack.levels)) return false;
 
         // 清空普通对局状态
@@ -212,6 +212,8 @@ class GameController {
         this.campaignState.active = true;
         this.campaignState.levelPack = levelPack;
         this.campaignState.totalLevels = levelPack.levels.length;
+        // 自定义包标记（必须在加载首关前设置，供 loadCampaignLevel 判断）
+        this.campaignState.customPack = isCustom;
         this.players.A.score = 0;
         this.players.B.score = 0;
 
@@ -272,6 +274,14 @@ class GameController {
         this.roundState.targetCell = this.roundState.targetCells[0] || null;
         this.roundState.forbiddenCells = (level.forbiddenCells || []).map(c => ({ x: c.x, y: c.y }));
         this.roundState.lockedElements = (level.lockedElements || []).slice();
+
+        // 分数系列关卡（difficulty = 'fraction'）：强制锁定小数点，要求以分数形式（如 1/2）作答。
+        // 仅官方分数关生效；导入的自定义关卡（customPack）不受影响。
+        if (level.difficulty === 'fraction'
+            && !this.campaignState.customPack
+            && !this.roundState.lockedElements.includes('.')) {
+            this.roundState.lockedElements.push('.');
+        }
 
         // 单人闯关：让玩家A作为构造者
         this.currentPlayer = 'A';

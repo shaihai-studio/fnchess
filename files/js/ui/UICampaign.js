@@ -220,8 +220,10 @@ if (typeof UIController === 'undefined') {
         // 自定义关卡包：不记录 best（通关不写任何进度）
         this.campaignCurrentLevelBestRecord = isCustom ? null : this.getCampaignLevelBestRecord(safeStart);
         this._markGameActive();
-        this.gameController.initCampaign(pack, safeStart);
-        // 标记给 GameController：自定义包不写内置 cleared / LR∑
+        // 第三个参数 isCustom：由 initCampaign 在加载首关前写入 campaignState.customPack，
+        // 供 loadCampaignLevel 区分官方关卡与导入的自定义关卡
+        this.gameController.initCampaign(pack, safeStart, isCustom);
+        // 兜底标记：自定义包不写内置 cleared / LR∑
         if (this.gameController.campaignState) this.gameController.campaignState.customPack = isCustom;
         if (this.gridSystem && this.gridSystem.setCampaignFixedRange) {
             this.gridSystem.setCampaignFixedRange(true);
