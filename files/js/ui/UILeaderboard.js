@@ -199,6 +199,16 @@ if (typeof UIController === 'undefined') {
     }
 ;
 
+// refreshLeaderboardIfOpen：若排行榜当前处于打开状态，立即重新查询并刷新显示
+// （技术分变化后，让玩家无需关闭重开即可看到最新榜单）
+    UIController.prototype.refreshLeaderboardIfOpen = function() {
+        if (!this.leaderboardModal) return;
+        const state = (typeof this._getModalState === 'function') ? this._getModalState(this.leaderboardModal) : '';
+        const open = state === 'visible' || state === 'entering';
+        if (open) this._queryLeaderboard(this._leaderboardBoard || 'lr');
+    }
+;
+
 // _leaderboardSaveNickname
     UIController.prototype._leaderboardSaveNickname = function() {
         if (typeof PlayerProfile === 'undefined') return;

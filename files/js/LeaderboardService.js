@@ -68,12 +68,16 @@ class LeaderboardService {
 
     /** 上报闯关 LR∑ 积分 */
     submitLRSigma(value, nickname) {
-        this.submitScore({ boardType: 'lr', value: Number(value) || 0, nickname: nickname || '' });
+        let playerId = '';
+        if (typeof PlayerProfile !== 'undefined') playerId = PlayerProfile.getPlayerId();
+        this.submitScore({ boardType: 'lr', value: Number(value) || 0, nickname: nickname || '', playerId });
     }
 
     /** 上报竞速 TT∑ 星分 */
     submitTTSigma(value, nickname) {
-        this.submitScore({ boardType: 'tt', value: Number(value) || 0, nickname: nickname || '' });
+        let playerId = '';
+        if (typeof PlayerProfile !== 'undefined') playerId = PlayerProfile.getPlayerId();
+        this.submitScore({ boardType: 'tt', value: Number(value) || 0, nickname: nickname || '', playerId });
     }
 
     /** 查询榜单；boardType: 'lr' | 'tt' | 'elo'；回调收到 leaderboard_result */

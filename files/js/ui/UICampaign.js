@@ -280,6 +280,7 @@ if (typeof UIController === 'undefined') {
                         try { localStorage.setItem('function_chess_lr_last_upload', String(lrSigma)); } catch (e2) { /* 忽略 */ }
                         const profile = PlayerProfile.getProfile();
                         this._leaderboardService.submitLRSigma(lrSigma, profile.nickname);
+                        this.refreshLeaderboardIfOpen();
                     }
                 }
             } catch (e) { /* 上报失败静默降级，不影响结算界面 */ }

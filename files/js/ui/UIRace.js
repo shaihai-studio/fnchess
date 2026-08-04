@@ -391,6 +391,7 @@ if (typeof UIController === 'undefined') {
                         try { localStorage.setItem('function_chess_tt_last_upload', String(ttSigma)); } catch (e2) { /* 忽略 */ }
                         const profile = PlayerProfile.getProfile();
                         this._leaderboardService.submitTTSigma(ttSigma, profile.nickname);
+                        this.refreshLeaderboardIfOpen();
                     }
                 }
             } catch (e) { /* 上报失败静默降级，不影响结算界面 */ }
