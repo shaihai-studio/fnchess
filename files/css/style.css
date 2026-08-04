@@ -1034,6 +1034,7 @@ body::before {
     padding: 80px 20px 20px;
     gap: 18px;
     height: calc(100vh - var(--bottom-bar-height));
+    height: calc(100dvh - var(--bottom-bar-height)); /* 真机 Safari 用动态视口（不含浏览器 UI） */
 }
 
 /* 左侧 Canvas 区域 */
@@ -2074,6 +2075,7 @@ body::before {
     transform-origin: top center;
     width: 100vw;
     height: 100vh;
+    height: 100dvh;
     max-width: 100vw;
     padding: 28px 64px 32px;
     margin: 0;
@@ -2657,6 +2659,17 @@ body::before {
         width: 100% !important;
         min-width: 0 !important;
     }
+    /* 手机端：返回按钮吸底固定，避免被弹出到屏幕外（内容超高时始终可见） */
+    .p2p-back-btn {
+        position: sticky;
+        bottom: 0;
+        z-index: 10;
+        margin-top: 12px !important;
+        background: rgba(15, 23, 42, 0.96);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        box-shadow: 0 -6px 14px rgba(0, 0, 0, 0.35);
+    }
 }
 
 /* 匹配大厅 */
@@ -2681,7 +2694,7 @@ body::before {
 /* 房主常驻状态条（顶部固定） */
 .lobby-host-banner {
     position: fixed; top: 12px; left: 50%; transform: translateX(-50%);
-    z-index: 9999; display: flex; align-items: center; gap: 8px;
+    z-index: 11000; display: flex; align-items: center; gap: 8px;
     padding: 8px 16px; background: rgba(15, 18, 35, 0.92);
     border: 1px solid rgba(234, 179, 8, 0.55); border-radius: 999px;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
@@ -2705,7 +2718,7 @@ body::before {
 /* 观战模式覆盖层（顶部提示条 + 退出按钮） */
 .spectator-overlay {
     position: fixed; top: 12px; left: 50%; transform: translateX(-50%);
-    z-index: 9997; display: flex; align-items: center; gap: 10px;
+    z-index: 10990; display: flex; align-items: center; gap: 10px;
     padding: 8px 16px; background: rgba(30, 41, 59, 0.92);
     border: 1px solid rgba(96, 165, 250, 0.55); border-radius: 999px;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
@@ -2726,13 +2739,23 @@ body::before {
 /* P2P 等待对方回执提示条（屏幕底部中央，避免与顶部房间状态条重叠） */
 .p2p-await-banner {
     position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%);
-    z-index: 9998; display: flex; align-items: center; gap: 8px;
+    z-index: 10995; display: flex; align-items: center; gap: 8px;
     padding: 8px 16px; background: rgba(30, 20, 5, 0.92);
     border: 1px solid rgba(251, 191, 36, 0.6); border-radius: 999px;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
     font-size: 13px; color: #fbbf24; white-space: nowrap;
 }
 .p2p-await-dot { width: 8px; height: 8px; border-radius: 50%; background: #fbbf24; box-shadow: 0 0 8px #fbbf24; animation: lobby-pulse 1.2s infinite; }
+
+/* 常驻浮层可拖动（解决固定顶部/底部遮挡回合信息等关键内容的问题） */
+.lobby-host-banner, .spectator-overlay, .p2p-await-banner {
+    cursor: grab;
+    touch-action: none;
+}
+.lobby-host-banner.dragging, .spectator-overlay.dragging, .p2p-await-banner.dragging {
+    cursor: grabbing;
+    user-select: none;
+}
 
 /* 退出确认弹窗 */
 .p2p-exit-confirm-text { font-size: 15px; color: #e2e8f0; line-height: 1.6; margin: 12px 0 18px; text-align: center; }
@@ -2996,6 +3019,7 @@ body::before {
     max-width: 900px;
     width: 95%;
     max-height: 90vh;
+    max-height: 90dvh;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -3294,6 +3318,7 @@ body::before {
         padding: 80px 20px 20px;
         gap: 14px;
         height: calc(100vh - var(--bottom-bar-height));
+        height: calc(100dvh - var(--bottom-bar-height));
     }
     
     .canvas-section {
@@ -3322,6 +3347,7 @@ body::before {
         padding: 70px 15px 15px;
         gap: 15px;
         height: calc(100vh - 120px);
+        height: calc(100dvh - 120px);
     }
     
     .canvas-section {
@@ -3364,6 +3390,9 @@ body::before {
         gap: 10px;
         height: auto;
         min-height: calc(100vh - 70px);
+        min-height: calc(100dvh - 70px);
+        max-height: calc(100vh - 70px);
+        max-height: calc(100dvh - 70px); /* 内容超高时自身滚动 */
         overflow-y: auto;
         -webkit-overflow-scrolling: touch;
     }
@@ -3372,6 +3401,7 @@ body::before {
         flex: none;
         width: 100%;
         height: 38vh;
+        height: 38dvh;
         min-height: 260px;
         max-height: 420px;
         padding: 12px;
@@ -3468,6 +3498,7 @@ body::before {
     #start-modal .modal-content {
         width: 100vw;
         height: 100vh;
+        height: 100dvh;
         max-width: 100vw;
         padding: 18px 20px 16px;
         display: flex;
@@ -3559,6 +3590,9 @@ body::before {
         gap: 8px;
         height: auto;
         min-height: calc(100vh - 65px);
+        min-height: calc(100dvh - 65px); /* 真机 Safari：dvh 不含状态栏/URL栏/标签栏 */
+        max-height: calc(100vh - 65px);
+        max-height: calc(100dvh - 65px); /* 限制高度，内容超高时自身滚动（body 已 overflow:hidden） */
         overflow-y: auto;
         overflow-x: hidden;
         -webkit-overflow-scrolling: touch;
@@ -3569,6 +3603,7 @@ body::before {
         flex: none;
         width: 100%;
         height: 40vh;
+        height: 40dvh;
         min-height: 230px;
         max-height: 350px;
         padding: 8px;
@@ -3684,10 +3719,21 @@ body::before {
         border: 1px solid rgba(255, 255, 255, 0.2);
         box-shadow: 0 -4px 18px rgba(0, 0, 0, 0.5);
         padding: 10px 14px;
+        /* 底部留出 Home 条安全区，防止按钮被真机 Home 指示条遮挡 */
+        padding-bottom: max(10px, env(safe-area-inset-bottom, 10px));
         margin: 0;
     }
     .control-panel {
-        padding-bottom: 80px !important; /* 留出固定底栏空间，避免遮挡内联元素末尾 */
+        /* 留出固定底栏 + 安全区空间，避免遮挡内联元素末尾（元素按钮区） */
+        padding-bottom: calc(110px + env(safe-area-inset-bottom, 0px)) !important;
+    }
+
+    /* 元素按钮区：内容较多时在小区域内滚动，保证不被底栏挤出屏幕 */
+    .inline-elements-body {
+        max-height: 24dvh;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior: contain;
     }
 
     /* 退出确认气泡 - 移动端适配 */
@@ -3703,9 +3749,11 @@ body::before {
     .modal-content {
         max-width: 95vw;
         max-height: 90vh;
+        max-height: 90dvh; /* 真机 Safari：dvh 不含浏览器 UI，弹窗不被推出屏幕 */
         overflow-y: auto;
         -webkit-overflow-scrolling: touch;
         padding: 24px 18px;
+        padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
     }
 
     #campaign-modal .modal-content,
@@ -3714,6 +3762,7 @@ body::before {
     #game-over-modal .modal-content,
     #campaign-victory-modal .modal-content {
         max-height: 85vh;
+        max-height: 85dvh;
         overflow-y: auto;
         -webkit-overflow-scrolling: touch;
     }
@@ -3760,6 +3809,7 @@ body::before {
     
     .canvas-section {
         height: 35vh;
+        height: 35dvh;
         min-height: 200px;
         max-height: 320px;
     }
@@ -3877,6 +3927,7 @@ body.device-mobile {
     /* 闯关模式模态框内容可滚动 */
     #campaign-modal .modal-content {
         max-height: 90vh;
+        max-height: 90dvh;
         overflow-y: auto;
         -webkit-overflow-scrolling: touch;
         padding: 24px 16px;
@@ -4006,6 +4057,7 @@ body.device-mobile {
     .report-modal-content {
         max-width: 95vw !important;
         max-height: 85vh !important;
+        max-height: 85dvh !important;
     }
     .report-table {
         font-size: 10px;
@@ -4023,6 +4075,7 @@ body.device-mobile {
         /* 顶部 header var(--header-height) + 底部 elements var(--landscape-bottom-bar-max) */
         padding: 60px 12px 0;
         height: calc(100vh - var(--landscape-bottom-bar-max) - var(--landscape-header-height));
+        height: calc(100dvh - var(--landscape-bottom-bar-max) - var(--landscape-header-height));
         overflow-x: hidden;
         overflow-y: scroll;
         overscroll-behavior: contain;
@@ -4041,6 +4094,7 @@ body.device-mobile {
     .control-panel {
         flex: 0 0 45%;
         max-height: calc(100vh - var(--landscape-bottom-bar-max) - var(--landscape-header-height));
+        max-height: calc(100dvh - var(--landscape-bottom-bar-max) - var(--landscape-header-height));
         overflow-y: scroll;
         overscroll-behavior: contain;
         -webkit-overflow-scrolling: touch;
@@ -4063,10 +4117,12 @@ body.device-mobile {
     .main-container {
         padding: 70px 20px 0;
         height: calc(100vh - var(--landscape-bottom-bar-max) - 70px);
+        height: calc(100dvh - var(--landscape-bottom-bar-max) - 70px);
     }
     
     .control-panel {
         max-height: calc(100vh - var(--landscape-bottom-bar-max) - 70px);
+        max-height: calc(100dvh - var(--landscape-bottom-bar-max) - 70px);
         flex: 0 0 38%;
     }
     
@@ -4745,6 +4801,7 @@ body.device-mobile {
 }
 .leaderboard-list {
     max-height: 46vh;
+    max-height: 46dvh;
     overflow-y: auto;
     border: 1px solid rgba(255,255,255,0.1);
     border-radius: 10px;

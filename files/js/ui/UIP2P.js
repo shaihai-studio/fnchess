@@ -1187,12 +1187,13 @@ if (typeof UIController === 'undefined') {
 
 // _p2pSetAwaitBanner
     // 任何同步机制（action ack / 阶段确认 / game_init / 全量快照请求 / health_check）
-    // 在等待对方回复期间显示常驻提示"连接不稳定，正在等待对方回复…"；收到回执后隐藏。
+    // 在等待对方回执期间显示常驻提示"连接不稳定，正在等待对手客户端响应…"；收到回执后隐藏。
     UIController.prototype._p2pSetAwaitBanner = function(awaiting) {
         const banner = document.getElementById('p2p-await-banner');
         if (!banner) return;
         if (awaiting) {
             banner.style.display = 'flex';
+            this._makeDraggable(banner);
         } else {
             banner.style.display = 'none';
         }

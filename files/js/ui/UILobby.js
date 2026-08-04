@@ -297,6 +297,7 @@ if (typeof UIController === 'undefined') {
         if (codeEl) codeEl.textContent = String(code || '------');
         this._hostRoomExpiresAt = Number(expiresAt) || (Date.now() + 300000);
         banner.style.display = 'flex';
+        this._makeDraggable(banner);
         this._startHostRoomBannerTimer();
         this._updateHostRoomBannerTime();
     }

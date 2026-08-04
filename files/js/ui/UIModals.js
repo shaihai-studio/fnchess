@@ -47,6 +47,12 @@ if (typeof UIController === 'undefined') {
         this._modalStack = this._modalStack.filter((m) => m !== el);
         this._modalStack.push(el);
 
+        // 动态层级：最后打开的弹窗始终位于最上层（高于 lobby 横幅/观战浮层/p2p-vs 等 9996~9999，
+        // 但低于首屏 splash 99999）。仅靠 CSS 固定 z-index:1000 时，多弹窗并存会退化为 DOM 顺序，
+        // 导致后开的弹窗反而被先开的盖住。
+        const MODAL_BASE_Z = 10000;
+        el.style.zIndex = String(MODAL_BASE_Z + (this._modalStack.length - 1) * 2);
+
         this._setModalState(el, 'entering');
         el.classList.remove('modal-exiting');
         el.style.display = display;
@@ -428,7 +434,12 @@ if (typeof UIController === 'undefined') {
         const stack = this._modalStack || [];
         for (let i = stack.length - 1; i >= 0; i--) {
             const m = stack[i];
-            if (m && m.style.display !== 'none') return m;
+            if (!m) continue;
+            // 正在退场（exiting）或尚未显示的弹窗不计入“当前最上层”，
+            // 否则退场动画期间会错误地挡住其下弹窗的 ESC 关闭（修复 #39）
+            const st = this._getModalState ? this._getModalState(m) : null;
+            if (st === 'exiting' || st === 'hidden' || st === 'closing') continue;
+            if (m.style.display !== 'none') return m;
         }
         return null;
     }

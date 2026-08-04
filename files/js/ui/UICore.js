@@ -1738,7 +1738,9 @@ if (typeof UIController === 'undefined') {
             ? this.getCampaignFractionClearedMax() : 0;
         const fractionBtn = document.getElementById('campaign-diff-fraction');
         const unsolvableBtn = document.getElementById('campaign-diff-unsolvable');
-        const showFraction = fractionCleared >= 1 || cleared >= 1;
+        // 分数系列关卡需在通关全部"简单"难度（1-29）后才解锁入口
+        const easyEnd = (typeof this.getDifficultyRange === 'function') ? this.getDifficultyRange('easy').end : 29;
+        const showFraction = fractionCleared >= 1 || cleared >= easyEnd;
         const showUnsolvable = cleared >= 81;
         if (fractionBtn) fractionBtn.style.display = showFraction ? '' : 'none';
         if (unsolvableBtn) unsolvableBtn.style.display = showUnsolvable ? '' : 'none';
@@ -1969,4 +1971,91 @@ if (typeof UIController === 'undefined') {
         return names[type] || type;
     }
 ;
+
+// _makeDraggable
+// 让常驻浮层（房间状态条 / 观战条 / P2P 等待回执条）可拖动，避免其固定在
+// 顶部/底部时遮挡游戏内回合信息等关键内容。拖动后的位置用 localStorage 持久化。
+UIController.prototype._makeDraggable = function(el) {
+    if (!el || el._dragBound) return;
+    el._dragBound = true;
+    const KEY = 'dragpos:' + (el.id || 'banner');
+
+    // 恢复上次保存的位置
+    try {
+        const saved = localStorage.getItem(KEY);
+        if (saved) {
+            const p = JSON.parse(saved);
+            if (typeof p.left === 'number' && typeof p.top === 'number') {
+                el.style.left = p.left + 'px';
+                el.style.top = p.top + 'px';
+                el.style.right = 'auto';
+                el.style.bottom = 'auto';
+                el.style.transform = 'none';
+            }
+        }
+    } catch (e) {}
+
+    let startX = 0, startY = 0, originLeft = 0, originTop = 0, dragging = false;
+    const pointFrom = (e) => (e.touches ? e.touches[0] : e);
+
+    const onDown = (e) => {
+        // 交互元素（按钮/开关/链接）不触发拖动
+        if (e.target.closest && e.target.closest('button, input, label, a, .btn')) return;
+        if (e.button !== undefined && e.button !== 0 && !e.touches) return; // 仅左键/触摸
+        const pt = pointFrom(e);
+        const rect = el.getBoundingClientRect();
+        // 改为用 left/top 接管定位（覆盖 CSS 的居中 transform）
+        el.style.left = rect.left + 'px';
+        el.style.top = rect.top + 'px';
+        el.style.right = 'auto';
+        el.style.bottom = 'auto';
+        el.style.transform = 'none';
+        originLeft = rect.left;
+        originTop = rect.top;
+        startX = pt.clientX;
+        startY = pt.clientY;
+        dragging = true;
+        el.classList.add('dragging');
+        if (el.setPointerCapture && e.pointerId !== undefined) {
+            try { el.setPointerCapture(e.pointerId); } catch (err) {}
+        }
+        e.preventDefault();
+    };
+
+    const onMove = (e) => {
+        if (!dragging) return;
+        const pt = pointFrom(e);
+        let nl = originLeft + (pt.clientX - startX);
+        let nt = originTop + (pt.clientY - startY);
+        const w = el.offsetWidth, h = el.offsetHeight;
+        nl = Math.max(0, Math.min(nl, window.innerWidth - w));
+        nt = Math.max(0, Math.min(nt, window.innerHeight - h));
+        el.style.left = nl + 'px';
+        el.style.top = nt + 'px';
+        if (e.cancelable) e.preventDefault();
+    };
+
+    const onUp = () => {
+        if (!dragging) return;
+        dragging = false;
+        el.classList.remove('dragging');
+        try {
+            localStorage.setItem(KEY, JSON.stringify({
+                left: parseFloat(el.style.left) || 0,
+                top: parseFloat(el.style.top) || 0
+            }));
+        } catch (e2) {}
+    };
+
+    if (window.PointerEvent) {
+        el.addEventListener('pointerdown', onDown);
+        el.addEventListener('pointermove', onMove);
+        el.addEventListener('pointerup', onUp);
+        el.addEventListener('pointercancel', onUp);
+    } else {
+        el.addEventListener('mousedown', onDown);
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onUp);
+    }
+};
 

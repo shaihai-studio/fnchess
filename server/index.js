@@ -45,7 +45,7 @@ const peerServer = ExpressPeerServer(server, {
     path: '/',
     // 允许任意 API key（前端默认使用 'peerjs'）
     allow_discovery: true,
-    proxied: false,
+    proxied: true,
     // 让 PeerJS 内部 wss 使用 noServer 模式，避免它拦截 /lobby 的 Upgrade
     createWebSocketServer: (options) => {
         peerWss = new WebSocketServer({ noServer: true, path: options.path });

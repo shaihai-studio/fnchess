@@ -738,8 +738,8 @@ if (typeof UIController === 'undefined') {
                 this.showRaceLevelList();
                 return;
             }
-            // 返回主页
-            this.showModal(this.startModal);
+            // 返回主页（若已重新进入观战，则不再弹回主页，避免覆盖观战界面）
+            if (!this._isSpectating) this.showModal(this.startModal);
         });
     }
 ;

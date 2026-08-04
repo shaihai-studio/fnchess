@@ -648,21 +648,22 @@ if (typeof UIController === 'undefined') {
         const total = this.campaignPack && Array.isArray(this.campaignPack.levels) ? this.campaignPack.levels.length : 0;
         const isFraction = this.campaignDifficulty === 'fraction';
 
-        // 分数关用独立进度。但允许：整数关通关后（≥1 关）就解锁分数关 1/2 作为入口，
+        // 分数关用独立进度，但仅在通关全部"简单"难度（1-29，cleared>=29）后才解锁入口；
         // 否则仅看分数关自身进度——避免"整数关打通了分数关却因分数关自身零进度而整页锁死"。
+        const easyEnd = (typeof this.getDifficultyRange === 'function') ? this.getDifficultyRange('easy').end : 29;
         const fracCleared = isFraction
             ? (typeof this.getCampaignFractionClearedMax === 'function' ? this.getCampaignFractionClearedMax() : 0)
             : 0;
         const fracOwnUnlocked = typeof this.getCampaignFractionUnlockedMax === 'function'
             ? this.getCampaignFractionUnlockedMax() : 2;
         const fracUnlocked = isFraction
-            ? Math.max(fracOwnUnlocked, cleared >= 1 ? 2 : 1)
+            ? Math.max(fracOwnUnlocked, cleared >= easyEnd ? 2 : 1)
             : 2;
 
         if (isFraction) {
             const enterHint = fracCleared >= 1
                 ? `当前可进入 1/${fracUnlocked}`
-                : (cleared >= 1 ? `当前可进入 1/2（从整数关解锁）` : `当前可进入 1/${fracUnlocked}`);
+                : (cleared >= easyEnd ? `当前可进入 1/2（通关全部简单难度解锁）` : `当前可进入 1/${fracUnlocked}`);
             this.campaignLevelProgress.textContent = `已通关 ${fracCleared}/19，${enterHint}`;
         } else {
             const unlockedMax = Math.min(total, cleared + 1);

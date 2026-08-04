@@ -10,8 +10,15 @@ if (typeof UIController === 'undefined') {
 // enterSpectatorMode
     // 观众进入观战：关闭主页/联机弹窗 → 初始化只读 GameController → 加入观战频道
     UIController.prototype.enterSpectatorMode = function(code) {
-        // 观战中不可再进入
-        if (this._isSpectating) return;
+        // 已处于观战（重复进入 / 退出后重进）时，先干净地退出旧频道再重新加入，
+        // 避免叠加监听、状态残留导致第二次进入卡死或收不到快照。
+        if (this._isSpectating) {
+            try {
+                if (this._lobby && this._spectatorCode) this._lobby.leaveSpectate(this._spectatorCode);
+            } catch (e) {}
+            this._isSpectating = false;
+            this._spectatorCode = null;
+        }
         const lobby = this._lobby;
         if (!lobby || !lobby.isConnected) {
             this.showMessage('大厅未连接，无法观战', 'error');
@@ -21,6 +28,11 @@ if (typeof UIController === 'undefined') {
         this._isSpectating = true;
         // 观战状态下禁用 P2P 相关操作入口
         this.isP2PMode = false;
+        // 观众端必须作为「纯被动接收方」：清掉可能残留的 p2pActionSender，
+        // 否则 loadStateSnapshot 会误判为操作方而走版本过滤、把房主真实快照拒掉 → 棋盘不刷新。
+        if (this.gameController) this.gameController.p2pActionSender = null;
+        // 观战期间允许 UI 更新 / 特效正常触发（forceStopGame 曾把 _gameActive 置为 false）
+        this._gameActive = true;
 
         // 清理可能残留的 P2P / 关卡编辑器状态
         if (this.levelEditor) this.levelEditor.deactivate();
@@ -64,7 +76,7 @@ if (typeof UIController === 'undefined') {
         this.hideStartModal();
         const overlay = document.getElementById('spectator-overlay');
         const watermark = document.getElementById('spectator-watermark');
-        if (overlay) overlay.style.display = 'flex';
+        if (overlay) { overlay.style.display = 'flex'; this._makeDraggable(overlay); }
         if (watermark) watermark.style.display = 'block';
         this._bindSpectatorButtons();
         this._updateSpectatorRoomCode(this._spectatorCode);
