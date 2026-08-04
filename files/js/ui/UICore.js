@@ -885,6 +885,11 @@ if (typeof UIController === 'undefined') {
             if (window.audioManager) window.audioManager.playGameWin();
             const finishGameOver = () => this.showGameOver(data);
 
+            // 排行榜：联机对局结束，仅房主（Host）唯一上报 ELO 结果（服务器按房间码去重）
+            if (this.isP2PMode && this.p2pController && this.p2pController.isHost && this._leaderboardService) {
+                this._submitP2PELO(data);
+            }
+
             // Summa Reaction Hook
             if (this.gameController.gameMode === 'ai' && window.summaCharacter) {
                 const summa = window.summaCharacter;
@@ -904,6 +909,53 @@ if (typeof UIController === 'undefined') {
             }
             finishGameOver();
         });
+    }
+;
+
+// _submitP2PELO
+    UIController.prototype._submitP2PELO = function(data) {
+        if (typeof PlayerProfile === 'undefined') return;
+        const p2p = this.p2pController;
+        if (!p2p || !data || !data.scores) return;
+        const profile = PlayerProfile.getProfile();
+        const opp = this._p2pOpponentProfile;
+        // 对手身份未交换成功（异常情况）→ 静默跳过，不上报
+        if (!opp || !opp.playerId) return;
+
+        const scoreA = Number(data.scores.A) || 0;
+        const scoreB = Number(data.scores.B) || 0;
+        const winner = scoreA > scoreB ? 'A' : (scoreB > scoreA ? 'B' : 'draw');
+
+        // roomCode + 对局 gen 组成唯一结算键：防止 rematch（房间码不变）被服务器去重误伤
+        const roomKey = (p2p.roomCode || 'room') + '#' + (p2p._gen || 0);
+        this._leaderboardService.submitScore({
+            boardType: 'elo',
+            playerId: profile.playerId,
+            nickname: profile.nickname,
+            opponentPlayerId: opp.playerId,
+            opponentNickname: opp.nickname || '棋手',
+            scoreA,
+            scoreB,
+            winner,
+            roomCode: roomKey
+        });
+    }
+;
+
+// calculateTTSigma
+    UIController.prototype.calculateTTSigma = function() {
+        const gc = this.gameController;
+        if (!gc || typeof gc.getRaceBestTime !== 'function') return 0;
+        let sum = 0;
+        for (let lv = 1; lv <= 30; lv++) {
+            let best;
+            try { best = gc.getRaceBestTime(lv); } catch (e) { best = Infinity; }
+            if (Number.isFinite(best) && best > 0) {
+                const stars = (typeof gc.getRaceStarsByElapsed === 'function') ? gc.getRaceStarsByElapsed(best) : 1;
+                sum += Number(stars) || 0;
+            }
+        }
+        return sum;
     }
 ;
 

@@ -370,6 +370,26 @@ if (typeof UIController === 'undefined') {
         const nextBtn = document.getElementById('race-victory-next-btn');
         if (nextBtn) nextBtn.textContent = this.raceIsCustom ? '返回选关' : '进入下一等级';
         this.renderRaceVictoryDetails(data, { levelId, elapsed, totalSolved, previousBestTime, hasPreviousBest, diff, isNewRecord });
+        // 排行榜：竞速通关后把 TT∑ 星分累计写回进度（与竞速内部星级规则一致），并自动上报
+        // （自定义竞速关不记录最佳成绩，不参与官方 TT∑ 榜）
+        if (!this.raceIsCustom && this._leaderboardService && typeof PlayerProfile !== 'undefined') {
+            try {
+                const gc = this.gameController;
+                const lv = Number(data.levelId || this.raceCurrentLevelId || 1);
+                if (gc && typeof gc.getRaceProgress === 'function' && typeof gc.setRaceProgress === 'function') {
+                    const prev = gc.getRaceProgress();
+                    const ttSigma = this.calculateTTSigma();
+                    if (ttSigma > 0) {
+                        gc.setRaceProgress({ cleared: Math.max(prev.cleared || 0, lv), stars: ttSigma });
+                    }
+                }
+                const ttSigma = this.calculateTTSigma();
+                if (Number.isFinite(ttSigma) && ttSigma > 0) {
+                    const profile = PlayerProfile.getProfile();
+                    this._leaderboardService.submitTTSigma(ttSigma, profile.nickname);
+                }
+            } catch (e) { /* 上报失败静默降级，不影响结算界面 */ }
+        }
         this.showModal(this.raceVictoryModal);
     }
 ;

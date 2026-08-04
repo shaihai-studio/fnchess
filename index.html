@@ -218,6 +218,9 @@
                         <button class="bgm-float-btn start-bgm-btn" id="start-bgm-open-btn" type="button" aria-label="背景音乐设置" title="背景音乐设置">
                             <img src="files/images/VolumeButton.png" alt="背景音乐设置" class="bgm-float-icon-img">
                         </button>
+                        <button class="bgm-float-btn" id="leaderboard-open-btn" type="button" aria-label="在线排行榜" title="在线排行榜">
+                            <span class="leaderboard-open-icon">榜</span>
+                        </button>
                     </div>
 
                     <div class="mode-select start-modes-right">
@@ -485,6 +488,27 @@
             <h2>游戏报告</h2>
             <div id="report-content"></div>
             <button class="btn btn-secondary" id="close-report-btn" style="width: 100%; margin-top: 20px;">关闭</button>
+        </div>
+    </div>
+
+    <!-- 在线排行榜模态框 -->
+    <div class="modal" id="leaderboard-modal" style="display: none;">
+        <div class="modal-content leaderboard-modal-content">
+            <h2>在线排行榜</h2>
+            <div class="leaderboard-tabs">
+                <button class="leaderboard-tab active" data-board="lr">LR∑ 闯关</button>
+                <button class="leaderboard-tab" data-board="tt">TT∑ 竞速</button>
+                <button class="leaderboard-tab" data-board="elo">ELO 联机</button>
+            </div>
+            <div class="leaderboard-me">
+                <span class="leaderboard-me-label">我的昵称</span>
+                <input type="text" id="leaderboard-nickname-input" maxlength="16" placeholder="输入昵称后保存" autocomplete="off">
+                <button class="btn btn-small" id="leaderboard-nickname-save" type="button">保存</button>
+            </div>
+            <div id="leaderboard-list" class="leaderboard-list"></div>
+            <div id="leaderboard-myrank" class="leaderboard-myrank"></div>
+            <div class="leaderboard-tip">闯关通关自动上报 LR∑ · 竞速通关自动上报 TT∑ · 联机对局房主自动上报 ELO</div>
+            <button class="btn btn-secondary" id="leaderboard-close-btn" style="width: 100%; margin-top: 16px;">关闭</button>
         </div>
     </div>
 
@@ -832,6 +856,10 @@
     <script src="files/js/ui/UIRace.js"></script>
     <script src="files/js/ui/UIP2P.js"></script>
     <script src="files/js/ui/UILobby.js"></script>
+    <!-- 排行榜：身份 + 数据服务 + UI（UILeaderboard 依赖 UIController 原型） -->
+    <script src="files/js/PlayerProfile.js"></script>
+    <script src="files/js/LeaderboardService.js"></script>
+    <script src="files/js/ui/UILeaderboard.js"></script>
     <script src="files/js/ui/UISpectator.js"></script>
 <script src="files/js/ui/UICore.js"></script>
 <script src="files/js/ui/UIEditor.js"></script>
@@ -850,6 +878,9 @@
             uiController.raceModeController = new RaceModeController(gridSystem);
             uiController.p2pController = null;
             uiController._lobby = new MatchLobbyController();
+            // 排行榜服务（复用 lobby WebSocket 通道）+ 排行榜 UI 初始化
+            uiController._leaderboardService = new LeaderboardService(uiController._lobby);
+            uiController.initLeaderboard();
 
             // 创建Summa训练器
             const summaTrainer = new SummaTrainer(gameController, gridSystem);

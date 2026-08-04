@@ -135,6 +135,8 @@ class P2PController {
         this.onTimeout      = null;  // (player) => void
         this.onRematch      = null;  // () => void
         this.onSyncRequest  = null;  // () => void
+        // 对手身份（排行榜 ELO 上报用）：(payload) => void，payload={playerId, nickname}
+        this.onPlayerInfo   = null;  // (payload) => void
         // 返回当前状态指纹 { version, round, player, phase }，未初始化返回 null（用于 sync_verify）
         this.onGetVerifyState = null;
         // 健康探测回执（收到即认为对方进程/连接仍在）
@@ -508,6 +510,11 @@ class P2PController {
 
             case 'rematch_request':
                 if (this.onRematch) this.onRematch();
+                break;
+
+            case 'player_info':
+                // 对手身份交换（排行榜 ELO 上报用）：访客收到 game_init 后回传自己的身份
+                if (this.onPlayerInfo) this.onPlayerInfo(data.payload || {});
                 break;
 
             default:

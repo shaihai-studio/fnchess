@@ -269,6 +269,16 @@ if (typeof UIController === 'undefined') {
         this.campaignVictoryModal.dataset.stars = String(starCount);
         this.campaignVictoryModal.dataset.length = String(length);
         this.campaignVictoryModal.dataset.isFraction = isFraction ? '1' : '0';
+        // 排行榜：通关后自动上报 LR∑（官方关卡；自制关卡不参与官方排行榜）
+        if (!isCustom && this._leaderboardService && typeof PlayerProfile !== 'undefined') {
+            try {
+                const lrSigma = this.calculateLRSigma(this.getCampaignClearedMax());
+                if (Number.isFinite(lrSigma) && lrSigma > 0) {
+                    const profile = PlayerProfile.getProfile();
+                    this._leaderboardService.submitLRSigma(lrSigma, profile.nickname);
+                }
+            } catch (e) { /* 上报失败静默降级，不影响结算界面 */ }
+        }
         this.showModal(this.campaignVictoryModal);
     }
 ;

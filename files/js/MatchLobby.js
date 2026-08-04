@@ -70,6 +70,8 @@ class MatchLobbyController {
         this.onSpectateEnded = null;      // (code, reason) => void（观战结束：房主关闭/断线）
         this.onSpectateJoined = null;     // (code) => void（观众加入成功）
         this.onSpectateJoinRejected = null;// (code, reason) => void（观众加入被拒）
+        // ── 排行榜回调 ─────────────────────────────────────────
+        this.onLeaderboardResult = null;  // (data) => void（收到排行榜查询结果）
     }
 
     // ─── 连接管理 ────────────────────────────────────────────
@@ -201,6 +203,9 @@ class MatchLobbyController {
             case 'spectate_join_rejected':
                 if (this.onSpectateJoinRejected) this.onSpectateJoinRejected(String(data.code), data.reason);
                 break;
+            case 'leaderboard_result':
+                if (this.onLeaderboardResult) this.onLeaderboardResult(data);
+                break;
         }
     }
 
@@ -273,5 +278,17 @@ class MatchLobbyController {
     /** 观众退出观战 */
     leaveSpectate(code) {
         this._send({ type: 'spectate_leave', code: String(code) });
+    }
+
+    // ─── 排行榜 API ────────────────────────────────────────────
+
+    /** 上报成绩（boardType: 'lr' | 'tt' | 'elo'，其余字段由调用方提供） */
+    submitScore(payload) {
+        this._send(Object.assign({ type: 'submit_score' }, payload || {}));
+    }
+
+    /** 查询榜单 → 服务器回 leaderboard_result */
+    queryLeaderboard(boardType, playerId, id) {
+        this._send({ type: 'query_leaderboard', boardType: String(boardType), playerId: String(playerId), id: String(id) });
     }
 }

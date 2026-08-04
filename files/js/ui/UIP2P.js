@@ -68,12 +68,26 @@ if (typeof UIController === 'undefined') {
         // 收到游戏初始化（访客端）
         p2p.onGameInit = (config) => {
             this.gameController.setP2PController(p2p);
+            // 排行榜：记录房主身份，并把自己的身份回传给房主（房主在 gameEnd 时上报 ELO）
+            if (config && config.playerId) {
+                this._p2pOpponentProfile = { playerId: String(config.playerId), nickname: config.nickname || '棋手' };
+            }
+            if (!p2p.isHost && typeof PlayerProfile !== 'undefined') {
+                const profile = PlayerProfile.getProfile();
+                p2p.send({ type: 'player_info', payload: { playerId: profile.playerId, nickname: profile.nickname } });
+            }
             // 应用对手共享的时间限制模式
             if (config?.timeLimitMode && this.gameController) {
                 this.gameController.timeLimitMode = config.timeLimitMode;
             }
             this.gameController.initGame(config.rounds || 8, config.difficulty || 'normal', 'p2p');
             this.showMessage('收到对手游戏配置，开始对战！');
+        };
+        // 排行榜：房主收到访客回传的身份
+        p2p.onPlayerInfo = (info) => {
+            if (info && info.playerId) {
+                this._p2pOpponentProfile = { playerId: String(info.playerId), nickname: info.nickname || '棋手' };
+            }
         };
         // 计时同步：非操作方仅显示对手驱动的倒计时
         p2p.onTimerSync = (remainingTime) => {
@@ -313,7 +327,14 @@ if (typeof UIController === 'undefined') {
             const timeLimitMode = this._getP2PTimeLimitMode();
             if (this.gameController) this.gameController.timeLimitMode = timeLimitMode;
             this.gameController.initGame(rounds, difficulty, 'p2p');
-            p2p.sendGameInit({ rounds, difficulty, timeLimitMode });
+            // 排行榜：房主把自己的身份随 game_init 发给访客，供访客回传身份（ELO 上报需要）
+            let hostProfile = null;
+            if (typeof PlayerProfile !== 'undefined') hostProfile = PlayerProfile.getProfile();
+            p2p.sendGameInit({
+                rounds, difficulty, timeLimitMode,
+                playerId: hostProfile ? hostProfile.playerId : '',
+                nickname: hostProfile ? hostProfile.nickname : ''
+            });
         }
     }
 ;
