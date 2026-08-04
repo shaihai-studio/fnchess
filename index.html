@@ -550,6 +550,24 @@
         </div>
     </div>
     
+    <!-- 选择联机对战模式：排位 / 休闲 -->
+    <div class="modal" id="p2p-mode-select-modal" style="display:none;">
+        <div class="modal-content" style="max-width:460px;text-align:center;">
+            <h2>选择对战模式</h2>
+            <p class="p2p-mode-select-desc">排位模式计入 ELO 积分并参与排行榜；休闲模式不计算任何 ELO。</p>
+            <div class="p2p-mode-select-btns">
+                <button class="p2p-mode-select-btn ranked" id="p2p-mode-select-ranked" type="button">
+                    <span class="p2p-mode-select-title">排位模式</span>
+                    <span class="p2p-mode-select-sub">计 ELO · 可上排行榜</span>
+                </button>
+                <button class="p2p-mode-select-btn casual" id="p2p-mode-select-casual" type="button">
+                    <span class="p2p-mode-select-title">休闲模式</span>
+                    <span class="p2p-mode-select-sub">不计 ELO · 娱乐对局</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- 打开联机模式时的提示弹窗 -->
     <div class="modal" id="p2p-warning-modal" style="display:none;">
         <div class="modal-content" style="max-width:400px;text-align:center;">
@@ -587,13 +605,6 @@
                             <button type="button" class="stepper-arrow" id="p2p-time-limit-prev" aria-label="调整时间限制">←</button>
                             <div class="stepper-value" id="p2p-time-limit-value" tabindex="0">普通棋</div>
                             <button type="button" class="stepper-arrow" id="p2p-time-limit-next" aria-label="调整时间限制">→</button>
-                        </div>
-                    </div>
-                    <div class="selector-row">
-                        <div class="stepper-selector" id="p2p-mode-stepper" tabindex="0">
-                            <button type="button" class="stepper-arrow" id="p2p-mode-prev" aria-label="切换对局模式">←</button>
-                            <div class="stepper-value" id="p2p-mode-value" tabindex="0">排位模式（计 ELO）</div>
-                            <button type="button" class="stepper-arrow" id="p2p-mode-next" aria-label="切换对局模式">→</button>
                         </div>
                     </div>
                 </div>

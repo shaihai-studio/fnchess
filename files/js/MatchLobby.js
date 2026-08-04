@@ -76,6 +76,9 @@ class MatchLobbyController {
 
         // ── 房间解散回调 ───────────────────────────────────────
         this.onRoomDissolved = null;      // (data) => void（对战方收到房主解散房间）
+
+        // ── 大厅模式过滤 ──────────────────────────────────────
+        this.currentLobbyMode = null;     // 'ranked' | 'casual' | null（拉取/加入房间时按此过滤）
     }
 
     // ─── 连接管理 ────────────────────────────────────────────
@@ -227,9 +230,11 @@ class MatchLobbyController {
         }
     }
 
-    /** 房主登记房间（options: {rounds,difficulty,timeLimitMode}） */
+    /** 房主登记房间（options: {rounds,difficulty,timeLimitMode,mode}；mode=排位/休闲） */
     hostRegister(options) {
-        this._send({ type: 'host_register', options: options || {} });
+        const opts = options || {};
+        if (this.currentLobbyMode && !opts.mode) opts.mode = this.currentLobbyMode;
+        this._send({ type: 'host_register', options: opts });
     }
 
     /** 房主取消登记 */
@@ -239,14 +244,14 @@ class MatchLobbyController {
         this.myRoomExpiresAt = 0;
     }
 
-    /** 拉取房间列表 */
+    /** 拉取房间列表（按当前大厅模式过滤：休闲看不到排位房间，反之亦然） */
     fetchRooms() {
-        this._send({ type: 'list_rooms' });
+        this._send({ type: 'list_rooms', mode: this.currentLobbyMode || null });
     }
 
-    /** 访客申请加入 */
+    /** 访客申请加入（带模式，服务器校验匹配） */
     joinRoom(code) {
-        this._send({ type: 'join_request', code: String(code) });
+        this._send({ type: 'join_request', code: String(code), mode: this.currentLobbyMode || null });
     }
 
     /** 访客取消加入 */

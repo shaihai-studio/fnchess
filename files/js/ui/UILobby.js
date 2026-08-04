@@ -14,6 +14,8 @@ if (typeof UIController === 'undefined') {
         const lobby = this._lobby;
         // 每次进入大厅先重置状态文本，避免残留上一局的"正在连接房间 xxx"
         this._updateLobbyStatus('idle', '正在连接大厅...');
+        // 大厅按对局模式过滤：休闲玩家看不到排位房间（反之亦然）
+        lobby.currentLobbyMode = this._getP2PMode();
         lobby.onConnectionChange = (connected) => this._renderLobbyStatus(connected);
         lobby.onRoomsUpdate = (rooms) => this._renderLobbyRooms(rooms);
         lobby.onHostRegistered = (code, expiresAt) => this._onLobbyHostRegistered(code, expiresAt);
@@ -179,7 +181,7 @@ if (typeof UIController === 'undefined') {
         const btn = document.getElementById('lobby-create-btn');
         if (btn) btn.disabled = true;
         this._updateLobbyStatus('creating', '正在向大厅登记房间...');
-        lobby.hostRegister({ rounds, difficulty, timeLimitMode, longLived, allowSpectate });
+        lobby.hostRegister({ rounds, difficulty, timeLimitMode, longLived, allowSpectate, mode: this._getP2PMode() });
     }
 ;
 

@@ -4940,6 +4940,66 @@ body.device-mobile {
     text-align: center;
 }
 
+/* ── 联机对战模式选择弹窗（排位/休闲） ─────────────────── */
+#p2p-mode-select-modal .modal-content {
+    max-width: 460px;
+}
+.p2p-mode-select-desc {
+    color: #94a3b8;
+    font-size: 14px;
+    line-height: 1.6;
+    text-align: center;
+    margin-bottom: 16px;
+}
+.p2p-mode-select-btns {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.p2p-mode-select-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 16px 12px;
+    border-radius: 12px;
+    border: 1px solid rgba(255,255,255,0.16);
+    background: rgba(255,255,255,0.06);
+    cursor: pointer;
+    transition: all .15s;
+}
+.p2p-mode-select-btn:hover {
+    background: rgba(255,255,255,0.12);
+    transform: translateY(-1px);
+}
+.p2p-mode-select-title {
+    font-size: 18px;
+    font-weight: 800;
+}
+.p2p-mode-select-sub {
+    font-size: 12px;
+    font-weight: 600;
+    opacity: .85;
+}
+.p2p-mode-select-btn.ranked {
+    color: #fbbf24;
+    border-color: rgba(245,158,11,0.55);
+    background: rgba(245,158,11,0.16);
+}
+.p2p-mode-select-btn.ranked:hover {
+    background: rgba(245,158,11,0.28);
+    box-shadow: 0 0 18px rgba(245,158,11,0.3);
+}
+.p2p-mode-select-btn.casual {
+    color: #60a5fa;
+    border-color: rgba(59,130,246,0.5);
+    background: rgba(59,130,246,0.14);
+}
+.p2p-mode-select-btn.casual:hover {
+    background: rgba(59,130,246,0.26);
+    box-shadow: 0 0 18px rgba(59,130,246,0.28);
+}
+
 /* ── 访客掉线等待重连 ─────────────────────────────── */
 .p2p-reconnect-text {
     color: #94a3b8;

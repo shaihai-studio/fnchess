@@ -382,8 +382,10 @@ lobbyWss.on('connection', (ws, req) => {
             }
 
             // 访客拉取房间列表（等待中的房间 + 对局中且开启观战的房间）
+            // mode 过滤：休闲玩家看不到排位房间，反之亦然（未标记模式的老房间按排位处理）
             case 'list_rooms': {
                 const now = Date.now();
+                const modeFilter = msg.mode === 'casual' ? 'casual' : (msg.mode === 'ranked' ? 'ranked' : null);
                 const list = [];
                 for (const [code, room] of rooms) {
                     if (room.expiresAt && now >= room.expiresAt) {
@@ -393,6 +395,10 @@ lobbyWss.on('connection', (ws, req) => {
                     const isWaiting = room.status === 'waiting';
                     const isSpectatable = room.status === 'playing' && room.spectateEnabled;
                     if (!isWaiting && !isSpectatable) continue;
+                    if (modeFilter) {
+                        const roomMode = (room.options && room.options.mode) || 'ranked';
+                        if (roomMode !== modeFilter) continue;
+                    }
                     list.push({
                         code: room.code,
                         options: room.options,
@@ -406,12 +412,19 @@ lobbyWss.on('connection', (ws, req) => {
                 break;
             }
 
-            // 访客申请加入
+            // 访客申请加入（校验模式匹配：休闲/排位不能混搭）
             case 'join_request': {
                 const room = rooms.get(String(msg.code));
                 if (!room) {
                     send(ws, { type: 'join_rejected', code: String(msg.code), reason: 'room_not_available' });
                     return;
+                }
+                if (msg.mode === 'casual' || msg.mode === 'ranked') {
+                    const roomMode = (room.options && room.options.mode) || 'ranked';
+                    if (roomMode !== msg.mode) {
+                        send(ws, { type: 'join_rejected', code: String(msg.code), reason: 'mode_mismatch' });
+                        return;
+                    }
                 }
                 if (room.expiresAt && Date.now() >= room.expiresAt) {
                     rooms.delete(String(msg.code));

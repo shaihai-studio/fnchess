@@ -10,6 +10,29 @@ if (typeof UIController === 'undefined') {
             this.showMessage('P2P模块未加载', 'error');
             return;
         }
+        // 进入联机模式：先弹"选择对战模式"（排位/休闲），选完再进联机主界面。
+        // 休闲模式玩家在匹配大厅看不到排位房间（反之亦然），由服务器按 mode 过滤。
+        const sel = document.getElementById('p2p-mode-select-modal');
+        if (sel) {
+            const pick = (mode) => {
+                this._p2pMatchMode = mode;
+                this.hideModal(sel);
+                this._proceedP2PRoomModal();
+            };
+            const btnR = document.getElementById('p2p-mode-select-ranked');
+            const btnC = document.getElementById('p2p-mode-select-casual');
+            if (btnR) btnR.onclick = () => { if (window.audioManager) window.audioManager.playClick(); pick('ranked'); };
+            if (btnC) btnC.onclick = () => { if (window.audioManager) window.audioManager.playClick(); pick('casual'); };
+            this.showModal(sel);
+            return;
+        }
+        this._proceedP2PRoomModal();
+    }
+;
+
+// _proceedP2PRoomModal
+    UIController.prototype._proceedP2PRoomModal = function() {
+        if (typeof P2PController === 'undefined') return;
         // 退出可能残留的关卡编辑器 UI
         if (this.levelEditor) this.levelEditor.deactivate();
         // 观战开关默认开启（房主默认允许观战，进入大厅建房时可取消勾选）
@@ -415,8 +438,6 @@ if (typeof UIController === 'undefined') {
         // 取一次 stepper 元素引用（懒加载，DOM 在 showP2PRoomModal 时已存在）
         this.p2pRoundStepper = document.getElementById('p2p-round-stepper');
         this.p2pRoundValue = document.getElementById('p2p-round-value');
-        this.p2pModeStepper = document.getElementById('p2p-mode-stepper');
-        this.p2pModeValue = document.getElementById('p2p-mode-value');
         this.p2pDifficultyStepper = document.getElementById('p2p-difficulty-stepper');
         this.p2pDifficultyValue = document.getElementById('p2p-difficulty-value');
         this.p2pTimeLimitStepper = document.getElementById('p2p-time-limit-stepper');
@@ -537,16 +558,6 @@ if (typeof UIController === 'undefined') {
             const t = theme.time[timeOpt.value] || theme.time.normal;
             applyArrowTheme('p2p-time-limit-prev', 'p2p-time-limit-next', this.p2pTimeLimitValue, t);
         }
-        // 对局模式：排位=金色，休闲=灰色
-        const modeOpt = (this._p2pModeOptions || [])[this.p2pCurrentModeIndex ?? 0];
-        if (modeOpt && this.p2pModeValue) {
-            this.p2pModeValue.textContent = modeOpt.label;
-            this.p2pModeValue.dataset.value = modeOpt.value;
-            const mt = modeOpt.value === 'ranked'
-                ? { bg: 'rgba(245, 158, 11, 0.14)', fg: '#d9a441', shadow: 'rgba(245,158,11,0.22)' }
-                : { bg: 'rgba(148, 163, 184, 0.12)', fg: '#94a3b8', shadow: 'rgba(148,163,184,0.15)' };
-            applyArrowTheme('p2p-mode-prev', 'p2p-mode-next', this.p2pModeValue, mt);
-        }
     }
 ;
 
@@ -563,29 +574,13 @@ if (typeof UIController === 'undefined') {
         bind('p2p-difficulty-next', () => this._stepP2PDifficulty(1));
         bind('p2p-time-limit-prev', () => this._stepP2PTimeLimit(-1));
         bind('p2p-time-limit-next', () => this._stepP2PTimeLimit(1));
-        bind('p2p-mode-prev', () => this._stepP2PMode(-1));
-        bind('p2p-mode-next', () => this._stepP2PMode(1));
-    }
-;
-
-// _stepP2PMode
-    UIController.prototype._stepP2PMode = function(direction) {
-        if (!this._p2pModeOptions || !this._p2pModeOptions.length) return;
-        const len = this._p2pModeOptions.length;
-        const next = ((this.p2pCurrentModeIndex ?? 0) + direction + len) % len;
-        this.p2pCurrentModeIndex = next;
-        this._saveP2PSelectors();
-        this._refreshP2PStepperDisplay();
-        this._playP2PStepperFeedback('mode');
-        // 同步当前对局模式（房主建房时生效；访客由 game_init 覆盖）
-        this._p2pMatchMode = this._getP2PMode();
     }
 ;
 
 // _getP2PMode
     UIController.prototype._getP2PMode = function() {
-        const opt = (this._p2pModeOptions || [])[this.p2pCurrentModeIndex ?? 0];
-        return opt ? opt.value : 'ranked';
+        // 对局模式由"选择对战模式"弹窗决定（showP2PRoomModal）；默认排位
+        return this._p2pMatchMode === 'casual' ? 'casual' : 'ranked';
     }
 ;
 
@@ -628,7 +623,7 @@ if (typeof UIController === 'undefined') {
 // _playP2PStepperFeedback
     UIController.prototype._playP2PStepperFeedback = function(kind) {
         if (window.audioManager) window.audioManager.playRaceAlert?.();
-        const hostMap = { round: this.p2pRoundStepper, difficulty: this.p2pDifficultyStepper, 'time-limit': this.p2pTimeLimitStepper, mode: this.p2pModeStepper };
+        const hostMap = { round: this.p2pRoundStepper, difficulty: this.p2pDifficultyStepper, 'time-limit': this.p2pTimeLimitStepper };
         const host = hostMap[kind];
         if (!host) return;
         host.classList.remove('selector-change');
