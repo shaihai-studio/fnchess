@@ -111,6 +111,7 @@ class P2PController {
         this._reconnecting = false;        // 是否处于重连/等待重连
         this._reconnectTimer = null;       // 重连尝试定时器
         this._reconnectAttempts = 0;       // 已尝试次数
+        this.reconnectEnabled = true;      // 排位模式启用；休闲模式关闭（断线即结束）
         this.onReconnectingChange = null;  // (isReconnecting) => void，UI 显示等待/重连提示
         this.onReconnected = null;         // () => void，重连成功，UI 恢复对局
 
@@ -913,8 +914,9 @@ class P2PController {
         }
         if (this._pendingAck) { clearTimeout(this._pendingAck.timer); this._pendingAck = null; }
 
-        // 对局中断线（曾建立过连接且仍有房间码）→ 保留 peer/roomCode/_gameInitConfig，进入重连等待
-        if (wasConnected && this.roomCode) {
+        // 对局中断线（曾建立过连接且仍有房间码，且启用重连）→ 保留 peer/roomCode/_gameInitConfig，
+        // 进入重连等待；休闲模式（reconnectEnabled=false）断线即结束
+        if (wasConnected && this.roomCode && this.reconnectEnabled) {
             this._startReconnect();
             return;
         }

@@ -278,8 +278,8 @@ if (typeof UIController === 'undefined') {
                 e.returnValue = '退出后，您创建的房间将立即失效。是否确认退出？';
                 return e.returnValue;
             }
-            // 联机对局进行中（开局后、未结算）：关闭/刷新=中途退出，判负扣 ELO
-            if (this.isP2PMode && this._p2pMatchStarted && !this._p2pEloSettled) {
+            // 联机对局进行中（开局后、未结算）：关闭/刷新=中途退出，判负扣 ELO（仅排位模式）
+            if (this.isP2PMode && this._p2pMatchMode === 'ranked' && this._p2pMatchStarted && !this._p2pEloSettled) {
                 e.preventDefault();
                 e.returnValue = '对局进行中，退出将判负并扣除 ELO 积分，是否确认离开？';
                 return e.returnValue;
@@ -895,8 +895,10 @@ if (typeof UIController === 'undefined') {
             // 对局正常结束 → 双方都标记已结算，防止"中途退出判负"逻辑误触发
             this._p2pEloSettled = true;
 
-            // 排行榜：联机对局结束，仅房主（Host）唯一上报 ELO 结果（服务器按房间码去重）
-            if (this.isP2PMode && this.p2pController && this.p2pController.isHost && this._leaderboardService) {
+            // 排行榜：仅排位模式且房主（Host）唯一上报 ELO 结果（服务器按房间码去重）
+            // 休闲模式（_p2pMatchMode === 'casual'）不计算任何 ELO
+            if (this.isP2PMode && this._p2pMatchMode === 'ranked'
+                && this.p2pController && this.p2pController.isHost && this._leaderboardService) {
                 this._submitP2PELO(data);
             }
 

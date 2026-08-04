@@ -33,8 +33,8 @@ if (typeof UIController === 'undefined') {
         this._bindLobbyEvents();
         // 进入联机模式即打开匹配大厅连接（切到大厅页签时通常已连好，无需等待）
         if (typeof this._openLobby === 'function') this._openLobby();
-        // 打开联机模式弹提示：切勿消极比赛，中途退出扣 ELO（每个会话只提醒一次，且非对局中）
-        if (!this._p2pWarningShown) {
+        // 打开联机模式弹提示：切勿消极比赛，中途退出扣 ELO（仅排位模式；每个会话只提醒一次，且非对局中）
+        if (this._getP2PMode() === 'ranked' && !this._p2pWarningShown) {
             this._p2pWarningShown = true;
             const wm = document.getElementById('p2p-warning-modal');
             if (wm) {
@@ -55,10 +55,12 @@ if (typeof UIController === 'undefined') {
         const p2p = this.p2pController;
         if (!p2p) return;
         // 每次进入联机界面重置对局状态（开场 VS / 中途退出结算标志）
+        // 对局模式：'ranked'=排位（计 ELO，默认）｜'casual'=休闲（不计算任何 ELO）
         this._p2pMatchStarted = false;
         this._p2pEloSettled = false;
         this._p2pRoomDissolved = false;
         this._p2pOpponentProfile = null;
+        if (!this._p2pMatchMode) this._p2pMatchMode = 'ranked'; // 默认排位
         // 对战方/观众收到"房主已解散该房间"（大厅模式经 lobby WS；房间码模式靠 Peer 断开兜底）
         if (this._lobby) {
             this._lobby.onRoomDissolved = (data) => this._onRoomDissolved(data);
@@ -99,6 +101,11 @@ if (typeof UIController === 'undefined') {
                 const profile = PlayerProfile.getProfile();
                 p2p.send({ type: 'player_info', payload: { playerId: profile.playerId, nickname: profile.nickname } });
             }
+            // 对局模式（休闲/排位）：以房主选择的为准；休闲模式关闭断线重连等待
+            if (config && (config.mode === 'ranked' || config.mode === 'casual')) {
+                this._p2pMatchMode = config.mode;
+            }
+            if (p2p) p2p.reconnectEnabled = (this._p2pMatchMode === 'ranked');
             // 应用对手共享的时间限制模式
             if (config?.timeLimitMode && this.gameController) {
                 this.gameController.timeLimitMode = config.timeLimitMode;
@@ -139,6 +146,11 @@ if (typeof UIController === 'undefined') {
         p2p.onDisconnected = () => {
             console.log('[UI][P2P] onDisconnected 触发', reason || '');
             this._updateP2PStatus('disconnected', '对手已断开连接');
+            // 休闲模式：不计算 ELO，断线直接弹普通断开提示（等同原始联机体验）
+            if (this._p2pMatchMode === 'casual') {
+                this._showP2PDisconnectModal(null);
+                return;
+            }
             // 我是访客（对端是房主）
             if (!this.p2pController || !this.p2pController.isHost) {
                 // 自己掉线后重连失败 → 判本方负（除非已收到房主解散通知）
@@ -380,6 +392,8 @@ if (typeof UIController === 'undefined') {
             const rounds = this._getP2PRounds();
             const difficulty = this._getP2PDifficulty();
             const timeLimitMode = this._getP2PTimeLimitMode();
+            // 对局模式（休闲/排位）：排位计 ELO，休闲不计
+            this._p2pMatchMode = this._getP2PMode();
             if (this.gameController) this.gameController.timeLimitMode = timeLimitMode;
             this.gameController.initGame(rounds, difficulty, 'p2p');
             this._p2pMatchStarted = true;
@@ -388,6 +402,7 @@ if (typeof UIController === 'undefined') {
             if (typeof PlayerProfile !== 'undefined') hostProfile = PlayerProfile.getProfile();
             p2p.sendGameInit({
                 rounds, difficulty, timeLimitMode,
+                mode: this._p2pMatchMode,
                 playerId: hostProfile ? hostProfile.playerId : '',
                 nickname: hostProfile ? hostProfile.nickname : ''
             });
@@ -400,16 +415,24 @@ if (typeof UIController === 'undefined') {
         // 取一次 stepper 元素引用（懒加载，DOM 在 showP2PRoomModal 时已存在）
         this.p2pRoundStepper = document.getElementById('p2p-round-stepper');
         this.p2pRoundValue = document.getElementById('p2p-round-value');
+        this.p2pModeStepper = document.getElementById('p2p-mode-stepper');
+        this.p2pModeValue = document.getElementById('p2p-mode-value');
         this.p2pDifficultyStepper = document.getElementById('p2p-difficulty-stepper');
         this.p2pDifficultyValue = document.getElementById('p2p-difficulty-value');
         this.p2pTimeLimitStepper = document.getElementById('p2p-time-limit-stepper');
         this.p2pTimeLimitValue = document.getElementById('p2p-time-limit-value');
         if (!this.p2pRoundValue) return;
         // P2P 三选项与主界面完全独立：初值取 P2P 自己的持久化记录（无记录则 8回合/简单/普通）
+        // 对局模式选项（排位=计 ELO / 休闲=不计 ELO）
+        this._p2pModeOptions = [
+            { value: 'ranked', label: '排位模式（计 ELO）' },
+            { value: 'casual', label: '休闲模式（不计 ELO）' }
+        ];
         const saved = this._loadP2PSelectors();
         this.p2pCurrentRoundIndex = saved.round;
         this.p2pCurrentDifficultyIndex = saved.difficulty;
         this.p2pCurrentTimeLimitIndex = saved.time;
+        this.p2pCurrentModeIndex = saved.mode === 1 ? 1 : 0;
         if (!this.roundOptions || !this.roundOptions.length) return;
         if (this.p2pCurrentRoundIndex < 0 || this.p2pCurrentRoundIndex >= this.roundOptions.length) this.p2pCurrentRoundIndex = 0;
         if (this.p2pCurrentDifficultyIndex < 0 || this.p2pCurrentDifficultyIndex >= this.difficultyOptions.length) this.p2pCurrentDifficultyIndex = 0;
@@ -420,7 +443,7 @@ if (typeof UIController === 'undefined') {
 
 // _loadP2PSelectors / _saveP2PSelectors — P2P 三选项独立持久化，主界面 stepper 变化不影响 P2P
     UIController.prototype._loadP2PSelectors = function() {
-        const def = { round: 0, difficulty: 0, time: 2 };
+        const def = { round: 0, difficulty: 0, time: 2, mode: 0 };
         try {
             const raw = localStorage.getItem('function_chess_p2p_selectors');
             if (!raw) return def;
@@ -428,7 +451,8 @@ if (typeof UIController === 'undefined') {
             return {
                 round: Number.isFinite(s && s.round) ? s.round : def.round,
                 difficulty: Number.isFinite(s && s.difficulty) ? s.difficulty : def.difficulty,
-                time: Number.isFinite(s && s.time) ? s.time : def.time
+                time: Number.isFinite(s && s.time) ? s.time : def.time,
+                mode: (s && s.mode === 1) ? 1 : 0
             };
         } catch (e) {
             return def;
@@ -441,7 +465,8 @@ if (typeof UIController === 'undefined') {
             localStorage.setItem('function_chess_p2p_selectors', JSON.stringify({
                 round: this.p2pCurrentRoundIndex ?? 0,
                 difficulty: this.p2pCurrentDifficultyIndex ?? 0,
-                time: this.p2pCurrentTimeLimitIndex ?? 2
+                time: this.p2pCurrentTimeLimitIndex ?? 2,
+                mode: this.p2pCurrentModeIndex ?? 0
             }));
         } catch (e) { /* localStorage 不可用时静默忽略 */ }
     }
@@ -512,6 +537,16 @@ if (typeof UIController === 'undefined') {
             const t = theme.time[timeOpt.value] || theme.time.normal;
             applyArrowTheme('p2p-time-limit-prev', 'p2p-time-limit-next', this.p2pTimeLimitValue, t);
         }
+        // 对局模式：排位=金色，休闲=灰色
+        const modeOpt = (this._p2pModeOptions || [])[this.p2pCurrentModeIndex ?? 0];
+        if (modeOpt && this.p2pModeValue) {
+            this.p2pModeValue.textContent = modeOpt.label;
+            this.p2pModeValue.dataset.value = modeOpt.value;
+            const mt = modeOpt.value === 'ranked'
+                ? { bg: 'rgba(245, 158, 11, 0.14)', fg: '#d9a441', shadow: 'rgba(245,158,11,0.22)' }
+                : { bg: 'rgba(148, 163, 184, 0.12)', fg: '#94a3b8', shadow: 'rgba(148,163,184,0.15)' };
+            applyArrowTheme('p2p-mode-prev', 'p2p-mode-next', this.p2pModeValue, mt);
+        }
     }
 ;
 
@@ -528,6 +563,29 @@ if (typeof UIController === 'undefined') {
         bind('p2p-difficulty-next', () => this._stepP2PDifficulty(1));
         bind('p2p-time-limit-prev', () => this._stepP2PTimeLimit(-1));
         bind('p2p-time-limit-next', () => this._stepP2PTimeLimit(1));
+        bind('p2p-mode-prev', () => this._stepP2PMode(-1));
+        bind('p2p-mode-next', () => this._stepP2PMode(1));
+    }
+;
+
+// _stepP2PMode
+    UIController.prototype._stepP2PMode = function(direction) {
+        if (!this._p2pModeOptions || !this._p2pModeOptions.length) return;
+        const len = this._p2pModeOptions.length;
+        const next = ((this.p2pCurrentModeIndex ?? 0) + direction + len) % len;
+        this.p2pCurrentModeIndex = next;
+        this._saveP2PSelectors();
+        this._refreshP2PStepperDisplay();
+        this._playP2PStepperFeedback('mode');
+        // 同步当前对局模式（房主建房时生效；访客由 game_init 覆盖）
+        this._p2pMatchMode = this._getP2PMode();
+    }
+;
+
+// _getP2PMode
+    UIController.prototype._getP2PMode = function() {
+        const opt = (this._p2pModeOptions || [])[this.p2pCurrentModeIndex ?? 0];
+        return opt ? opt.value : 'ranked';
     }
 ;
 
@@ -570,7 +628,7 @@ if (typeof UIController === 'undefined') {
 // _playP2PStepperFeedback
     UIController.prototype._playP2PStepperFeedback = function(kind) {
         if (window.audioManager) window.audioManager.playRaceAlert?.();
-        const hostMap = { round: this.p2pRoundStepper, difficulty: this.p2pDifficultyStepper, 'time-limit': this.p2pTimeLimitStepper };
+        const hostMap = { round: this.p2pRoundStepper, difficulty: this.p2pDifficultyStepper, 'time-limit': this.p2pTimeLimitStepper, mode: this.p2pModeStepper };
         const host = hostMap[kind];
         if (!host) return;
         host.classList.remove('selector-change');
@@ -605,20 +663,23 @@ if (typeof UIController === 'undefined') {
 // _cleanupP2P
     UIController.prototype._cleanupP2P = function() {
         // 对局进行中 + 主动退出（点退出/解散/返回主菜单）→ 立即结算并弹 disconnect-modal
-        // - 房主（Host）退出：通知对手解散（不扣 ELO），弹"房主已解散该房间"
-        // - 访客（Guest）退出：判负扣 ELO，弹"你已中途退出判负"
-        // 让用户先看完 disconnect-modal 上的"返回主菜单"按钮再回主菜单，
+        // - 排位模式：房主解散（不扣 ELO）弹"房主已解散该房间"；访客判负扣 ELO 弹"你已中途退出判负"
+        // - 休闲模式：不计算 ELO，直接清理回主菜单（等同原始联机体验）
+        // 排位模式弹窗后让用户先看完 disconnect-modal 上的"返回主菜单"按钮再回主菜单，
         // 避免被 handleExit 后续的 showModal(startModal) 覆盖。
         if (this.isP2PMode && this._p2pMatchStarted && !this._p2pEloSettled && !this._p2pRoomDissolved) {
-            const p2p = this.p2pController;
-            if (p2p && p2p.isHost) {
-                if (this._lobby) this._lobby.notifyRoomDissolve();
-                this._p2pRoomDissolved = true; // 本局作废，不再结算
-                this._showP2PDisconnectModal('dissolved');
-            } else {
-                this._reportP2PForfeit(true);
+            if (this._p2pMatchMode === 'ranked') {
+                const p2p = this.p2pController;
+                if (p2p && p2p.isHost) {
+                    if (this._lobby) this._lobby.notifyRoomDissolve();
+                    this._p2pRoomDissolved = true; // 本局作废，不再结算
+                    this._showP2PDisconnectModal('dissolved');
+                } else {
+                    this._reportP2PForfeit(true);
+                }
+                this._p2pShowDisconnectReturnToMenu = true; // 告知 handleExit 跳过弹主菜单
             }
-            this._p2pShowDisconnectReturnToMenu = true; // 告知 handleExit 跳过弹主菜单
+            // 休闲模式：不结算 ELO，走下方正常清理
         }
         // 清理断线重连等待/提示弹窗与定时器
         this._hideP2PReconnectWait();
@@ -733,6 +794,8 @@ if (typeof UIController === 'undefined') {
 // _onP2PReconnectingChange
     UIController.prototype._onP2PReconnectingChange = function(isReconnecting) {
         if (!this.isP2PMode) return;
+        // 休闲模式：不弹重连等待（reconnectEnabled=false 正常不会触发，兜底防意外）
+        if (this._p2pMatchMode === 'casual') return;
         if (isReconnecting) {
             this._p2pReconnectStartAt = Date.now();
             if (this.p2pController && this.p2pController.isHost) {
@@ -851,6 +914,8 @@ if (typeof UIController === 'undefined') {
 
 // _startP2PVSIntro
     UIController.prototype._startP2PVSIntro = function() {
+        // 休闲模式不计算 ELO，也不播放排位 VS 动画（等同原始联机体验）
+        if (this._p2pMatchMode === 'casual') return;
         if (typeof PlayerProfile === 'undefined') return;
         if (!this._leaderboardService) return;
         const opp = this._p2pOpponentProfile;
