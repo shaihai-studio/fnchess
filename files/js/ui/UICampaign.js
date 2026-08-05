@@ -269,6 +269,17 @@ if (typeof UIController === 'undefined') {
         this.campaignVictoryModal.dataset.stars = String(starCount);
         this.campaignVictoryModal.dataset.length = String(length);
         this.campaignVictoryModal.dataset.isFraction = isFraction ? '1' : '0';
+        // 保存该关最短表达式（供方案B核验 / 彗星）：仅当本次长度 ≤ 历史最佳
+        if (!isCustom) {
+            try {
+                const prevBestNum = (this.campaignCurrentLevelBestRecord !== null && Number.isFinite(Number(this.campaignCurrentLevelBestRecord)))
+                    ? Number(this.campaignCurrentLevelBestRecord) : null;
+                const curExpr = String(this.currentExpression || '').trim();
+                if (curExpr && (prevBestNum === null || length <= prevBestNum)) {
+                    localStorage.setItem('function_chess_campaign_best_expr_' + levelId, curExpr);
+                }
+            } catch (e2) { /* 忽略 */ }
+        }
         // 排行榜：闯关 LR∑ 积分变化时自动上报（官方关卡；自制关卡不参与官方排行榜）
         // 记录上次已上报值，仅当积分高于它才上报，避免重复请求（排行榜保留历史最高分）
         if (!isCustom && this._leaderboardService && typeof PlayerProfile !== 'undefined') {
@@ -277,9 +288,10 @@ if (typeof UIController === 'undefined') {
                 if (Number.isFinite(lrSigma) && lrSigma > 0) {
                     const last = Number(localStorage.getItem('function_chess_lr_last_upload') || 0);
                     if (lrSigma > last) {
-                        try { localStorage.setItem('function_chess_lr_last_upload', String(lrSigma)); } catch (e2) { /* 忽略 */ }
+                        try { localStorage.setItem('function_chess_lr_last_upload', String(lrSigma)); } catch (e3) { /* 忽略 */ }
                         const profile = PlayerProfile.getProfile();
-                        this._leaderboardService.submitLRSigma(lrSigma, profile.nickname);
+                        const sub = this.buildLRSubmissionPayload();
+                        this._leaderboardService.submitLRSigma(lrSigma, profile.nickname, sub.minTokens, sub.levels);
                         this.refreshLeaderboardIfOpen();
                     }
                 }
@@ -312,6 +324,27 @@ if (typeof UIController === 'undefined') {
         try {
             localStorage.setItem(`function_chess_campaign_best_${levelId}`, String(length));
         } catch (e) { }
+    }
+
+// buildLRSubmissionPayload — 组装防作弊上报载荷（遍历逻辑与 calculateLRSigma 完全一致）
+// 返回 { minTokens: {levelId: minToken}, levels: [{level, expr, minToken}] }
+    UIController.prototype.buildLRSubmissionPayload = function() {
+        const minTokens = {};
+        const levels = [];
+        const addLevel = (lv, key) => {
+            const best = this.getCampaignLevelBestRecord(key);
+            if (best !== null && best > 0) {
+                minTokens[String(key)] = best;
+                let expr = '';
+                try { expr = localStorage.getItem('function_chess_campaign_best_expr_' + key) || ''; } catch (e) { /* 忽略 */ }
+                if (expr) levels.push({ level: String(key), expr, minToken: best });
+            }
+        };
+        const cleared = this.getCampaignClearedMax();
+        for (let i = 1; i <= cleared; i++) addLevel(i, i);
+        const fracMax = (typeof this.getCampaignFractionClearedMax === 'function') ? this.getCampaignFractionClearedMax() : 0;
+        for (let denom = 2; denom <= fracMax && denom <= 20; denom++) addLevel(`1/${denom}`, `1/${denom}`);
+        return { minTokens, levels };
     }
 ;
 

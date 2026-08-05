@@ -2,12 +2,14 @@
  * LeaderboardService - 排行榜数据服务
  *
  * 复用现有 /lobby WebSocket（MatchLobbyController）通道：
- *  - 上报成绩：submit_score（boardType: lr / tt / elo）
+ *  - 上报成绩：submit_score（boardType: lr / rtN / elo）
  *  - 查询榜单：query_leaderboard → leaderboard_result（按 id 配对回调）
- * 服务器未启动 / 断连时静默降级，不影响对局与结算界面。
+ *  - 玩家举报：report（90s 间隔，被举报者强制核验）
  *
- * 连接就绪队列：首次上报/查询时若 WebSocket 尚在连接中，消息先入队，
- * 待连接建立后统一发送，避免首条消息丢失。
+ * 防作弊（方案A）：
+ *  - 服务器连接时下发一次性 nonce（challenge 消息），用完即作废，可随时 request_challenge 重新申请。
+ *  - lr / rtN / report 均携带 HMAC-SHA256 签名（VerifyCrypto.sign），验签失败服务器直接丢弃。
+ *  - 服务器未启动 / 断连 / 拿不到 nonce 时静默降级，不影响对局与结算界面。
  */
 class LeaderboardService {
     constructor(lobby) {
@@ -15,9 +17,17 @@ class LeaderboardService {
         this._pendingQueries = new Map(); // id -> callback
         this._pendingSends = [];          // 连接建立前暂存的消息
         this._querySeq = 0;
+        this._nonce = null;               // 当前可用的一次性 nonce
+        this._nonceExp = 0;
+        this._nonceWaiters = [];          // 等待 nonce 的 Promise resolve 队列
+        this.onSubmitResult = null;       // (data) => void（verify_failed / rate_limited / too_fast 等）
         if (this.lobby) {
             const self = this;
             this.lobby.onLeaderboardResult = (data) => self._handleResult(data);
+            this.lobby.onChallenge = (data) => self._handleChallenge(data);
+            this.lobby.onSubmitResult = (data) => {
+                if (self.onSubmitResult) { try { self.onSubmitResult(data); } catch (e) { /* 忽略 */ } }
+            };
             // 不用 onConnectionChange（UILobby 进入大厅时会覆盖该回调），改用轮询 flush：
             // 连接建立后，把等待中的消息统一补发出去。
             this._flushTimer = setInterval(() => self._flushPending(), 500);
@@ -61,33 +71,97 @@ class LeaderboardService {
         }
     }
 
-    /** 通用上报 */
+    _handleChallenge(data) {
+        this._nonce = String((data && data.nonce) || '');
+        this._nonceExp = Number((data && data.exp) || 0) || (Date.now() + 120000);
+        const waiters = this._nonceWaiters;
+        this._nonceWaiters = [];
+        for (const w of waiters) { try { w(); } catch (e) { /* 忽略 */ } }
+    }
+
+    /** 确保有可用的 nonce；返回 Promise（拿到 nonce 后 resolve；3s 超时兜底） */
+    _requestNonce() {
+        return new Promise((resolve) => {
+            if (this._nonce && Date.now() < this._nonceExp) { resolve(); return; }
+            if (!this.lobby) { resolve(); return; } // 无法签名 → 放弃（静默降级）
+            this._nonceWaiters.push(resolve);
+            this._send({ type: 'request_challenge' });
+            setTimeout(() => {
+                const i = this._nonceWaiters.indexOf(resolve);
+                if (i >= 0) this._nonceWaiters.splice(i, 1);
+                resolve();
+            }, 3000);
+        });
+    }
+
+    /** 带签名的上报（lr / rtN）；payload 随签名一起锁定，防篡改 */
+    async _submitSigned(obj, payload) {
+        if (typeof VerifyCrypto === 'undefined') return; // 模块缺失，静默放弃
+        await this._requestNonce();
+        if (!this._nonce || Date.now() >= this._nonceExp) return; // 拿不到 nonce，放弃
+        const nonce = this._nonce;
+        this._nonce = null; // 一次性
+        const playerId = typeof PlayerProfile !== 'undefined' ? PlayerProfile.getPlayerId() : '';
+        const sig = VerifyCrypto.sign(nonce, playerId, String(obj.boardType || ''), obj.value, payload || {});
+        this._send(Object.assign({ type: 'submit_score' }, obj, { playerId, nonce, sig, payload: payload || {} }));
+    }
+
+    /** 通用上报（ELO 等不签名消息用） */
     submitScore(payload) {
         this._send(Object.assign({ type: 'submit_score' }, payload || {}));
     }
 
-    /** 上报闯关 LR∑ 积分 */
-    submitLRSigma(value, nickname) {
+    /**
+     * 上报闯关 LR∑ 积分（方案A签名 + 方案B核验载荷）
+     * @param {number} value  LR∑ 值（客户端按 §5 token 口径算）
+     * @param {string} nickname
+     * @param {Object} [minTokens]  { levelId: minToken }，全部有最佳记录的关
+     * @param {Array}  [levels]     核验载荷：[{ level, expr, minToken }]（触发核验时服务器据此复算）
+     */
+    submitLRSigma(value, nickname, minTokens, levels) {
         let playerId = '';
         if (typeof PlayerProfile !== 'undefined') playerId = PlayerProfile.getPlayerId();
-        this.submitScore({ boardType: 'lr', value: Number(value) || 0, nickname: nickname || '', playerId });
+        const payload = {};
+        if (minTokens && typeof minTokens === 'object') payload.minTokens = minTokens;
+        if (Array.isArray(levels) && levels.length) payload.levels = levels;
+        this._submitSigned({ boardType: 'lr', value: Number(value) || 0, nickname: nickname || '', playerId }, payload);
     }
 
-    /** 上报竞速分关 Time Attack 用时：boardType = rt{levelId}，value = 该关最佳用时(秒) */
-    submitRaceTime(levelId, seconds, nickname) {
+    /** 上报竞速分关 Time Attack 用时：boardType = rt{levelId}，value = 该关最佳用时(秒)；附题数供服务器难度下限拦截 */
+    submitRaceTime(levelId, seconds, nickname, solvedCount, totalRounds) {
         let playerId = '';
         if (typeof PlayerProfile !== 'undefined') playerId = PlayerProfile.getPlayerId();
-        this.submitScore({ boardType: 'rt' + Number(levelId), value: Number(seconds) || 0, nickname: nickname || '', playerId });
+        this._submitSigned({
+            boardType: 'rt' + Number(levelId),
+            value: Number(seconds) || 0,
+            nickname: nickname || '',
+            playerId,
+            solvedCount: Number(solvedCount) || 0,
+            totalRounds: Number(totalRounds) || 0
+        }, {});
     }
 
-    /** 兼容历史：上报竞速 TT∑ 星分（旧榜保留，新榜改用 submitRaceTime 分关） */
+    /** 玩家举报（90s 间隔由服务器控制；被举报者下次 lr 强制核验） */
+    async report(target, reason) {
+        if (typeof VerifyCrypto === 'undefined') return;
+        const playerId = typeof PlayerProfile !== 'undefined' ? PlayerProfile.getPlayerId() : '';
+        if (!playerId || !target || target === playerId) return;
+        await this._requestNonce();
+        if (!this._nonce || Date.now() >= this._nonceExp) return;
+        const nonce = this._nonce;
+        this._nonce = null;
+        const sig = VerifyCrypto.sign(nonce, playerId, '', '', {});
+        this._send({ type: 'report', target: String(target || ''), playerId, reason: String(reason || ''), nonce, sig });
+    }
+
+    /** 兼容历史：上报竞速 TT∑ 星分（旧榜保留，服务器已不再接受新 tt 上报） */
     submitTTSigma(value, nickname) {
         let playerId = '';
         if (typeof PlayerProfile !== 'undefined') playerId = PlayerProfile.getPlayerId();
         this.submitScore({ boardType: 'tt', value: Number(value) || 0, nickname: nickname || '', playerId });
     }
 
-    /** 查询榜单；boardType: 'lr' | 'tt' | 'elo'；回调收到 leaderboard_result */
+    /** 查询榜单；boardType: 'lr' | 'rt{level}' | 'pl{level}' | 'elo'；回调收到 leaderboard_result */
     query(boardType, playerId, callback) {
         const id = 'q' + (++this._querySeq);
         if (typeof callback === 'function') this._pendingQueries.set(id, callback);

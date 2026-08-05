@@ -392,7 +392,10 @@ if (typeof UIController === 'undefined') {
                     if (bestTime < last || last === 0) {
                         try { localStorage.setItem(lastKey, String(bestTime)); } catch (e2) { /* 忽略 */ }
                         const profile = PlayerProfile.getProfile();
-                        this._leaderboardService.submitRaceTime(lv, bestTime, profile.nickname);
+                        // 附题数供服务器难度下限拦截（通关必然解满 10 题）
+                        const solved = Number(data.solvedCount) || 0;
+                        const totalR = Number(data.totalRounds) || solved;
+                        this._leaderboardService.submitRaceTime(lv, bestTime, profile.nickname, solved, totalR);
                         this.refreshLeaderboardIfOpen();
                     }
                 }

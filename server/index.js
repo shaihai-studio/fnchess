@@ -122,9 +122,12 @@ function send(ws, obj) {
 // 3. 在线排行榜（内存 Map + leaderboard.json 落盘）
 // ─────────────────────────────────────────────
 const LDB_FILE = path.join(__dirname, 'leaderboard.json');
-const TOP_N = 50;              // 榜单返回前 N 名
 const ELO_K = 32;              // ELO K 值
 const ELO_INIT = 1200;         // ELO 初始分
+// 榜单返回条数：分关榜（rtN/plN）保留前 100，总分榜（lr/tt/elo）保留前 1000
+function topFor(boardType) {
+    return /^(rt|pl)\d+$/.test(String(boardType || '')) ? 100 : 1000;
+}
 
 // 计分榜：boardType -> Map(playerId, {playerId, nickname, score, updatedAt})
 // 支持 lr(闯关) / tt(历史竞速星分) / rtN(竞速分关 Time Attack 用时) 等任意分榜
@@ -157,6 +160,275 @@ function getClientIp(req) {
         if (fwd) return String(fwd).split(',')[0].trim();
     } catch (e) { /* 忽略 */ }
     return (req.socket && req.socket.remoteAddress) || '';
+}
+
+// ─────────────────────────────────────────────
+// 4. 排行榜防作弊（方案A HMAC 签名 + 方案B 核验通道 + 举报 + 彗星）
+// 核验通道为"务实版"：验证 表达式可解析 / 未用锁元素 / token 与长度一致 / LR∑ 与长度一致，
+// 不做视觉复算"是否通关"（客户端判定依赖响应式画布尺寸 + geogebra 引擎，移植不可靠，见实施方案 §4.2 注）。
+// ─────────────────────────────────────────────
+const LB_SECRET = 'fnchess-lb-secret-2026-08-05';
+const NONCE_TTL = 2 * 60 * 1000;      // nonce 有效期 2 分钟
+const SIGN_GATE = 25 * 1000;          // 签名通道最小间隔 25s
+const VERIFY_GATES = [2 * 60 * 1000, 5 * 60 * 1000, 15 * 60 * 1000, 30 * 60 * 1000]; // 核验退避间隔
+const VERIFY_WINDOW = 5 * 60 * 1000;  // 核验滑动窗口
+const VERIFY_LOCK_K = 5;              // 窗口内核验 ≥K 次 → 当日锁定核验通道
+const DAY_MS = 24 * 3600 * 1000;
+const RACE_PUZZLES = 10;              // 竞速每关固定 10 题
+const REPORT_GATE = 90 * 1000;        // 举报间隔 1min30s
+// 竞速 30 关难度 [allowed, forbidden, fixedLocks, randomLocks]（与 GameController.buildRaceLevel.levelConfigs 一致）
+const RACE_LEVEL_CFG = [
+    [1, 1, 0, 0], [1, 1, 1, 0], [1, 3, 3, 0], [2, 1, 0, 0], [2, 1, 1, 0], [2, 2, 2, 0],
+    [1, 20, 10, 0], [2, 4, 3, 0], [2, 2, 2, 2], [2, 4, 13, 1], [2, 10, 2, 0], [3, 1, 0, 0],
+    [2, 20, 5, 0], [3, 1, 2, 0], [3, 1, 5, 0], [3, 2, 3, 0], [3, 3, 4, 0], [3, 20, 2, 0],
+    [4, 1, 2, 0], [4, 2, 3, 0], [2, 200, 0, 0], [2, 300, 0, 2], [4, 3, 4, 0], [3, 6, 6, 0],
+    [5, 2, 2, 0], [5, 3, 4, 0], [3, 200, 1, 0], [3, 5, 5, 3], [3, 4, 15, 2], [6, 6, 6, 0]
+];
+
+// —— 纯 JS SHA-256 / HMAC-SHA256（与前端 VerifyCrypto.js 完全一致，file:// 下不依赖 crypto.subtle） ——
+function utf8Bytes(str) {
+    const out = [];
+    for (let i = 0; i < str.length; i++) {
+        let c = str.charCodeAt(i);
+        if (c < 0x80) out.push(c);
+        else if (c < 0x800) out.push(0xc0 | (c >> 6), 0x80 | (c & 0x3f));
+        else out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 0x3f), 0x80 | (c & 0x3f));
+    }
+    return out;
+}
+function bytesToLatin1(b) { let s = ''; for (let i = 0; i < b.length; i++) s += String.fromCharCode(b[i]); return s; }
+function bytesToHex(b) { let s = ''; for (let i = 0; i < b.length; i++) s += (b[i] < 16 ? '0' : '') + b[i].toString(16); return s; }
+function hexToBytes(hex) { const out = []; for (let i = 0; i < hex.length; i += 2) out.push(parseInt(hex.substr(i, 2), 16)); return out; }
+
+/** sha256Hex(ascii) —— ascii 必须为 latin1（每字符 1 字节） */
+function sha256Hex(ascii) {
+    const rotr = (v, n) => (v >>> n) | (v << (32 - n));
+    const K = [0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+        0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7,
+        0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc,
+        0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351,
+        0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e,
+        0x92722c85, 0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585,
+        0x106aa070, 0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f,
+        0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2];
+    const H0 = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];
+    const ml = ascii.length * 8;
+    let msg = ascii + '\x80';
+    while (msg.length % 64 !== 56) msg += '\x00';
+    const hi = Math.floor(ml / 4294967296) >>> 0;
+    const lo = ml >>> 0;
+    msg += String.fromCharCode((hi >>> 24) & 255, (hi >>> 16) & 255, (hi >>> 8) & 255, hi & 255,
+        (lo >>> 24) & 255, (lo >>> 16) & 255, (lo >>> 8) & 255, lo & 255);
+    const w = new Array(64).fill(0);
+    const h = H0.slice();
+    for (let ci = 0; ci < msg.length; ci += 64) {
+        for (let i = 0; i < 16; i++) {
+            const o = ci + i * 4;
+            w[i] = (msg.charCodeAt(o) << 24) | (msg.charCodeAt(o + 1) << 16) | (msg.charCodeAt(o + 2) << 8) | msg.charCodeAt(o + 3);
+        }
+        for (let i = 16; i < 64; i++) {
+            const s0 = rotr(w[i - 15], 7) ^ rotr(w[i - 15], 18) ^ (w[i - 15] >>> 3);
+            const s1 = rotr(w[i - 2], 17) ^ rotr(w[i - 2], 19) ^ (w[i - 2] >>> 10);
+            w[i] = (w[i - 16] + s0 + w[i - 7] + s1) | 0;
+        }
+        let a = h[0], b = h[1], c = h[2], d = h[3], e = h[4], f = h[5], g = h[6], hh = h[7];
+        for (let i = 0; i < 64; i++) {
+            const S1 = rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25);
+            const ch = (e & f) ^ (~e & g);
+            const t1 = (hh + S1 + ch + K[i] + w[i]) | 0;
+            const S0 = rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22);
+            const maj = (a & b) ^ (a & c) ^ (b & c);
+            const t2 = (S0 + maj) | 0;
+            hh = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0;
+        }
+        h[0] = (h[0] + a) | 0; h[1] = (h[1] + b) | 0; h[2] = (h[2] + c) | 0; h[3] = (h[3] + d) | 0;
+        h[4] = (h[4] + e) | 0; h[5] = (h[5] + f) | 0; h[6] = (h[6] + g) | 0; h[7] = (h[7] + hh) | 0;
+    }
+    // 逐字提取 4 字节（h 可能为负数，须按无符号取字节；数字 toString(16) 会丢前导 0）
+    const out = new Array(32);
+    for (let i = 0; i < 8; i++) {
+        const v = h[i] >>> 0;
+        out[i * 4] = (v >>> 24) & 255;
+        out[i * 4 + 1] = (v >>> 16) & 255;
+        out[i * 4 + 2] = (v >>> 8) & 255;
+        out[i * 4 + 3] = v & 255;
+    }
+    return bytesToHex(out);
+}
+function hmacSHA256Hex(keyStr, msgStr) {
+    let key = utf8Bytes(keyStr);
+    if (key.length > 64) key = hexToBytes(sha256Hex(bytesToLatin1(key)));
+    const k = new Array(64).fill(0);
+    for (let i = 0; i < key.length && i < 64; i++) k[i] = key[i];
+    const ipad = k.map(x => x ^ 0x36);
+    const opad = k.map(x => x ^ 0x5c);
+    const inner = sha256Hex(bytesToLatin1([...ipad, ...utf8Bytes(msgStr)]));
+    return sha256Hex(bytesToLatin1([...opad, ...hexToBytes(inner)]));
+}
+
+/** 长度口径（§5：原始 token，不化简；与前端 FunctionParser.analyzeFunctionType 完全一致） */
+function tokenCount(expr) {
+    const s = String(expr).replace(/\s+/g, '').replace(/[()（）]/g, '');
+    const re = /(sin|cos|tan|arcsin|arccos|arctan|abs|exp|ln|log|sqrt|factorial)|(\d+(?:\.\d+)?)|(PI|π|e|i)|([+\-*/^!])|(x)/gi;
+    let n = 0, m;
+    while ((m = re.exec(s)) !== null) n++;
+    if (n === 0 && s.length > 0) n = s.length;
+    return n;
+}
+/** 表达式是否使用了被锁元素（锁数字时按字符级检查） */
+function usesLockedElement(expr, locked) {
+    if (!locked || !locked.length) return false;
+    const s = String(expr).replace(/\s+/g, '');
+    const re = /(sin|cos|tan|arcsin|arccos|arctan|abs|exp|ln|log|sqrt|factorial)|(\d+(?:\.\d+)?)|(PI|π|e|i)|([+\-*/^!])|(x)/gi;
+    let m;
+    while ((m = re.exec(s)) !== null) {
+        const tok = m[0];
+        if (locked.indexOf(tok) !== -1) return true;
+        if (/^\d/.test(tok)) {
+            for (const ch of tok) if (locked.indexOf(ch) !== -1) return true;
+        }
+    }
+    return false;
+}
+
+// 加载闯关关卡数据（核验/彗星用；支持整数关与分数关 "1/2".."1/20"）
+let levelById = null;
+try {
+    global.window = global;
+    require(path.join(__dirname, '..', 'files', 'js', 'campaignLevels.js'));
+    const pack = global.CAMPAIGN_LEVEL_PACK || {};
+    levelById = new Map();
+    for (const lv of (pack.levels || [])) {
+        if (lv && lv.id != null) levelById.set(String(lv.id), lv);
+    }
+} catch (e) {
+    console.warn('[LB] 关卡数据加载失败（核验/彗星不可用）:', e.message);
+}
+let ParserCls = null;
+try { ParserCls = require(path.join(__dirname, '..', 'files', 'js', 'FunctionParser.js')); } catch (e) { console.warn('[LB] FunctionParser 加载失败:', e.message); }
+
+// —— nonce / 闸门 / 核验 / 举报 / 彗星 状态 ——
+const lastSubmitAt = new Map();     // ip → 最近提交时间
+const verifyWindow = new Map();     // ip → { count, first }
+const lockedUntil = new Map();      // ip → 当日锁定截止
+const flaggedForVerify = new Set(); // 被举报待核验 playerId
+const lastReportAt = new Map();     // playerId → 最近举报时间
+const levelBestToken = new Map();   // 关卡 → 全服最短 token（彗星）
+
+function issueNonce(ws) {
+    const nonce = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2) + Date.now().toString(36);
+    ws._nonce = nonce;
+    ws._nonceExp = Date.now() + NONCE_TTL;
+    send(ws, { type: 'challenge', nonce, exp: ws._nonceExp });
+}
+function verifySig(ws, msg) {
+    const nonce = String(msg.nonce || '');
+    if (!nonce || !ws._nonce || Date.now() > (ws._nonceExp || 0)) return false;
+    if (nonce !== ws._nonce) return false;
+    ws._nonce = null; // 一次性
+    const payload = msg.payload || {};
+    const levelsHash = sha256Hex(bytesToLatin1(utf8Bytes(JSON.stringify(payload))));
+    const expected = hmacSHA256Hex(LB_SECRET,
+        [nonce, String(msg.playerId || ''), String(msg.boardType || ''), String(msg.value === undefined ? '' : msg.value), levelsHash].join('|'));
+    const got = String(msg.sig || '');
+    if (got.length !== expected.length) return false;
+    let diff = 0;
+    for (let i = 0; i < expected.length; i++) diff |= (got.charCodeAt(i) ^ expected.charCodeAt(i));
+    return diff === 0;
+}
+function sendSubmitResult(ws, ok, extra = {}) {
+    send(ws, Object.assign({ type: 'submit_result', ok }, extra));
+}
+
+/** 竞速总时长下限（与实施方案 §6.2：锚定 Lv1 = 1s，关联 allowed/forbidden/locks） */
+function raceFloorSeconds(levelId) {
+    const cfg = RACE_LEVEL_CFG[levelId - 1];
+    if (!cfg) return 0.5;
+    const [allowed, forbidden, fixedLocks, randomLocks] = cfg;
+    const factor = 1 + 0.02 * (forbidden - 1) + 0.10 * (fixedLocks + randomLocks) + 0.20 * (allowed - 1);
+    return 1 * factor;
+}
+
+/** D1+D6：是否触发核验（冷启动三档 + 超下一名 50 + 被举报） */
+function needVerify(playerId, value) {
+    if (flaggedForVerify.has(playerId)) return true;
+    if (!ParserCls || !levelById) return false; // 复算不可用时退回签名通道
+    const map = scoreBoards['lr'];
+    if (!map) return false;
+    const N = map.size;
+    if (N < 10) return false; // 冷启动：全签名
+    let M = 0, nextLower = -Infinity;
+    for (const p of map.values()) {
+        const s = p.score;
+        if (s > M) M = s;
+        if (s < value && s > nextLower) nextLower = s;
+    }
+    if (N < 50) {
+        const T = Math.max(M - 100, Math.ceil(M * 0.8));
+        if (value >= T) return true;
+        if (value - (nextLower === -Infinity ? 0 : nextLower) > 50) return true;
+        return false;
+    }
+    if (value >= M - 100) return true;
+    if (value - (nextLower === -Infinity ? 0 : nextLower) > 50) return true;
+    return false;
+}
+
+/** D3：整批拒绝 + 细化报错（务实版核验） */
+function verifyLRSigma(levels, claimedValue) {
+    const parser = new ParserCls();
+    let sum = 0;
+    for (const lv of levels) {
+        const levelId = String(lv.level);
+        const def = levelById.get(levelId);
+        if (!def) return { ok: false, reason: 'level_not_open', level: levelId };
+        const expr = String(lv.expr || '');
+        if (!expr || expr.length > 500) return { ok: false, reason: 'expr_mismatch', level: levelId };
+        try { parser.evaluate(expr, 0); } catch (e) { return { ok: false, reason: 'expr_mismatch', level: levelId }; }
+        if (usesLockedElement(expr, def.lockedElements || [])) return { ok: false, reason: 'not_pass', level: levelId };
+        const realTok = tokenCount(expr);
+        if (realTok !== Number(lv.minToken)) return { ok: false, reason: 'length_mismatch', level: levelId };
+        sum += 100 / (10 + realTok);
+    }
+    if (Math.abs(sum - Number(claimedValue)) > 1e-6) return { ok: false, reason: 'value_mismatch', level: String((levels[0] || {}).level || '') };
+    return { ok: true, recomputedSum: sum };
+}
+
+/** 彗星：用该关最短 token 更新 levelBestToken 与 pl{lv} 榜（满分 10 颗 = 10 × 最优/我的） */
+function updateCometBoards(playerId, nickname, minTokenMap) {
+    if (!levelById) return;
+    if (!minTokenMap || typeof minTokenMap !== 'object') return;
+    for (const [lv, minTokenRaw] of Object.entries(minTokenMap)) {
+        const minToken = Number(minTokenRaw);
+        if (!Number.isFinite(minToken) || minToken <= 0 || minToken > 500) continue;
+        if (!levelById.has(String(lv))) continue;
+        const prevBest = levelBestToken.get(String(lv));
+        if (prevBest == null || minToken < prevBest) levelBestToken.set(String(lv), minToken);
+        const best = levelBestToken.get(String(lv));
+        const plv = Math.round(10 * best / minToken * 10) / 10;
+        const board = ensureBoard('pl' + String(lv));
+        const cur = board.get(playerId);
+        if (!cur || plv > cur.score) {
+            board.set(playerId, { playerId, nickname, score: plv, updatedAt: Date.now() });
+            scheduleSave();
+        }
+    }
+}
+
+/** D6：玩家举报（90s 间隔，被举报者下次 lr 强制核验，失败清分） */
+function handleReport(ws, msg) {
+    if (!verifySig(ws, msg)) { sendSubmitResult(ws, false, { code: 'invalid_signature' }); return; }
+    const target = String(msg.target || '').slice(0, 64);
+    const playerId = String(msg.playerId || '').slice(0, 64);
+    if (!target || !playerId || target === playerId) { sendSubmitResult(ws, false, { code: 'bad_report' }); return; }
+    const now = Date.now();
+    if (now - (lastReportAt.get(playerId) || 0) < REPORT_GATE) { sendSubmitResult(ws, false, { code: 'rate_limited' }); return; }
+    lastReportAt.set(playerId, now);
+    const map = scoreBoards['lr'];
+    if (!map || !map.has(target)) { sendSubmitResult(ws, false, { code: 'target_not_found' }); return; }
+    flaggedForVerify.add(target);
+    console.log(`[LB] ${playerId} 举报 ${target}（90s 间隔 OK），已标记强制核验`);
+    sendSubmitResult(ws, true, { code: 'reported' });
 }
 
 /** 新身份风控：返回 false 表示该 IP 疑似刷榜，应忽略该新身份的上报 */
@@ -246,37 +518,29 @@ function loadLeaderboards() {
     }
 }
 
+function verifyCount(ip) { return (verifyWindow.get(ip) || { count: 0 }).count || 0; }
+function isLockedOut(ip) { return (lockedUntil.get(ip) || 0) > Date.now(); }
+function recordVerify(ip) {
+    const now = Date.now();
+    let w = verifyWindow.get(ip);
+    if (!w || now - w.first > VERIFY_WINDOW) w = { count: 0, first: now };
+    w.count++;
+    verifyWindow.set(ip, w);
+    if (w.count >= VERIFY_LOCK_K) {
+        lockedUntil.set(ip, now + DAY_MS);
+        console.log(`[LB] IP ${ip} 窗口内核验达 ${VERIFY_LOCK_K} 次，当日锁定核验通道`);
+    }
+}
+
 function handleSubmitScore(ws, msg) {
     const boardType = String(msg.boardType || '');
     const playerId = String(msg.playerId || '').slice(0, 64);
     const nickname = String(msg.nickname || '棋手').trim().slice(0, 16) || '棋手';
     if (!playerId) return;
     const ip = ws && ws._ip ? ws._ip : '';
+    const now = Date.now();
 
-    // ── 计分榜（lr / tt / rtN）：同一玩家只保留最佳（lr/tt 取最高分，rtN 取最短用时） ──
-    if (boardType === 'lr' || boardType === 'tt' || /^rt\d+$/.test(boardType)) {
-        const isRaceTime = /^rt\d+$/.test(boardType);
-        const value = Number(msg.value);
-        if (!Number.isFinite(value) || value < 0) return;
-        if (boardType === 'lr' && value > 1e9) return;          // LR∑ 上限
-        if (boardType === 'tt' && value > 1e6) return;          // 历史 TT∑ 上限
-        if (isRaceTime && (value < 1 || value > 1e6)) return;   // 单关用时合理区间：1s ~ 1e6s（>11天视为异常）
-        const map = ensureBoard(boardType);
-        const cur = map.get(playerId);
-        if (cur) {
-            if (!isRaceTime && value <= cur.score) return;  // lr/tt：非新高，忽略
-            if (isRaceTime && value >= cur.score) return;   // rtN：非更短，忽略
-        }
-        if (!cur && !checkIpNewIdentity(ip, playerId)) {
-            console.warn(`[LB] IP ${ip} 疑似刷榜，忽略新身份 ${playerId} 的上报`);
-            return;
-        }
-        map.set(playerId, { playerId, nickname, score: value, updatedAt: Date.now() });
-        scheduleSave();
-        return;
-    }
-
-    // ── ELO：双端各自上报，按房间码去重（去重后结果一致，不会重复扣分） ──
+    // ── ELO：保持原信任模型（不验签，避免误伤 P2P 结算） ──
     if (boardType === 'elo') {
         const opponentId = String(msg.opponentPlayerId || '').slice(0, 64);
         if (!opponentId || opponentId === playerId) return;
@@ -294,16 +558,115 @@ function handleSubmitScore(ws, msg) {
         updateElo(playerId, nickname, opponentId, opponentNickname, winner);
         return;
     }
+
+    // ── 计分榜（lr / rtN）：方案A 验签 + nonce + 闸门（tt 历史榜不再接受新上报） ──
+    const isRaceTime = /^rt\d+$/.test(boardType);
+    const isComet = /^pl\d+$/.test(boardType);
+    if (!isRaceTime && !isComet && boardType !== 'lr') return;
+    if (!verifySig(ws, msg)) { sendSubmitResult(ws, false, { code: 'invalid_signature' }); return; }
+    const value = Number(msg.value);
+    if (!Number.isFinite(value) || value < 0) return;
+
+    const needV = boardType === 'lr' ? needVerify(playerId, value) : false;
+    let gate = SIGN_GATE;
+    if (needV) {
+        gate = isLockedOut(ip) ? Infinity : VERIFY_GATES[Math.min(verifyCount(ip), VERIFY_GATES.length - 1)];
+    }
+    const wait = now - (lastSubmitAt.get(ip) || 0);
+    if (wait < gate) {
+        sendSubmitResult(ws, false, { code: 'rate_limited', waitMs: Math.max(1, Math.ceil((gate - wait) / 1000)) });
+        return;
+    }
+    lastSubmitAt.set(ip, now);
+
+    // ── LR∑ 榜 ──
+    if (boardType === 'lr') {
+        if (value > 1e9) return;
+        const payload = msg.payload || {};
+        if (needV) {
+            // 方案二核验通道：逐关复算（务实版），通过后用服务器值入库
+            const levels = Array.isArray(payload.levels) ? payload.levels : null;
+            if (!levels || !levels.length) { sendSubmitResult(ws, false, { code: 'verify_failed', reason: 'missing_levels' }); return; }
+            recordVerify(ip);
+            const res = verifyLRSigma(levels, value);
+            if (!res.ok) {
+                if (flaggedForVerify.has(playerId)) { // D6 被举报且核验失败 → 清分
+                    const lrMap = scoreBoards['lr'];
+                    if (lrMap) lrMap.delete(playerId);
+                    flaggedForVerify.delete(playerId);
+                    console.log(`[LB] ${playerId} 被举报且核验失败(${res.reason}/${res.level})，已清分`);
+                }
+                sendSubmitResult(ws, false, { code: 'verify_failed', reason: res.reason, level: res.level });
+                return;
+            }
+            flaggedForVerify.delete(playerId);
+            const map = ensureBoard('lr');
+            const cur = map.get(playerId);
+            if (!cur || res.recomputedSum > cur.score) {
+                if (!cur && !checkIpNewIdentity(ip, playerId)) {
+                    console.warn(`[LB] IP ${ip} 疑似刷榜，忽略新身份 ${playerId} 的上报`);
+                    return;
+                }
+                map.set(playerId, { playerId, nickname, score: res.recomputedSum, updatedAt: now });
+                scheduleSave();
+            }
+            const minTokens = {};
+            for (const lv of levels) minTokens[String(lv.level)] = Number(lv.minToken);
+            updateCometBoards(playerId, nickname, minTokens);
+            sendSubmitResult(ws, true, { score: res.recomputedSum });
+            return;
+        }
+        // 签名通道：value 与 minTokens 均在签名内，信任入库
+        const map = ensureBoard('lr');
+        const cur = map.get(playerId);
+        if (!cur || value > cur.score) {
+            if (!cur && !checkIpNewIdentity(ip, playerId)) {
+                console.warn(`[LB] IP ${ip} 疑似刷榜，忽略新身份 ${playerId} 的上报`);
+                return;
+            }
+            map.set(playerId, { playerId, nickname, score: value, updatedAt: now });
+            scheduleSave();
+        }
+        updateCometBoards(playerId, nickname, payload.minTokens);
+        sendSubmitResult(ws, true);
+        return;
+    }
+
+    // ── 竞速分关榜 rt{N}：签名 + 题数校验 + 难度下限 ──
+    if (isRaceTime) {
+        const levelId = Number(boardType.slice(2));
+        if (!Number.isFinite(levelId) || levelId < 1 || levelId > 30) return;
+        if (value < 1 || value > 1e6) return;
+        const solvedCount = Number(msg.solvedCount);
+        const totalRounds = Number(msg.totalRounds);
+        if (solvedCount !== RACE_PUZZLES || totalRounds !== RACE_PUZZLES) return; // 必须解满 10 题
+        if (value < raceFloorSeconds(levelId)) { sendSubmitResult(ws, false, { code: 'too_fast', level: levelId }); return; }
+        const map = ensureBoard(boardType);
+        const cur = map.get(playerId);
+        if (!cur || value < cur.score) {
+            if (!cur && !checkIpNewIdentity(ip, playerId)) {
+                console.warn(`[LB] IP ${ip} 疑似刷榜，忽略新身份 ${playerId} 的上报`);
+                return;
+            }
+            map.set(playerId, { playerId, nickname, score: value, updatedAt: now });
+            scheduleSave();
+        }
+        sendSubmitResult(ws, true);
+        return;
+    }
+
+    // 彗星 pl{N}：只读，不接受客户端直接提交
+    if (isComet) { sendSubmitResult(ws, false, { code: 'readonly' }); return; }
 }
 
 function handleQueryLeaderboard(ws, msg) {
     const boardType = String(msg.boardType || '');
     const playerId = String(msg.playerId || '');
 
-    // 联机 ELO 榜：按 ELO 降序
+    // 联机 ELO 榜：按 ELO 降序（未打过任何对局视为 1200，且显示"我的分数"）
     if (boardType === 'elo') {
         const arr = [...eloBoard.values()].sort((a, b) => b.elo - a.elo || b.wins - a.wins || a.updatedAt - b.updatedAt);
-        const list = arr.slice(0, TOP_N).map((p, i) => ({
+        const list = arr.slice(0, topFor('elo')).map((p, i) => ({
             rank: i + 1,
             nickname: p.nickname,
             score: p.elo,
@@ -313,13 +676,14 @@ function handleQueryLeaderboard(ws, msg) {
             isMe: String(p.playerId) === playerId
         }));
         const meIdx = arr.findIndex((p) => String(p.playerId) === playerId);
+        const inTop = meIdx >= 0 && meIdx < topFor('elo');
         send(ws, {
             type: 'leaderboard_result',
             id: String(msg.id || ''),
             boardType,
             list,
-            myRank: meIdx === -1 ? -1 : meIdx + 1,
-            myScore: meIdx === -1 ? null : arr[meIdx].elo
+            myRank: inTop ? meIdx + 1 : -1,
+            myScore: meIdx === -1 ? ELO_INIT : arr[meIdx].elo   // 一场没打 = 1200
         });
         return;
     }
@@ -335,20 +699,22 @@ function handleQueryLeaderboard(ws, msg) {
         if (order === 'asc') return (a.score - b.score) || (a.updatedAt - b.updatedAt);
         return (b.score - a.score) || (a.updatedAt - b.updatedAt);
     });
-    const list = arr.slice(0, TOP_N).map((p, i) => ({
+    const list = arr.slice(0, topFor(boardType)).map((p, i) => ({
         rank: i + 1,
         nickname: p.nickname,
         score: p.score,
+        playerId: String(p.playerId),     // 供举报等需要（LR∑ 榜）
         isMe: String(p.playerId) === playerId
     }));
     const meIdx = arr.findIndex((p) => String(p.playerId) === playerId);
+    const inTop = meIdx >= 0 && meIdx < topFor(boardType);
     send(ws, {
         type: 'leaderboard_result',
         id: String(msg.id || ''),
         boardType,
         list,
-        myRank: meIdx === -1 ? -1 : meIdx + 1,
-        myScore: meIdx === -1 ? null : arr[meIdx].score
+        myRank: inTop ? meIdx + 1 : -1,                    // 未进前 N 视为未上榜
+        myScore: meIdx === -1 ? null : arr[meIdx].score    // 有记录则返回自己的分数（供未上榜时显示）
     });
 }
 
@@ -383,6 +749,9 @@ lobbyWss.on('connection', (ws, req) => {
     // 记录来源 IP（排行榜刷榜风控用；不做身份主键）
     ws._ip = getClientIp(req);
     console.log('[Lobby] 客户端已连接' + (ws._ip ? `（IP ${ws._ip}）` : ''));
+
+    // 排行榜签名：下发一次性 nonce
+    try { issueNonce(ws); } catch (e) { /* 忽略 */ }
 
     ws.on('message', (raw) => {
         let msg;
@@ -590,6 +959,18 @@ lobbyWss.on('connection', (ws, req) => {
             // 排行榜：查询榜单 → leaderboard_result
             case 'query_leaderboard': {
                 try { handleQueryLeaderboard(ws, msg); } catch (e) { console.warn('[LB] query_leaderboard 处理异常:', e.message); }
+                break;
+            }
+
+            // 排行榜：玩家举报（90s 间隔，被举报者强制核验）
+            case 'report': {
+                try { handleReport(ws, msg); } catch (e) { console.warn('[LB] report 处理异常:', e.message); }
+                break;
+            }
+
+            // 排行榜：重新申请一次性 nonce（签名用）
+            case 'request_challenge': {
+                try { issueNonce(ws); } catch (e) { console.warn('[LB] request_challenge 处理异常:', e.message); }
                 break;
             }
 

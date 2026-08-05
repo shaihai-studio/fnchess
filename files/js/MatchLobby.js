@@ -73,6 +73,8 @@ class MatchLobbyController {
         // ── 排行榜回调 ─────────────────────────────────────────
         this.onLeaderboardResult = null;  // (data) => void（收到排行榜查询结果）
         this.onPlayerEloResult = null;    // (data) => void（收到批量 ELO 查询结果）
+        this.onChallenge = null;          // (data) => void（收到签名一次性 nonce）
+        this.onSubmitResult = null;       // (data) => void（收到上报结果 verify_failed / rate_limited 等）
 
         // ── 房间解散回调 ───────────────────────────────────────
         this.onRoomDissolved = null;      // (data) => void（对战方收到房主解散房间）
@@ -215,6 +217,12 @@ class MatchLobbyController {
                 break;
             case 'player_elo_result':
                 if (this.onPlayerEloResult) this.onPlayerEloResult(data);
+                break;
+            case 'challenge':
+                if (this.onChallenge) this.onChallenge(data);
+                break;
+            case 'submit_result':
+                if (this.onSubmitResult) this.onSubmitResult(data);
                 break;
             case 'room_dissolved':
                 if (this.onRoomDissolved) this.onRoomDissolved(data);

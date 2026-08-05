@@ -498,11 +498,15 @@
             <div class="leaderboard-tabs">
                 <button class="leaderboard-tab active" data-board="lr">LR∑ 闯关</button>
                 <button class="leaderboard-tab" data-board="tt">竞速分关榜</button>
+                <button class="leaderboard-tab" data-board="comet">彗星榜</button>
                 <button class="leaderboard-tab" data-board="elo">ELO 联机</button>
             </div>
             <div class="leaderboard-race-selector" id="leaderboard-race-selector" style="display:none;">
                 <span>查看关卡：</span>
-                <select id="leaderboard-race-level"></select>
+                <div class="race-level-select" id="race-level-select">
+                    <div class="race-level-trigger" id="race-level-trigger" tabindex="0">第 1 关</div>
+                    <div class="race-level-dropdown" id="race-level-dropdown"></div>
+                </div>
             </div>
             <div class="leaderboard-me">
                 <span class="leaderboard-me-label">我的昵称</span>
@@ -947,6 +951,8 @@
     <script src="files/js/ui/UILobby.js"></script>
     <!-- 排行榜：身份 + 数据服务 + UI（UILeaderboard 依赖 UIController 原型） -->
     <script src="files/js/PlayerProfile.js"></script>
+    <!-- 排行榜防作弊：签名工具（须在 LeaderboardService 之前加载） -->
+    <script src="files/js/VerifyCrypto.js"></script>
     <script src="files/js/LeaderboardService.js"></script>
     <script src="files/js/ui/UILeaderboard.js"></script>
     <script src="files/js/ui/UISpectator.js"></script>
@@ -969,6 +975,22 @@
             uiController._lobby = new MatchLobbyController();
             // 排行榜服务（复用 lobby WebSocket 通道）+ 排行榜 UI 初始化
             uiController._leaderboardService = new LeaderboardService(uiController._lobby);
+            // 防作弊上报结果提示（核验失败 / 限流 / 用时异常）
+            uiController._leaderboardService.onSubmitResult = (res) => {
+                if (!res || res.ok) return;
+                const sm = typeof uiController.showMessage === 'function' ? uiController.showMessage.bind(uiController) : null;
+                if (!sm) return;
+                if (res.code === 'verify_failed') {
+                    const map = { not_pass: '表达式复算未命中或命中禁区', expr_mismatch: '表达式与签名不一致', length_mismatch: '长度与服务器 token 复算不符', value_mismatch: 'LR∑ 值与长度不符', missing_levels: '缺少逐关表达式', level_not_open: '存在未开放关卡' };
+                    const reason = map[res.reason] || (res.reason || '未知原因');
+                    const where = (res.level !== undefined && res.level !== null && res.level !== '') ? `（第 ${res.level} 关）` : '';
+                    sm(`成绩核验未通过${where}：${reason}`, 'error');
+                } else if (res.code === 'rate_limited') {
+                    sm('提交太频繁，请稍后再试', 'error');
+                } else if (res.code === 'too_fast') {
+                    sm('用时异常过快，成绩未记录', 'error');
+                }
+            };
             uiController.initLeaderboard();
 
             // 创建Summa训练器
