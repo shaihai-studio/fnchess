@@ -107,7 +107,7 @@ class P2PController {
         this._gameInitConfig = null;  // 最近一次 init 的原始配置（供重发/重建）
         this._handledInitGen = 0;     // Guest 已处理过的 init gen（去重，避免重复重置对局）
 
-        // 断线重连（访客掉线后自动重连 / 房主等待访客回来）：3 秒一次，最多 30 次 ≈ 90 秒
+        // 断线重连（访客掉线后自动重连 / 房主等待访客回来）：3 秒一次，最多 20 次 ≈ 60 秒（1 分钟宽限）
         this._reconnecting = false;        // 是否处于重连/等待重连
         this._reconnectTimer = null;       // 重连尝试定时器
         this._reconnectAttempts = 0;       // 已尝试次数
@@ -948,8 +948,8 @@ class P2PController {
 
     _scheduleReconnectAttempt() {
         if (this._disconnecting || this.isConnected) { this._clearReconnectState(); return; }
-        // 30 次 × 3 秒 ≈ 90 秒；超时未恢复 → 放弃重连，判对应方负
-        if (this._reconnectAttempts >= 30) { this._giveUpReconnect(); return; }
+        // 20 次 × 3 秒 ≈ 60 秒（1 分钟重连宽限）；超时未恢复 → 放弃重连，判对应方负
+        if (this._reconnectAttempts >= 20) { this._giveUpReconnect(); return; }
         this._reconnectTimer = setTimeout(() => {
             if (this._disconnecting || this.isConnected) { this._clearReconnectState(); return; }
             this._reconnectAttempts++;

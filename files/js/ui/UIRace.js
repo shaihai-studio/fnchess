@@ -161,6 +161,7 @@ if (typeof UIController === 'undefined') {
             return;
         }
         display.style.display = 'flex';
+        // TTΣ 为已通关关卡的最佳用时之和（本地统计），在线榜改比每关最快用时（竞速分关榜）
         display.innerHTML = `<span class="lrsigma-label">TTΣ =</span> <span class="lrsigma-int">${total.toFixed(2).split('.')[0]}</span><span class="lrsigma-dec">.${total.toFixed(2).split('.')[1]}</span>`;
     }
 ;
@@ -370,8 +371,8 @@ if (typeof UIController === 'undefined') {
         const nextBtn = document.getElementById('race-victory-next-btn');
         if (nextBtn) nextBtn.textContent = this.raceIsCustom ? '返回选关' : '进入下一等级';
         this.renderRaceVictoryDetails(data, { levelId, elapsed, totalSolved, previousBestTime, hasPreviousBest, diff, isNewRecord });
-        // 排行榜：竞速通关后把 TT∑ 星分累计写回进度（与竞速内部星级规则一致），并自动上报
-        // （自定义竞速关不记录最佳成绩，不参与官方 TT∑ 榜）
+        // 排行榜：竞速通关后把 TT∑ 星分累计写回本地进度（与竞速内部星级规则一致），
+        // 并自动上报该关最佳用时到「竞速分关榜」rt{level}（每关一张小榜，取更短者；自定义关不参与）
         if (!this.raceIsCustom && this._leaderboardService && typeof PlayerProfile !== 'undefined') {
             try {
                 const gc = this.gameController;
@@ -383,14 +384,15 @@ if (typeof UIController === 'undefined') {
                         gc.setRaceProgress({ cleared: Math.max(prev.cleared || 0, lv), stars: ttSigma });
                     }
                 }
-                const ttSigma = this.calculateTTSigma();
-                if (Number.isFinite(ttSigma) && ttSigma > 0) {
-                    // 仅当 TT∑ 星分高于上次已上报值才上报，避免重复请求
-                    const last = Number(localStorage.getItem('function_chess_tt_last_upload') || 0);
-                    if (ttSigma > last) {
-                        try { localStorage.setItem('function_chess_tt_last_upload', String(ttSigma)); } catch (e2) { /* 忽略 */ }
+                // 该关当前最佳用时（已通关取历史最佳，否则取本次用时）
+                const bestTime = (hasPreviousBest && previousBestTime < elapsed) ? Number(previousBestTime) : Number(elapsed);
+                if (Number.isFinite(bestTime) && bestTime > 0) {
+                    const lastKey = 'function_chess_rt_last_' + lv;
+                    const last = Number(localStorage.getItem(lastKey) || 0);
+                    if (bestTime < last || last === 0) {
+                        try { localStorage.setItem(lastKey, String(bestTime)); } catch (e2) { /* 忽略 */ }
                         const profile = PlayerProfile.getProfile();
-                        this._leaderboardService.submitTTSigma(ttSigma, profile.nickname);
+                        this._leaderboardService.submitRaceTime(lv, bestTime, profile.nickname);
                         this.refreshLeaderboardIfOpen();
                     }
                 }

@@ -497,8 +497,12 @@
             <h2>在线排行榜</h2>
             <div class="leaderboard-tabs">
                 <button class="leaderboard-tab active" data-board="lr">LR∑ 闯关</button>
-                <button class="leaderboard-tab" data-board="tt">TT∑ 竞速</button>
+                <button class="leaderboard-tab" data-board="tt">竞速分关榜</button>
                 <button class="leaderboard-tab" data-board="elo">ELO 联机</button>
+            </div>
+            <div class="leaderboard-race-selector" id="leaderboard-race-selector" style="display:none;">
+                <span>查看关卡：</span>
+                <select id="leaderboard-race-level"></select>
             </div>
             <div class="leaderboard-me">
                 <span class="leaderboard-me-label">我的昵称</span>
@@ -507,7 +511,7 @@
             </div>
             <div id="leaderboard-list" class="leaderboard-list"></div>
             <div id="leaderboard-myrank" class="leaderboard-myrank"></div>
-            <div class="leaderboard-tip">闯关通关自动上报 LR∑ · 竞速通关自动上报 TT∑ · 联机对局房主自动上报 ELO</div>
+            <div class="leaderboard-tip">闯关通关自动上报 LR∑ · 竞速通关自动上报 该关最佳用时（竞速分关榜，比单关最快）· 联机对局房主自动上报 ELO</div>
             <button class="btn btn-secondary" id="leaderboard-close-btn" style="width: 100%; margin-top: 16px;">关闭</button>
         </div>
     </div>

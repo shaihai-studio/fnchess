@@ -126,9 +126,20 @@ const TOP_N = 50;              // 榜单返回前 N 名
 const ELO_K = 32;              // ELO K 值
 const ELO_INIT = 1200;         // ELO 初始分
 
-// boardType: 'lr' | 'tt' → Map<playerId, {playerId, nickname, score, updatedAt}>
-// boardType: 'elo'     → Map<playerId, {playerId, nickname, elo, wins, losses, draws, updatedAt}>
-const leaderboards = { lr: new Map(), tt: new Map(), elo: new Map() };
+// 计分榜：boardType -> Map(playerId, {playerId, nickname, score, updatedAt})
+// 支持 lr(闯关) / tt(历史竞速星分) / rtN(竞速分关 Time Attack 用时) 等任意分榜
+const scoreBoards = {};
+// 联机 ELO 榜（独立结构：含胜负平）
+const eloBoard = new Map();
+
+function ensureBoard(boardType) {
+    if (!scoreBoards[boardType]) scoreBoards[boardType] = new Map();
+    return scoreBoards[boardType];
+}
+// 竞速分关榜 rtN 取最短用时（升序），其余计分榜取最高分（降序）
+function boardOrder(boardType) {
+    return (typeof boardType === 'string' && boardType.indexOf('rt') === 0 && /^\d+$/.test(boardType.slice(2))) ? 'asc' : 'desc';
+}
 const eloSettled = new Set();  // 已结算的房间码（ELO 去重：防 A/B 双端重复上报）
 
 // IP 风控（辅助，非身份主键）：窗口内同一 IP 出现的"新 playerId"数量超阈值则降级
@@ -166,7 +177,7 @@ function checkIpNewIdentity(ip, playerId) {
 function updateElo(playerId, nickname, opponentId, opponentNickname, winner) {
     const now = Date.now();
     const getP = (id, defaultNick) => {
-        const p = leaderboards.elo.get(id);
+        const p = eloBoard.get(id);
         if (p) return p;
         return { playerId: id, nickname: defaultNick, elo: ELO_INIT, wins: 0, losses: 0, draws: 0, updatedAt: now };
     };
@@ -187,8 +198,8 @@ function updateElo(playerId, nickname, opponentId, opponentNickname, winner) {
     else { a.draws++; b.draws++; }
     a.updatedAt = b.updatedAt = now;
 
-    leaderboards.elo.set(playerId, a);
-    leaderboards.elo.set(opponentId, b);
+    eloBoard.set(playerId, a);
+    eloBoard.set(opponentId, b);
     scheduleSave();
 }
 
@@ -199,10 +210,11 @@ function scheduleSave() {
         try {
             const data = {
                 savedAt: Date.now(),
-                lr: [...leaderboards.lr.values()],
-                tt: [...leaderboards.tt.values()],
-                elo: [...leaderboards.elo.values()]
+                elo: [...eloBoard.values()]
             };
+            for (const t of Object.keys(scoreBoards)) {
+                data[t] = [...scoreBoards[t].values()];
+            }
             fs.writeFileSync(LDB_FILE, JSON.stringify(data, null, 2));
             savePending = false;
         } catch (e) {
@@ -215,14 +227,20 @@ function loadLeaderboards() {
     try {
         if (!fs.existsSync(LDB_FILE)) return;
         const data = JSON.parse(fs.readFileSync(LDB_FILE, 'utf8'));
-        for (const t of ['lr', 'tt', 'elo']) {
-            if (Array.isArray(data[t])) {
-                for (const p of data[t]) {
-                    if (p && p.playerId) leaderboards[t].set(String(p.playerId), p);
-                }
+        let lrCount = 0, ttCount = 0;
+        for (const t of Object.keys(data)) {
+            if (t === 'savedAt') continue;
+            const arr = Array.isArray(data[t]) ? data[t] : [];
+            if (t === 'elo') {
+                for (const p of arr) if (p && p.playerId) eloBoard.set(String(p.playerId), p);
+            } else {
+                const m = ensureBoard(t);
+                for (const p of arr) if (p && p.playerId) m.set(String(p.playerId), p);
+                if (t === 'lr') lrCount = m.size;
+                if (t === 'tt') ttCount = m.size;
             }
         }
-        console.log(`[LB] 排行榜已加载: LR ${leaderboards.lr.size} 人 / TT ${leaderboards.tt.size} 人 / ELO ${leaderboards.elo.size} 人`);
+        console.log(`[LB] 排行榜已加载: LR ${lrCount} 人 / TT ${ttCount} 人 / ELO ${eloBoard.size} 人`);
     } catch (e) {
         console.warn('[LB] 加载排行榜失败:', e.message);
     }
@@ -235,15 +253,20 @@ function handleSubmitScore(ws, msg) {
     if (!playerId) return;
     const ip = ws && ws._ip ? ws._ip : '';
 
-    // ── LR∑ / TT∑：取历史最高分 ──
-    if (boardType === 'lr' || boardType === 'tt') {
+    // ── 计分榜（lr / tt / rtN）：同一玩家只保留最佳（lr/tt 取最高分，rtN 取最短用时） ──
+    if (boardType === 'lr' || boardType === 'tt' || /^rt\d+$/.test(boardType)) {
+        const isRaceTime = /^rt\d+$/.test(boardType);
         const value = Number(msg.value);
         if (!Number.isFinite(value) || value < 0) return;
-        if (boardType === 'lr' && value > 1e9) return; // 数值上限校验，防伪造脏数据
-        if (boardType === 'tt' && value > 1e6) return;
-        const map = leaderboards[boardType];
+        if (boardType === 'lr' && value > 1e9) return;          // LR∑ 上限
+        if (boardType === 'tt' && value > 1e6) return;          // 历史 TT∑ 上限
+        if (isRaceTime && (value < 1 || value > 1e6)) return;   // 单关用时合理区间：1s ~ 1e6s（>11天视为异常）
+        const map = ensureBoard(boardType);
         const cur = map.get(playerId);
-        if (cur && value <= cur.score) return; // 已有更高分，忽略
+        if (cur) {
+            if (!isRaceTime && value <= cur.score) return;  // lr/tt：非新高，忽略
+            if (isRaceTime && value >= cur.score) return;   // rtN：非更短，忽略
+        }
         if (!cur && !checkIpNewIdentity(ip, playerId)) {
             console.warn(`[LB] IP ${ip} 疑似刷榜，忽略新身份 ${playerId} 的上报`);
             return;
@@ -253,7 +276,7 @@ function handleSubmitScore(ws, msg) {
         return;
     }
 
-    // ── ELO：由房主唯一上报，按房间码去重 ──
+    // ── ELO：双端各自上报，按房间码去重（去重后结果一致，不会重复扣分） ──
     if (boardType === 'elo') {
         const opponentId = String(msg.opponentPlayerId || '').slice(0, 64);
         if (!opponentId || opponentId === playerId) return;
@@ -274,32 +297,50 @@ function handleSubmitScore(ws, msg) {
 }
 
 function handleQueryLeaderboard(ws, msg) {
-    const boardType = ['lr', 'tt', 'elo'].includes(msg.boardType) ? msg.boardType : 'lr';
+    const boardType = String(msg.boardType || '');
     const playerId = String(msg.playerId || '');
-    const map = leaderboards[boardType];
 
-    let arr;
+    // 联机 ELO 榜：按 ELO 降序
     if (boardType === 'elo') {
-        arr = [...map.values()].sort((a, b) => b.elo - a.elo || b.wins - a.wins || a.updatedAt - b.updatedAt);
-    } else {
-        arr = [...map.values()].sort((a, b) => b.score - a.score || a.updatedAt - b.updatedAt);
-    }
-
-    const list = arr.slice(0, TOP_N).map((p, i) => {
-        const row = {
+        const arr = [...eloBoard.values()].sort((a, b) => b.elo - a.elo || b.wins - a.wins || a.updatedAt - b.updatedAt);
+        const list = arr.slice(0, TOP_N).map((p, i) => ({
             rank: i + 1,
             nickname: p.nickname,
-            score: boardType === 'elo' ? p.elo : p.score,
+            score: p.elo,
+            wins: p.wins,
+            losses: p.losses,
+            draws: p.draws,
             isMe: String(p.playerId) === playerId
-        };
-        if (boardType === 'elo') {
-            row.wins = p.wins;
-            row.losses = p.losses;
-            row.draws = p.draws;
-        }
-        return row;
-    });
+        }));
+        const meIdx = arr.findIndex((p) => String(p.playerId) === playerId);
+        send(ws, {
+            type: 'leaderboard_result',
+            id: String(msg.id || ''),
+            boardType,
+            list,
+            myRank: meIdx === -1 ? -1 : meIdx + 1,
+            myScore: meIdx === -1 ? null : arr[meIdx].elo
+        });
+        return;
+    }
 
+    // 其余计分榜（lr / tt / rtN）：按 boardOrder 排序（rtN 升序 = 用时短者优）
+    const map = scoreBoards[boardType];
+    if (!map) {
+        send(ws, { type: 'leaderboard_result', id: String(msg.id || ''), boardType, list: [], myRank: -1, myScore: null });
+        return;
+    }
+    const order = boardOrder(boardType);
+    const arr = [...map.values()].sort((a, b) => {
+        if (order === 'asc') return (a.score - b.score) || (a.updatedAt - b.updatedAt);
+        return (b.score - a.score) || (a.updatedAt - b.updatedAt);
+    });
+    const list = arr.slice(0, TOP_N).map((p, i) => ({
+        rank: i + 1,
+        nickname: p.nickname,
+        score: p.score,
+        isMe: String(p.playerId) === playerId
+    }));
     const meIdx = arr.findIndex((p) => String(p.playerId) === playerId);
     send(ws, {
         type: 'leaderboard_result',
@@ -307,7 +348,7 @@ function handleQueryLeaderboard(ws, msg) {
         boardType,
         list,
         myRank: meIdx === -1 ? -1 : meIdx + 1,
-        myScore: meIdx === -1 ? null : (boardType === 'elo' ? arr[meIdx].elo : arr[meIdx].score)
+        myScore: meIdx === -1 ? null : arr[meIdx].score
     });
 }
 
@@ -578,7 +619,7 @@ lobbyWss.on('connection', (ws, req) => {
                         .map((id) => String(id).slice(0, 64)).filter(Boolean);
                     const players = {};
                     for (const id of ids) {
-                        const p = leaderboards.elo.get(id);
+                        const p = eloBoard.get(id);
                         players[id] = p
                             ? { elo: p.elo, nickname: p.nickname, wins: p.wins, losses: p.losses, draws: p.draws }
                             : { elo: ELO_INIT, nickname: '棋手', wins: 0, losses: 0, draws: 0 };

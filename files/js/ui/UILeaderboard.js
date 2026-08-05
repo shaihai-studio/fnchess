@@ -13,6 +13,23 @@ if (typeof UIController === 'undefined') {
         this._leaderboardBoard = 'lr';
         this._leaderboardQuerying = false;
 
+        // 竞速分关榜（Time Attack）关卡选择器：每个关卡一张独立小榜，比单关最快用时
+        this._leaderboardRaceLevel = 1;
+        this.leaderboardRaceSel = document.getElementById('leaderboard-race-selector');
+        this.leaderboardRaceLevelSel = document.getElementById('leaderboard-race-level');
+        if (this.leaderboardRaceLevelSel) {
+            let maxLv = 30;
+            try { if (this.gameController && this.gameController.maxOpenRaceLevel) maxLv = this.gameController.maxOpenRaceLevel; } catch (e) { /* 忽略 */ }
+            let opts = '';
+            for (let i = 1; i <= maxLv; i++) opts += `<option value="${i}">第 ${i} 关</option>`;
+            this.leaderboardRaceLevelSel.innerHTML = opts;
+            this.leaderboardRaceLevelSel.addEventListener('change', () => {
+                if (window.audioManager) window.audioManager.playClick();
+                this._leaderboardRaceLevel = Number(this.leaderboardRaceLevelSel.value) || 1;
+                this._queryLeaderboard('tt');
+            });
+        }
+
         const openBtn = document.getElementById('leaderboard-open-btn');
         if (openBtn) openBtn.addEventListener('click', () => this.openLeaderboard());
 
@@ -121,6 +138,19 @@ if (typeof UIController === 'undefined') {
         document.querySelectorAll('.leaderboard-tab').forEach((t) => {
             t.classList.toggle('active', t.dataset.board === board);
         });
+        // 竞速分关榜：显示关卡选择器，并默认跳到玩家当前所在竞速关
+        if (board === 'tt') {
+            if (this.leaderboardRaceSel) this.leaderboardRaceSel.style.display = 'flex';
+            let cur = 1;
+            try { if (this.raceCurrentLevelId) cur = Number(this.raceCurrentLevelId) || 1; } catch (e) { /* 忽略 */ }
+            let maxLv = 30;
+            try { if (this.gameController && this.gameController.maxOpenRaceLevel) maxLv = this.gameController.maxOpenRaceLevel; } catch (e) { /* 忽略 */ }
+            if (cur < 1 || cur > maxLv) cur = 1;
+            this._leaderboardRaceLevel = cur;
+            if (this.leaderboardRaceLevelSel) this.leaderboardRaceLevelSel.value = String(cur);
+        } else {
+            if (this.leaderboardRaceSel) this.leaderboardRaceSel.style.display = 'none';
+        }
         this._queryLeaderboard(board);
     }
 ;
@@ -138,6 +168,9 @@ if (typeof UIController === 'undefined') {
         let playerId = '';
         if (typeof PlayerProfile !== 'undefined') playerId = PlayerProfile.getPlayerId();
         const self = this;
+        // 竞速分关榜：把 tt 标签映射到具体关卡的分榜 rt{level}（每关一张小榜，比单关最快用时）
+        const actualBoard = (board === 'tt') ? ('rt' + (this._leaderboardRaceLevel || 1)) : board;
+        this._leaderboardActiveBoard = actualBoard;
         // 8 秒超时兜底：服务器未启动 / 断连时避免"加载中"卡死
         if (this._leaderboardQueryTimer) clearTimeout(this._leaderboardQueryTimer);
         this._leaderboardQueryTimer = setTimeout(() => {
@@ -146,10 +179,10 @@ if (typeof UIController === 'undefined') {
                 self.leaderboardList.innerHTML = '<div class="leaderboard-empty">无法连接排行榜服务器，请稍后重试</div>';
             }
         }, 8000);
-        svc.query(board, playerId, (data) => {
+        svc.query(actualBoard, playerId, (data) => {
             if (self._leaderboardQueryTimer) { clearTimeout(self._leaderboardQueryTimer); self._leaderboardQueryTimer = null; }
             self._leaderboardQuerying = false;
-            if (self._leaderboardBoard !== (data && data.boardType)) return; // Tab 已切换，丢弃过期结果
+            if (self._leaderboardActiveBoard !== (data && data.boardType)) return; // Tab 已切换，丢弃过期结果
             self._renderLeaderboard(data);
         });
     }
@@ -161,6 +194,9 @@ if (typeof UIController === 'undefined') {
         if (!list) return;
         const boardType = data && data.boardType;
         const rows = Array.isArray(data && data.list) ? data.list : [];
+        // 竞速分关榜 rtN：用时越短越好，分数后缀带 s
+        const isRaceBoard = (typeof boardType === 'string' && boardType.indexOf('rt') === 0 && /^\d+$/.test(boardType.slice(2)));
+        const raceLevel = isRaceBoard ? Number(boardType.slice(2)) : 0;
 
         if (!rows.length) {
             list.innerHTML = '<div class="leaderboard-empty">暂无数据，快来挑战第一名吧！</div>';
@@ -170,6 +206,8 @@ if (typeof UIController === 'undefined') {
                 const rankClass = row.rank <= 3 ? ` top-${row.rank}` : '';
                 let scoreText;
                 if (boardType === 'lr') scoreText = Number(row.score).toFixed(6);
+                else if (isRaceBoard) scoreText = `${Number(row.score).toFixed(2)}s`;
+                else if (boardType === 'tt') scoreText = `${row.score} 速度`;
                 else scoreText = String(row.score);
                 const sub = (boardType === 'elo')
                     ? `${row.wins}胜 ${row.losses}负 ${row.draws}平`
@@ -190,8 +228,13 @@ if (typeof UIController === 'undefined') {
             const myRank = Number(data && data.myRank);
             if (myRank > 0) {
                 const myScore = (data && data.myScore != null) ? data.myScore : '';
-                const label = boardType === 'lr' ? 'LR∑' : boardType === 'tt' ? 'TT∑' : 'ELO';
-                this.leaderboardMyRankEl.textContent = `我的排名：第 ${myRank} 名（${label} ${myScore}）`;
+                const myScoreText = isRaceBoard ? `${Number(myScore).toFixed(2)}s` : myScore;
+                let label;
+                if (boardType === 'lr') label = 'LR∑';
+                else if (boardType === 'elo') label = 'ELO';
+                else if (isRaceBoard) label = `第 ${raceLevel} 关 用时`;
+                else label = '竞速速度值';
+                this.leaderboardMyRankEl.textContent = `我的排名：第 ${myRank} 名（${label} ${myScoreText}）`;
             } else {
                 this.leaderboardMyRankEl.textContent = '还没有上榜记录，快去打一局吧！';
             }

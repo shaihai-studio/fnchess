@@ -184,11 +184,18 @@ if (typeof UIController === 'undefined') {
                     }
                     return;
                 }
-                // 房主退出/解散 → 本局作废、不判负不扣 ELO，提示"房主已解散该房间"
-                if (this._p2pRoomDissolved) return; // 已收到解散通知，弹窗已显示，避免重复
+                // 房主退出/解散 → 排位模式访客结算为获胜得分（与房主判负完全对称）；
+                // 休闲模式仍本局作废、不结算 ELO
+                if (this._p2pRoomDissolved) return; // 已收到解散通知，结算/弹窗已显示，避免重复
                 if (this.isP2PMode && this._p2pMatchStarted && !this._p2pEloSettled) {
                     this._p2pRoomDissolved = true;
-                    this._showP2PDisconnectModal('dissolved');
+                    if (this._p2pMatchMode === 'ranked') {
+                        if (!this._reportP2PForfeitOpponent()) {
+                            this._showP2PDisconnectModal('dissolved');
+                        }
+                    } else {
+                        this._showP2PDisconnectModal('dissolved');
+                    }
                 } else {
                     this._showP2PDisconnectModal(null); // 非对局中 → 普通断线弹窗
                 }
@@ -657,8 +664,9 @@ if (typeof UIController === 'undefined') {
 
 // _cleanupP2P
     UIController.prototype._cleanupP2P = function() {
-        // 对局进行中 + 主动退出（点退出/解散/返回主菜单）→ 立即结算并弹 disconnect-modal
-        // - 排位模式：房主解散（不扣 ELO）弹"房主已解散该房间"；访客判负扣 ELO 弹"你已中途退出判负"
+    // 对局进行中 + 主动退出（点退出/解散/返回主菜单）→ 立即结算并弹 disconnect-modal
+    // - 排位模式：房主解散判负扣 ELO（弹"中途退出"）；访客判负扣 ELO（弹"你已中途退出判负"）
+    //   两端对称：房主解散=房主判负，访客收到解散=访客判负、房主获胜
         // - 休闲模式：不计算 ELO，直接清理回主菜单（等同原始联机体验）
         // 排位模式弹窗后让用户先看完 disconnect-modal 上的"返回主菜单"按钮再回主菜单，
         // 避免被 handleExit 后续的 showModal(startModal) 覆盖。
@@ -666,10 +674,15 @@ if (typeof UIController === 'undefined') {
             if (this._p2pMatchMode === 'ranked') {
                 const p2p = this.p2pController;
                 if (p2p && p2p.isHost) {
+                    // 房主主动解散/退出：判房主负、扣 ELO（与访客掉线判负完全对称）
                     if (this._lobby) this._lobby.notifyRoomDissolve();
-                    this._p2pRoomDissolved = true; // 本局作废，不再结算
-                    this._showP2PDisconnectModal('dissolved');
+                    if (!this._reportP2PForfeit(true)) {
+                        // 对手资料缺失等兜底：本局作废不结算
+                        this._p2pRoomDissolved = true;
+                        this._showP2PDisconnectModal('dissolved');
+                    }
                 } else {
+                    // 访客主动退出：判访客负、扣 ELO
                     this._reportP2PForfeit(true);
                 }
                 this._p2pShowDisconnectReturnToMenu = true; // 告知 handleExit 跳过弹主菜单
@@ -776,11 +789,19 @@ if (typeof UIController === 'undefined') {
 // _onRoomDissolved
     UIController.prototype._onRoomDissolved = function(data) {
         // 对战方收到"房主已解散该房间"（大厅模式经 lobby WS 通知）
-        this._p2pRoomDissolved = true; // 本局作废，不再结算 ELO
+        this._p2pRoomDissolved = true;
         this._hideP2PReconnectWait();
-        // 房主已退出：访客侧停止重连尝试，避免 90s 后重连失败重复弹窗
+        // 房主已退出：访客侧停止重连尝试，避免 60s 后重连失败重复弹窗
         if (this.p2pController && !this.p2pController.isHost) {
             this.p2pController.disconnect();
+            if (this._p2pMatchMode === 'ranked' && this._p2pMatchStarted && !this._p2pEloSettled) {
+                // 访客结算为获胜得分（与房主判负完全对称）；服务端按 roomKey 去重，结果天然一致
+                if (!this._reportP2PForfeitOpponent()) {
+                    this._showP2PDisconnectModal('dissolved');
+                    return;
+                }
+                return;
+            }
         }
         this._showP2PDisconnectModal('dissolved');
     }
@@ -794,7 +815,7 @@ if (typeof UIController === 'undefined') {
         if (isReconnecting) {
             this._p2pReconnectStartAt = Date.now();
             if (this.p2pController && this.p2pController.isHost) {
-                this._showP2PReconnectWait();       // 房主：等待访客重连（90s 倒计时）
+                this._showP2PReconnectWait();       // 房主：等待访客重连（60s 倒计时）
             } else {
                 this._showP2PReconnectingToast();   // 访客：自动重连提示
             }
@@ -832,7 +853,7 @@ if (typeof UIController === 'undefined') {
         const self = this;
         const el = document.getElementById('p2p-reconnect-countdown');
         const start = Date.now();
-        const total = 90;
+        const total = 60; // 1 分钟重连宽限
         const update = () => {
             const left = Math.max(0, total - Math.round((Date.now() - start) / 1000));
             if (el) el.textContent = String(left);
@@ -907,6 +928,39 @@ if (typeof UIController === 'undefined') {
     }
 ;
 
+// _reportP2PForfeitOpponent
+// 访客专用：收到房主解散/退出通知时，本方结算为获胜得分（与房主判负完全对称）。
+// 上报语义与 _reportP2PForfeit(false) 一致：本方略胜（scoreA=1, winner='A'）；
+// 服务端按 roomKey 去重，房主端已上报同样结果，两侧结果天然一致，不会重复扣分。
+UIController.prototype._reportP2PForfeitOpponent = function() {
+    if (!this.isP2PMode || !this._p2pMatchStarted || this._p2pEloSettled) {
+        return false;
+    }
+    if (typeof PlayerProfile === 'undefined') return false;
+    const p2p = this.p2pController;
+    const opp = this._p2pOpponentProfile;
+    if (!p2p || !opp || !opp.playerId) return false;
+    if (!this._leaderboardService) return false;
+    const profile = PlayerProfile.getProfile();
+    const roomKey = (p2p.roomCode || 'room') + '#' + (p2p._gen || 0);
+    // 对手（房主）弃权 → 本方（访客）获胜：scoreA=1, winner='A'
+    this._leaderboardService.submitScore({
+        boardType: 'elo',
+        playerId: profile.playerId,
+        nickname: profile.nickname,
+        opponentPlayerId: opp.playerId,
+        opponentNickname: opp.nickname || '棋手',
+        scoreA: 1,
+        scoreB: 0,
+        winner: 'A',
+        roomCode: roomKey
+    });
+    this._p2pEloSettled = true;
+    this._showP2PDisconnectModal(true); // 对手中途退出，本局判我获胜
+    return true;
+}
+;
+
 // _startP2PVSIntro
     UIController.prototype._startP2PVSIntro = function() {
         // 休闲模式不计算 ELO，也不播放排位 VS 动画（等同原始联机体验）
@@ -917,27 +971,25 @@ if (typeof UIController === 'undefined') {
         if (!opp || !opp.playerId) return;
         const myId = PlayerProfile.getPlayerId();
         const self = this;
-        let shown = false;
-        const show = (myElo, oppElo) => {
-            if (shown) return;
-            shown = true;
-            if (self._p2pEloSettled || !self.isP2PMode) return; // 已结束则不再播放
+        // 立即播放开场动画（不再等 ELO 查询），避免"开始后 1~2s 才显示"
+        if (!self._p2pEloSettled && self.isP2PMode) {
             self._showP2PVSIntro(
                 PlayerProfile.getNickname(),
-                Number.isFinite(myElo) ? myElo : null,
+                null,
                 opp.nickname || '棋手',
-                Number.isFinite(oppElo) ? oppElo : null
+                null
             );
-        };
-        // 异步查询双方 ELO（服务器不可用时 ELO 显示为 —，动画照常播放）
+        }
+        // ELO 查询回来后回填昵称下方的 ELO 数值（动画已在进行，无需等待）
         this._leaderboardService.queryPlayerElo([myId, opp.playerId], (data) => {
+            if (self._p2pEloSettled || !self.isP2PMode) return;
             const map = (data && data.players) || {};
             const my = map[myId] || {};
             const op = map[opp.playerId] || {};
-            show(my.elo, op.elo);
+            const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = 'ELO ' + (v != null ? v : '—'); };
+            set('p2p-vs-my-elo', my.elo);
+            set('p2p-vs-opp-elo', op.elo);
         });
-        // 兜底：2 秒内 ELO 若未返回（服务器不可达/连接慢），直接播放动画（ELO 显示为 —）
-        setTimeout(() => show(null, null), 2000);
     }
 ;
 
@@ -975,15 +1027,15 @@ if (typeof UIController === 'undefined') {
         const finish = () => {
             if (subEl) subEl.textContent = '开始！';
             playTick(0);
-            setTimeout(() => { overlay.style.display = 'none'; }, 700);
+            setTimeout(() => { overlay.style.display = 'none'; }, 900);
         };
         const tick = () => {
             count--;
-            if (count > 0) { pop(); self._p2pVSTimer = setTimeout(tick, 850); }
+            if (count > 0) { pop(); self._p2pVSTimer = setTimeout(tick, 1000); }
             else finish();
         };
         if (this._p2pVSTimer) clearTimeout(this._p2pVSTimer);
-        this._p2pVSTimer = setTimeout(tick, 850);
+        this._p2pVSTimer = setTimeout(tick, 1000);
     }
 ;
 

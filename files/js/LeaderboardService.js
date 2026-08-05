@@ -73,7 +73,14 @@ class LeaderboardService {
         this.submitScore({ boardType: 'lr', value: Number(value) || 0, nickname: nickname || '', playerId });
     }
 
-    /** 上报竞速 TT∑ 星分 */
+    /** 上报竞速分关 Time Attack 用时：boardType = rt{levelId}，value = 该关最佳用时(秒) */
+    submitRaceTime(levelId, seconds, nickname) {
+        let playerId = '';
+        if (typeof PlayerProfile !== 'undefined') playerId = PlayerProfile.getPlayerId();
+        this.submitScore({ boardType: 'rt' + Number(levelId), value: Number(seconds) || 0, nickname: nickname || '', playerId });
+    }
+
+    /** 兼容历史：上报竞速 TT∑ 星分（旧榜保留，新榜改用 submitRaceTime 分关） */
     submitTTSigma(value, nickname) {
         let playerId = '';
         if (typeof PlayerProfile !== 'undefined') playerId = PlayerProfile.getPlayerId();
