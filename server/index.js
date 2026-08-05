@@ -326,18 +326,29 @@ function issueNonce(ws) {
 }
 function verifySig(ws, msg) {
     const nonce = String(msg.nonce || '');
-    if (!nonce || !ws._nonce || Date.now() > (ws._nonceExp || 0)) return false;
-    if (nonce !== ws._nonce) return false;
+    const fail = (reason, extra) => {
+        console.warn(`[LB] verifySig FAIL: ${reason} | playerId=${String(msg.playerId || '').slice(0, 32)} boardType=${msg.boardType} value=${msg.value} | ${extra || ''}`);
+        return false;
+    };
+    if (!nonce) return fail('nonce_empty');
+    if (!ws._nonce) return fail('ws_nonce_empty (可能 nonce 已用过或从未下发)');
+    if (Date.now() > (ws._nonceExp || 0)) return fail('nonce_expired', `now=${Date.now()} exp=${ws._nonceExp}`);
+    if (nonce !== ws._nonce) return fail('nonce_mismatch', `got="${nonce.slice(0, 24)}..." ws="${String(ws._nonce).slice(0, 24)}..."`);
     ws._nonce = null; // 一次性
     const payload = msg.payload || {};
-    const levelsHash = sha256Hex(bytesToLatin1(utf8Bytes(JSON.stringify(payload))));
+    const payloadJson = JSON.stringify(payload);
+    const levelsHash = sha256Hex(bytesToLatin1(utf8Bytes(payloadJson)));
     const expected = hmacSHA256Hex(LB_SECRET,
         [nonce, String(msg.playerId || ''), String(msg.boardType || ''), String(msg.value === undefined ? '' : msg.value), levelsHash].join('|'));
     const got = String(msg.sig || '');
-    if (got.length !== expected.length) return false;
+    if (got.length !== expected.length) return fail('sig_length_diff', `got=${got.length} expected=${expected.length} payload=${payloadJson.slice(0, 200)}`);
     let diff = 0;
     for (let i = 0; i < expected.length; i++) diff |= (got.charCodeAt(i) ^ expected.charCodeAt(i));
-    return diff === 0;
+    if (diff !== 0) {
+        const sigInput = [nonce, String(msg.playerId || ''), String(msg.boardType || ''), String(msg.value === undefined ? '' : msg.value), levelsHash].join('|');
+        return fail('sig_mismatch', `expected=${expected.slice(0, 24)}... got=${got.slice(0, 24)}... sigInput="${sigInput.slice(0, 200)}" payload=${payloadJson.slice(0, 200)}`);
+    }
+    return true;
 }
 function sendSubmitResult(ws, ok, extra = {}) {
     send(ws, Object.assign({ type: 'submit_result', ok }, extra));
@@ -1088,6 +1099,22 @@ lobbyWss.on('connection', (ws, req) => {
         cleanupHost(ws);
     });
 });
+
+// —— 启动时 SHA256/HMAC 自测（与 VerifyCrypto.js 同一锚点；不一致则客户端签名一定失败） ——
+(function selfTestCrypto() {
+    const cases = [
+        { label: 'sha256("")',     got: sha256Hex(''),                                                                          want: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855' },
+        { label: 'sha256("abc")',   got: sha256Hex('abc'),                                                                        want: 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad' },
+        { label: 'hmac(key, fox)',  got: hmacSHA256Hex('key', 'The quick brown fox jumps over the lazy dog'),                      want: 'f7bc83f430538424b13298e6aa6fb143ef4d59a14946175997479dbc2d1a3cd8' },
+        { label: 'sha256(中文)',    got: sha256Hex(bytesToLatin1(utf8Bytes('中文'))),                                              want: '72726d8818f693066ceb69afa364218b692e62ea92b385782363780f47529c21' }
+    ];
+    let pass = 0, fail = 0;
+    for (const c of cases) {
+        if (c.got === c.want) { pass++; console.log(`[LB-SELFTEST] ✅ ${c.label}`); }
+        else { fail++; console.warn(`[LB-SELFTEST] ❌ ${c.label}\n   got:  ${c.got}\n   want: ${c.want}`); }
+    }
+    console.log(`[LB-SELFTEST] ${pass} pass, ${fail} fail${fail ? '  ⚠️ 排行榜验签一定全部失败，请联系开发' : ''}`);
+})();
 
 loadLeaderboards();
 

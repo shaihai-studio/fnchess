@@ -120,6 +120,12 @@ class LeaderboardService {
         this._nonce = null; // 一次性
         const playerId = typeof PlayerProfile !== 'undefined' ? PlayerProfile.getPlayerId() : '';
         const sig = VerifyCrypto.sign(nonce, playerId, String(obj.boardType || ''), obj.value, payload || {});
+        // 诊断日志（与服务端 verifySig 对账）：打印签名输入摘要 + sig 前缀 + payload 摘要
+        try {
+            const payloadJson = JSON.stringify(payload || {});
+            const sigInput = [String(nonce || ''), String(playerId || ''), String(obj.boardType || ''), String(obj.value === undefined ? '' : obj.value)].join('|');
+            console.log(`[LB] sign input: boardType=${obj.boardType} playerId="${String(playerId).slice(0, 24)}" value=${obj.value} nonce="${String(nonce).slice(0, 16)}..." sig=${sig.slice(0, 24)}... payload=${payloadJson.slice(0, 120)} | sigInput="${sigInput.slice(0, 120)}"`);
+        } catch (e) { /* 忽略诊断日志异常 */ }
         this._send(Object.assign({ type: 'submit_score' }, obj, { playerId, nonce, sig, payload: payload || {} }));
     }
 
