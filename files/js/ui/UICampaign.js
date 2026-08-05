@@ -263,6 +263,8 @@ if (typeof UIController === 'undefined') {
         }
         const starCount = Math.max(1, Math.min(5, Number(data.score) || 1));
         this.renderCampaignVictoryStars(starCount);
+        // 彗星条（满分 10 颗，缓存全服最优 → 本地算 plv；首次通关缓存为空则取 10）
+        if (!isCustom) this.renderCampaignVictoryComet(levelId, Number(length) || 0);
         this.campaignVictoryModal.dataset.levelId = String(levelId);
         this.campaignVictoryModal.dataset.totalLevels = String(data.totalLevels || (this.campaignPack && this.campaignPack.levels ? this.campaignPack.levels.length : 0));
         this.campaignVictoryModal.dataset.difficulty = data.difficulty || this.campaignDifficulty || '';
@@ -316,6 +318,48 @@ if (typeof UIController === 'undefined') {
         } catch (e) {
             return null;
         }
+    }
+;
+
+// syncCampaignRecordsOnLoad — 页面加载时自动同步已通关的闯关记录（老玩家版本升级后首次同步）
+//   与通关胜利上报同口径：lrSigma 高于上次已上报值才发（避免重复请求），只同步闯关。
+    UIController.prototype.syncCampaignRecordsOnLoad = function() {
+        if (typeof PlayerProfile === 'undefined') return;
+        if (!this._leaderboardService) return;
+        try {
+            const cleared = this.getCampaignClearedMax();
+            if (!cleared || cleared <= 0) return;
+            const lrSigma = this.calculateLRSigma(cleared);
+            if (!Number.isFinite(lrSigma) || lrSigma <= 0) return;
+            const last = Number(localStorage.getItem('function_chess_lr_last_upload') || 0);
+            if (lrSigma > last) {
+                const profile = PlayerProfile.getProfile();
+                const sub = this.buildLRSubmissionPayload();
+                this._leaderboardService.submitLRSigma(lrSigma, profile.nickname, sub.minTokens, sub.levels);
+            }
+        } catch (e) { /* 静默降级，不影响游戏 */ }
+    }
+;
+
+// renderCampaignVictoryComet — 胜利弹窗内的彗星条（10 颗制）
+//   读本地缓存的该关全服最短 token（服务器 pl 榜查询时回传 + 本地存）；
+//   无缓存（首次通关/未查榜）时视为"全服最优 = 自己"，plv = 10 颗。
+    UIController.prototype.renderCampaignVictoryComet = function(levelId, minToken) {
+        if (!this.campaignVictoryModal) return;
+        let best = null;
+        try { const v = localStorage.getItem('function_chess_comet_best_' + levelId); best = Number(v) || null; } catch (e) { /* 忽略 */ }
+        const plv = (!best || best <= 0) ? 10 : Math.round(10 * best / minToken * 10) / 10;
+        const pct = Math.max(0, Math.min(100, Math.round(plv / 10 * 100)));
+        let cometEl = this.campaignVictoryModal.querySelector('.campaign-victory-comet');
+        if (!cometEl) {
+            cometEl = document.createElement('div');
+            cometEl.className = 'campaign-victory-comet';
+            const content = this.campaignVictoryModal.querySelector('.campaign-victory-content');
+            const stars = this.campaignVictoryModal.querySelector('.campaign-victory-stars');
+            if (content && stars && stars.parentNode === content) content.insertBefore(cometEl, stars.nextSibling);
+            else if (content) content.appendChild(cometEl);
+        }
+        cometEl.innerHTML = `<div class="comet-bar"><div class="comet-bar-fill" style="width:${pct}%"></div></div>彗星：<b>${plv.toFixed(1)}</b> / 10 颗`;
     }
 ;
 

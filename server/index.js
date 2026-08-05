@@ -139,9 +139,12 @@ function ensureBoard(boardType) {
     if (!scoreBoards[boardType]) scoreBoards[boardType] = new Map();
     return scoreBoards[boardType];
 }
-// 竞速分关榜 rtN 取最短用时（升序），其余计分榜取最高分（降序）
+// 竞速分关榜 rtN 取最短用时（升序）；彗星分关榜 plN 取最短 token（升序）；其余计分榜取最高分（降序）
 function boardOrder(boardType) {
-    return (typeof boardType === 'string' && boardType.indexOf('rt') === 0 && /^\d+$/.test(boardType.slice(2))) ? 'asc' : 'desc';
+    const b = typeof boardType === 'string' ? boardType : '';
+    if (/^rt\d+$/.test(b)) return 'asc';
+    if (/^pl\d+(?:\/\d+)?$/.test(b)) return 'asc';   // 彗星：token 越少越优
+    return 'desc';
 }
 const eloSettled = new Set();  // 已结算的房间码（ELO 去重：防 A/B 双端重复上报）
 
@@ -404,12 +407,11 @@ function updateCometBoards(playerId, nickname, minTokenMap) {
         if (!levelById.has(String(lv))) continue;
         const prevBest = levelBestToken.get(String(lv));
         if (prevBest == null || minToken < prevBest) levelBestToken.set(String(lv), minToken);
-        const best = levelBestToken.get(String(lv));
-        const plv = Math.round(10 * best / minToken * 10) / 10;
+        // 彗星分关榜 pl{lv}：score 直接存"该关最短 token"，token 越少越优（boardOrder 升序）
         const board = ensureBoard('pl' + String(lv));
         const cur = board.get(playerId);
-        if (!cur || plv > cur.score) {
-            board.set(playerId, { playerId, nickname, score: plv, updatedAt: Date.now() });
+        if (!cur || minToken < cur.score) {
+            board.set(playerId, { playerId, nickname, score: minToken, updatedAt: Date.now() });
             scheduleSave();
         }
     }
@@ -708,13 +710,17 @@ function handleQueryLeaderboard(ws, msg) {
     }));
     const meIdx = arr.findIndex((p) => String(p.playerId) === playerId);
     const inTop = meIdx >= 0 && meIdx < topFor(boardType);
+    // 彗星分关榜额外返回：该关全服最短 token（供客户端算 plv 与缓存）
+    const isCometBoard = /^pl\d+(?:\/\d+)?$/.test(boardType);
+    const levelBestTok = isCometBoard ? (levelBestToken.get(String(boardType.slice(2))) || null) : null;
     send(ws, {
         type: 'leaderboard_result',
         id: String(msg.id || ''),
         boardType,
         list,
         myRank: inTop ? meIdx + 1 : -1,                    // 未进前 N 视为未上榜
-        myScore: meIdx === -1 ? null : arr[meIdx].score    // 有记录则返回自己的分数（供未上榜时显示）
+        myScore: meIdx === -1 ? null : arr[meIdx].score,   // 有记录则返回自己的分数（供未上榜时显示）
+        levelBestToken: isCometBoard ? levelBestTok : undefined
     });
 }
 

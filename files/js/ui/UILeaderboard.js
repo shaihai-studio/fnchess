@@ -61,6 +61,11 @@ if (typeof UIController === 'undefined') {
         // 首次进入昵称设置弹窗（之后仍可在排行榜里修改昵称）
         this.initNicknamePrompt();
         this.maybeShowNicknamePrompt();
+
+        // 页面加载后自动同步已通关的闯关记录（老玩家升级新版本后的首次同步；只同步闯关）
+        setTimeout(() => {
+            if (typeof this.syncCampaignRecordsOnLoad === 'function') this.syncCampaignRecordsOnLoad();
+        }, 800);
     }
 ;
 
@@ -137,16 +142,20 @@ if (typeof UIController === 'undefined') {
         document.querySelectorAll('.leaderboard-tab').forEach((t) => {
             t.classList.toggle('active', t.dataset.board === board);
         });
-        // 竞速分关榜 / 彗星分关榜：显示关卡选择器，并默认跳到玩家当前所在关
+        // 竞速分关榜 / 彗星分关榜：显示关卡选择器；选项按榜单类型与玩家解锁进度重建
         if (board === 'tt' || board === 'comet') {
             if (this.leaderboardRaceSel) this.leaderboardRaceSel.style.display = 'flex';
-            let cur = 1;
-            try { if (this.raceCurrentLevelId) cur = Number(this.raceCurrentLevelId) || 1; } catch (e) { /* 忽略 */ }
-            let maxLv = 30;
-            try { if (this.gameController && this.gameController.maxOpenRaceLevel) maxLv = this.gameController.maxOpenRaceLevel; } catch (e) { /* 忽略 */ }
-            if (cur < 1 || cur > maxLv) cur = 1;
-            this._leaderboardRaceLevel = cur;
-            this._updateRaceLevelTrigger(cur);
+            this._rebuildRaceLevelOptions(board);
+            // 竞速：默认跳到玩家当前所在竞速关
+            if (board === 'tt') {
+                let cur = 1;
+                try { if (this.raceCurrentLevelId) cur = Number(this.raceCurrentLevelId) || 1; } catch (e) { /* 忽略 */ }
+                let maxLv = 30;
+                try { if (this.gameController && this.gameController.maxOpenRaceLevel) maxLv = this.gameController.maxOpenRaceLevel; } catch (e) { /* 忽略 */ }
+                if (cur < 1 || cur > maxLv) cur = 1;
+                this._leaderboardRaceLevel = cur;
+                this._updateRaceLevelTrigger(cur);
+            }
         } else {
             if (this.leaderboardRaceSel) this.leaderboardRaceSel.style.display = 'none';
         }
@@ -212,9 +221,9 @@ if (typeof UIController === 'undefined') {
         // 竞速分关榜 rtN：用时越短越好，分数后缀带 s
         const isRaceBoard = (typeof boardType === 'string' && boardType.indexOf('rt') === 0 && /^\d+$/.test(boardType.slice(2)));
         const raceLevel = isRaceBoard ? Number(boardType.slice(2)) : 0;
-        // 彗星分关榜 plN：满分 10 颗（越接近全服最优 token 分越高）
-        const isCometBoard = (typeof boardType === 'string' && boardType.indexOf('pl') === 0 && /^\d+$/.test(boardType.slice(2)));
-        const cometLevel = isCometBoard ? Number(boardType.slice(2)) : 0;
+        // 彗星分关榜 plN（含分数关 pl1/2）：直接比"该关最短 token"，越少越优
+        const isCometBoard = (typeof boardType === 'string' && /^pl\d+(?:\/\d+)?$/.test(boardType));
+        const cometLevel = isCometBoard ? boardType.slice(2) : '';
 
         if (!rows.length) {
             list.innerHTML = '<div class="leaderboard-empty">暂无数据，快来挑战第一名吧！</div>';
@@ -225,7 +234,7 @@ if (typeof UIController === 'undefined') {
                 let scoreText;
                 if (boardType === 'lr') scoreText = Number(row.score).toFixed(6);
                 else if (isRaceBoard) scoreText = `${Number(row.score).toFixed(2)}s`;
-                else if (isCometBoard) scoreText = `${Number(row.score).toFixed(1)} 颗`;
+                else if (isCometBoard) scoreText = `${row.score} token`;   // 彗星：显示该关最短 token
                 else if (boardType === 'tt') scoreText = `${row.score} 速度`;
                 else scoreText = String(row.score);
                 const sub = (boardType === 'elo')
@@ -255,18 +264,18 @@ if (typeof UIController === 'undefined') {
             if (boardType === 'lr') label = 'LR∑';
             else if (boardType === 'elo') label = 'ELO';
             else if (isRaceBoard) label = `第 ${raceLevel} 关 用时`;
-            else if (isCometBoard) label = `彗星 第 ${cometLevel} 关`;
+            else if (isCometBoard) label = `彗星 第 ${cometLevel} 关 最短 token`;
             else label = '竞速速度值';
             if (myRank > 0) {
                 const myScoreText = isRaceBoard ? `${Number(myScore).toFixed(2)}s`
-                    : isCometBoard ? `${Number(myScore).toFixed(1)} 颗`
+                    : isCometBoard ? `${Number(myScore)}`
                     : myScore;
                 this.leaderboardMyRankEl.textContent = `我的排名：第 ${myRank} 名（${label} ${myScoreText}）`;
             } else {
                 const mine = (myScore == null)
                     ? '-'
                     : (isRaceBoard ? `${Number(myScore).toFixed(2)}s`
-                        : isCometBoard ? `${Number(myScore).toFixed(1)} 颗`
+                        : isCometBoard ? `${Number(myScore)}`
                         : String(myScore));
                 this.leaderboardMyRankEl.textContent = `我的分数：${label} ${mine}`;
             }
@@ -296,22 +305,10 @@ if (typeof UIController === 'undefined') {
     }
 ;
 
-// _initRaceLevelSelector：自定义竞速关卡下拉（替代原生 select，避免 30 关展开超出屏幕）
+// _initRaceLevelSelector：自定义竞速/彗星关卡下拉（替代原生 select，避免 30 关展开超出屏幕）
     UIController.prototype._initRaceLevelSelector = function() {
         if (!this.raceLevelSelect || !this.raceLevelTrigger || !this.raceLevelDropdown) return;
-        let maxLv = 30;
-        try { if (this.gameController && this.gameController.maxOpenRaceLevel) maxLv = this.gameController.maxOpenRaceLevel; } catch (e) { /* 忽略 */ }
-        const groupSize = 10;
-        let html = '';
-        for (let start = 1; start <= maxLv; start += groupSize) {
-            const end = Math.min(start + groupSize - 1, maxLv);
-            html += `<div class="race-level-group">第 ${start}–${end} 关</div>`;
-            for (let i = start; i <= end; i++) {
-                html += `<div class="race-level-option" data-value="${i}">第 ${i} 关</div>`;
-            }
-        }
-        this.raceLevelDropdown.innerHTML = html;
-        this._updateRaceLevelTrigger(1);
+        this._rebuildRaceLevelOptions('tt');
 
         const self = this;
         const toggle = () => {
@@ -335,12 +332,12 @@ if (typeof UIController === 'undefined') {
         this.raceLevelDropdown.addEventListener('click', (e) => {
             const opt = e.target.closest('.race-level-option');
             if (!opt) return;
-            const val = Number(opt.dataset.value) || 1;
+            const val = String(opt.dataset.value) || '1';
             self._leaderboardRaceLevel = val;
             self._updateRaceLevelTrigger(val);
             self._closeRaceLevelDropdown();
             if (window.audioManager) window.audioManager.playClick();
-            self._queryLeaderboard('tt');
+            self._queryLeaderboard(self._leaderboardBoard || 'tt');
         });
         document.addEventListener('click', (e) => {
             if (!self.raceLevelSelect) return;
@@ -351,11 +348,64 @@ if (typeof UIController === 'undefined') {
 
 // _updateRaceLevelTrigger
     UIController.prototype._updateRaceLevelTrigger = function(level) {
-        if (this.raceLevelTrigger) this.raceLevelTrigger.textContent = `第 ${level} 关`;
+        const key = String(level);
+        if (this.raceLevelTrigger) {
+            this.raceLevelTrigger.textContent = (key.indexOf('/') >= 0) ? `分数 ${key} 关` : `第 ${key} 关`;
+        }
         if (this.raceLevelDropdown) {
             this.raceLevelDropdown.querySelectorAll('.race-level-option').forEach((el) => {
-                el.classList.toggle('active', Number(el.dataset.value) === level);
+                el.classList.toggle('active', String(el.dataset.value) === key);
             });
+        }
+    }
+;
+
+// _rebuildRaceLevelOptions：按榜单类型重建关卡下拉选项
+//   竞速（tt）：1..maxOpenRaceLevel（当前可玩的竞速关）
+//   彗星（comet）：只显示玩家已解锁的关卡 —— 整数关 1..已通关数，分数关 1/2..1/已通关分数关
+    UIController.prototype._rebuildRaceLevelOptions = function(board) {
+        if (!this.raceLevelDropdown) return;
+        if (board === 'comet') {
+            // 只显示玩家已解锁的关卡：整数关 1..(已通关+1)，分数关 1/2..(已通关+1)
+            let cleared = 0;
+            try { cleared = this.getCampaignClearedMax(); } catch (e) { /* 忽略 */ }
+            const intEnd = Math.max(1, Math.min((Number(cleared) || 0) + 1, 90));
+            const groups = [];
+            for (let start = 1; start <= intEnd; start += 10) {
+                const end = Math.min(start + 9, intEnd);
+                const items = [];
+                for (let i = start; i <= end; i++) items.push({ key: String(i), text: `第 ${i} 关` });
+                groups.push({ label: `整数关 ${start}–${end}`, items });
+            }
+            let fracUnlocked = 0;
+            try { fracUnlocked = typeof this.getCampaignFractionUnlockedMax === 'function' ? this.getCampaignFractionUnlockedMax() : 0; } catch (e) { /* 忽略 */ }
+            if (Number(fracUnlocked) >= 2) {
+                const items = [];
+                for (let d = 2; d <= Math.min(Number(fracUnlocked), 20); d++) items.push({ key: `1/${d}`, text: `分数 ${d} 分位` });
+                groups.push({ label: '分数关', items });
+            }
+            let html = '';
+            for (const g of groups) {
+                html += `<div class="race-level-group">${g.label}</div>`;
+                for (const it of g.items) html += `<div class="race-level-option" data-value="${it.key}">${it.text}</div>`;
+            }
+            this.raceLevelDropdown.innerHTML = html;
+            const firstKey = groups.length && groups[0].items.length ? groups[0].items[0].key : '1';
+            this._leaderboardRaceLevel = firstKey;
+            this._updateRaceLevelTrigger(firstKey);
+        } else {
+            // 竞速：可玩的竞速关 1..maxOpenRaceLevel
+            let maxLv = 30;
+            try { if (this.gameController && this.gameController.maxOpenRaceLevel) maxLv = this.gameController.maxOpenRaceLevel; } catch (e) { /* 忽略 */ }
+            let html = '';
+            for (let start = 1; start <= maxLv; start += 10) {
+                const end = Math.min(start + 9, maxLv);
+                html += `<div class="race-level-group">第 ${start}–${end} 关</div>`;
+                for (let i = start; i <= end; i++) html += `<div class="race-level-option" data-value="${i}">第 ${i} 关</div>`;
+            }
+            this.raceLevelDropdown.innerHTML = html;
+            this._leaderboardRaceLevel = 1;
+            this._updateRaceLevelTrigger(1);
         }
     }
 ;

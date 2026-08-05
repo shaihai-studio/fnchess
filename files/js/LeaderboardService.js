@@ -64,6 +64,10 @@ class LeaderboardService {
     _handleResult(data) {
         const id = data && data.id;
         if (!id) return;
+        // 彗星分关榜查询结果：缓存该关全服最短 token（供本地算 plv / 胜利弹窗展示）
+        if (data && data.boardType && /^pl\d+(?:\/\d+)?$/.test(data.boardType) && data.levelBestToken != null) {
+            try { localStorage.setItem('function_chess_comet_best_' + data.boardType.slice(2), String(data.levelBestToken)); } catch (e) { /* 忽略 */ }
+        }
         const cb = this._pendingQueries.get(id);
         if (cb) {
             this._pendingQueries.delete(id);
@@ -96,9 +100,12 @@ class LeaderboardService {
 
     /** 带签名的上报（lr / rtN）；payload 随签名一起锁定，防篡改 */
     async _submitSigned(obj, payload) {
-        if (typeof VerifyCrypto === 'undefined') return; // 模块缺失，静默放弃
+        if (typeof VerifyCrypto === 'undefined') { console.warn('[LB] VerifyCrypto 缺失，上报已放弃'); return; }
         await this._requestNonce();
-        if (!this._nonce || Date.now() >= this._nonceExp) return; // 拿不到 nonce，放弃
+        if (!this._nonce || Date.now() >= this._nonceExp) {
+            console.warn('[LB] 上报已放弃：无法获取签名 nonce（服务器未启动？或连接超时）', String(obj.boardType || ''));
+            return;
+        }
         const nonce = this._nonce;
         this._nonce = null; // 一次性
         const playerId = typeof PlayerProfile !== 'undefined' ? PlayerProfile.getPlayerId() : '';
