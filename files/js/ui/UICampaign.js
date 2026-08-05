@@ -288,16 +288,27 @@ if (typeof UIController === 'undefined') {
             try {
                 const lrSigma = this.calculateLRSigma(this.getCampaignClearedMax());
                 if (Number.isFinite(lrSigma) && lrSigma > 0) {
-                    const last = Number(localStorage.getItem('function_chess_lr_last_upload') || 0);
+                    let last = Number(localStorage.getItem('function_chess_lr_last_upload') || 0);
+                    // 自愈：last 是上报失败残留的虚高值（服务端并没收到），清掉后本轮重新上报
+                    if (last > lrSigma + 1e-6) {
+                        console.warn(`[LB] 检测到 last(${last}) > lrSigma(${lrSigma})，疑似上报失败残留，清掉 last 自愈`);
+                        try { localStorage.removeItem('function_chess_lr_last_upload'); } catch (e3) { /* 忽略 */ }
+                        last = 0;
+                    }
+                    console.log(`[LB] 通关上报判定: lrSigma=${lrSigma} last=${last} → ${lrSigma > last ? '上报' : '跳过(未超过已上报值)'}`);
                     if (lrSigma > last) {
-                        try { localStorage.setItem('function_chess_lr_last_upload', String(lrSigma)); } catch (e3) { /* 忽略 */ }
+                        // 注意：不在此处 setItem！由 LeaderboardService.onSubmitResult 在服务器
+                        // 真正接受后才写 last（避免上报失败时 last 虚高导致永远不报）
                         const profile = PlayerProfile.getProfile();
                         const sub = this.buildLRSubmissionPayload();
+                        console.log(`[LB] 已提交 LRΣ=${lrSigma}, minTokens=${Object.keys(sub.minTokens).length} 关, levels=${sub.levels.length} 关`);
                         this._leaderboardService.submitLRSigma(lrSigma, profile.nickname, sub.minTokens, sub.levels);
                         this.refreshLeaderboardIfOpen();
                     }
+                } else {
+                    console.warn(`[LB] 通关上报跳过: lrSigma=${lrSigma} 无效`);
                 }
-            } catch (e) { /* 上报失败静默降级，不影响结算界面 */ }
+            } catch (e) { /* 上报失败静默降级，不影响结算界面 */ console.error('[LB] 通关上报异常:', e); }
         }
         this.showModal(this.campaignVictoryModal);
     }
@@ -331,12 +342,11 @@ if (typeof UIController === 'undefined') {
             if (!cleared || cleared <= 0) return;
             const lrSigma = this.calculateLRSigma(cleared);
             if (!Number.isFinite(lrSigma) || lrSigma <= 0) return;
-            const last = Number(localStorage.getItem('function_chess_lr_last_upload') || 0);
-            if (lrSigma > last) {
-                const profile = PlayerProfile.getProfile();
-                const sub = this.buildLRSubmissionPayload();
-                this._leaderboardService.submitLRSigma(lrSigma, profile.nickname, sub.minTokens, sub.levels);
-            }
+            // 每次打开游戏都自动同步一次（服务器对同分忽略、不刷新更新时间，无害）
+            // 这样即使之前被清分 / 服务器重启 / 老版本升级，都能重新对齐到服务器。
+            const profile = PlayerProfile.getProfile();
+            const sub = this.buildLRSubmissionPayload();
+            this._leaderboardService.submitLRSigma(lrSigma, profile.nickname, sub.minTokens, sub.levels);
         } catch (e) { /* 静默降级，不影响游戏 */ }
     }
 ;
@@ -371,7 +381,8 @@ if (typeof UIController === 'undefined') {
     }
 
 // buildLRSubmissionPayload — 组装防作弊上报载荷（遍历逻辑与 calculateLRSigma 完全一致）
-// 返回 { minTokens: {levelId: minToken}, levels: [{level, expr, minToken}] }
+// levels 覆盖全部 minTokens 关；老玩家（旧版本通关）无 best_expr 的关以 expr:'' 占位，
+// 服务器对其做"已验证最优"边界检查（≥ 全服最优即接受），实现 1.0.0→2.0.0 升级无感、历史关卡保留。
     UIController.prototype.buildLRSubmissionPayload = function() {
         const minTokens = {};
         const levels = [];
@@ -381,7 +392,7 @@ if (typeof UIController === 'undefined') {
                 minTokens[String(key)] = best;
                 let expr = '';
                 try { expr = localStorage.getItem('function_chess_campaign_best_expr_' + key) || ''; } catch (e) { /* 忽略 */ }
-                if (expr) levels.push({ level: String(key), expr, minToken: best });
+                levels.push({ level: String(key), expr, minToken: best }); // 缺 expr 占位（老玩家历史数据）
             }
         };
         const cleared = this.getCampaignClearedMax();

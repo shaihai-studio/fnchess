@@ -940,9 +940,7 @@ if (typeof UIController === 'undefined') {
 
         // roomCode + 对局 gen 组成唯一结算键：防止 rematch（房间码不变）被服务器去重误伤
         const roomKey = (p2p.roomCode || 'room') + '#' + (p2p._gen || 0);
-        this._leaderboardService.submitScore({
-            boardType: 'elo',
-            playerId: profile.playerId,
+        this._leaderboardService.submitEloScore({
             nickname: profile.nickname,
             opponentPlayerId: opp.playerId,
             opponentNickname: opp.nickname || '棋手',

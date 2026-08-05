@@ -987,6 +987,7 @@
                         length_mismatch: '长度与服务器 token 复算不符（若为旧版本通关记录，请重新通关该关）',
                         value_mismatch: 'LR∑ 值与关卡长度不符（可能因旧关卡缺表达式，重新通关即可同步）',
                         missing_levels: '缺少逐关表达式（请重新通关后同步）',
+                        missing_expr: '该关缺少表达式记录（老版本关卡），请重新通关一次以补齐',
                         level_not_open: '存在未开放关卡'
                     };
                     const reason = map[res.reason] || (res.reason || '未知原因');

@@ -908,9 +908,7 @@ if (typeof UIController === 'undefined') {
         const profile = PlayerProfile.getProfile();
         const roomKey = (p2p.roomCode || 'room') + '#' + (p2p._gen || 0);
         // isForfeitSelf=true：本方弃权判负（对手胜）；false：对手弃权（本方胜）
-        this._leaderboardService.submitScore({
-            boardType: 'elo',
-            playerId: profile.playerId,
+        this._leaderboardService.submitEloScore({
             nickname: profile.nickname,
             opponentPlayerId: opp.playerId,
             opponentNickname: opp.nickname || '棋手',
@@ -941,9 +939,7 @@ UIController.prototype._reportP2PForfeitOpponent = function() {
     const profile = PlayerProfile.getProfile();
     const roomKey = (p2p.roomCode || 'room') + '#' + (p2p._gen || 0);
     // 对手（房主）弃权 → 本方（访客）获胜：scoreA=1, winner='A'
-    this._leaderboardService.submitScore({
-        boardType: 'elo',
-        playerId: profile.playerId,
+    this._leaderboardService.submitEloScore({
         nickname: profile.nickname,
         opponentPlayerId: opp.playerId,
         opponentNickname: opp.nickname || '棋手',

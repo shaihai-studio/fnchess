@@ -124,9 +124,9 @@ function send(ws, obj) {
 const LDB_FILE = path.join(__dirname, 'leaderboard.json');
 const ELO_K = 32;              // ELO K 值
 const ELO_INIT = 1200;         // ELO 初始分
-// 榜单返回条数：分关榜（rtN/plN）保留前 100，总分榜（lr/tt/elo）保留前 1000
+// 榜单返回条数：分关榜（rtN/plN，含分数关 pl1/2）保留前 100，总分榜（lr/tt/elo）保留前 1000
 function topFor(boardType) {
-    return /^(rt|pl)\d+$/.test(String(boardType || '')) ? 100 : 1000;
+    return /^(rt|pl)\d+(?:\/\d+)?$/.test(String(boardType || '')) ? 100 : 1000;
 }
 
 // 计分榜：boardType -> Map(playerId, {playerId, nickname, score, updatedAt})
@@ -172,7 +172,7 @@ function getClientIp(req) {
 // ─────────────────────────────────────────────
 const LB_SECRET = 'fnchess-lb-secret-2026-08-05';
 const NONCE_TTL = 2 * 60 * 1000;      // nonce 有效期 2 分钟
-const SIGN_GATE = 25 * 1000;          // 签名通道最小间隔 25s
+const SIGN_GATE = 2 * 1000;           // 签名通道最小间隔 2s
 const VERIFY_GATES = [2 * 60 * 1000, 5 * 60 * 1000, 15 * 60 * 1000, 30 * 60 * 1000]; // 核验退避间隔
 const VERIFY_WINDOW = 5 * 60 * 1000;  // 核验滑动窗口
 const VERIFY_LOCK_K = 5;              // 窗口内核验 ≥K 次 → 当日锁定核验通道
@@ -342,6 +342,10 @@ function verifySig(ws, msg) {
 function sendSubmitResult(ws, ok, extra = {}) {
     send(ws, Object.assign({ type: 'submit_result', ok }, extra));
 }
+// report / 上报专用：附带 boardType，方便客户端按榜更新本地状态（如"已上报 LR∑"）
+function sendSubmitResultBT(ws, ok, boardType, extra = {}) {
+    send(ws, Object.assign({ type: 'submit_result', ok, boardType }, extra));
+}
 
 /** 竞速总时长下限（与实施方案 §6.2：锚定 Lv1 = 1s，关联 allowed/forbidden/locks） */
 function raceFloorSeconds(levelId) {
@@ -377,11 +381,20 @@ function needVerify(playerId, value) {
     return false;
 }
 
-/** D3：整批拒绝 + 细化报错（务实版核验）
- *  长度总分一致性用 minTokens（全部有最佳记录的关，与客户端 calculateLRSigma 口径一致）；
- *  levels 仅做逐关内容核验（缺表达式的旧关跳过，不参与总分校验，避免误清分）。 */
+/** D3 + S2：整批拒绝 + 细化报错（务实版核验 + 老玩家升级兼容）
+ *  总分一致性用 minTokens（全部有最佳记录的关，与客户端 calculateLRSigma 口径一致）；
+ *  levels 必须覆盖全部 minTokens 关（防"少传表达式"绕过）；
+ *  缺表达式的关（老玩家 1.0.0 历史数据）以 expr:'' 占位 → 做"已验证最优"边界检查：
+ *    该关 minToken 不得优于全服已验证最优（否则无法证明 → missing_expr，需重新通关补齐）。 */
 function verifyLRSigma(levels, minTokens, claimedValue) {
     const parser = new ParserCls();
+    // 0) 键集合一致性：levels 覆盖全部 minTokens 关，且不出现额外关
+    const tokKeys = new Set();
+    for (const k of Object.keys(minTokens || {})) tokKeys.add(String(k));
+    const lvlKeys = new Set();
+    for (const lv of levels) lvlKeys.add(String(lv.level));
+    for (const k of lvlKeys) if (!tokKeys.has(k)) return { ok: false, reason: 'level_not_open', level: k };
+    for (const k of tokKeys) if (!lvlKeys.has(k)) return { ok: false, reason: 'missing_expr', level: k };
     // 1) 总分一致性：Σ 100/(10+minToken) over minTokens == value
     let sumAll = 0;
     if (minTokens && typeof minTokens === 'object') {
@@ -397,25 +410,36 @@ function verifyLRSigma(levels, minTokens, claimedValue) {
         const def = levelById.get(levelId);
         if (!def) return { ok: false, reason: 'level_not_open', level: levelId };
         const expr = String(lv.expr || '');
-        if (!expr || expr.length > 500) return { ok: false, reason: 'expr_mismatch', level: levelId };
+        const minTok = Number(lv.minToken);
+        if (!expr) {
+            // 占位（老玩家历史无表达式）：长度不得优于全服已验证最优，否则无法证明 → 拒
+            const best = levelBestToken.get(levelId);
+            if (Number.isFinite(minTok) && minTok > 0 && best != null && minTok < best) {
+                return { ok: false, reason: 'missing_expr', level: levelId };
+            }
+            continue; // 有最优边界即接受（历史对齐，不误伤老玩家）
+        }
+        if (expr.length > 500) return { ok: false, reason: 'expr_mismatch', level: levelId };
         try { parser.evaluate(expr, 0); } catch (e) { return { ok: false, reason: 'expr_mismatch', level: levelId }; }
         if (usesLockedElement(expr, def.lockedElements || [])) return { ok: false, reason: 'not_pass', level: levelId };
         const realTok = tokenCount(expr);
-        if (realTok !== Number(lv.minToken)) return { ok: false, reason: 'length_mismatch', level: levelId };
+        if (realTok !== minTok) return { ok: false, reason: 'length_mismatch', level: levelId };
     }
     return { ok: true, recomputedSum: sumAll };
 }
 
 /** 彗星：用该关最短 token 更新 levelBestToken 与 pl{lv} 榜（满分 10 颗 = 10 × 最优/我的） */
-function updateCometBoards(playerId, nickname, minTokenMap) {
+function updateCometBoards(playerId, nickname, minTokenMap, verifiedOnly) {
     if (!levelById) return;
     if (!minTokenMap || typeof minTokenMap !== 'object') return;
     for (const [lv, minTokenRaw] of Object.entries(minTokenMap)) {
         const minToken = Number(minTokenRaw);
         if (!Number.isFinite(minToken) || minToken <= 0 || minToken > 500) continue;
         if (!levelById.has(String(lv))) continue;
-        const prevBest = levelBestToken.get(String(lv));
-        if (prevBest == null || minToken < prevBest) levelBestToken.set(String(lv), minToken);
+        if (verifiedOnly) { // 仅核验通过的关更新"全服已验证最优"（S2：签名通道不污染最优）
+            const prevBest = levelBestToken.get(String(lv));
+            if (prevBest == null || minToken < prevBest) levelBestToken.set(String(lv), minToken);
+        }
         // 彗星分关榜 pl{lv}：score 直接存"该关最短 token"，token 越少越优（boardOrder 升序）
         const board = ensureBoard('pl' + String(lv));
         const cur = board.get(playerId);
@@ -428,18 +452,18 @@ function updateCometBoards(playerId, nickname, minTokenMap) {
 
 /** D6：玩家举报（90s 间隔，被举报者下次 lr 强制核验，失败清分） */
 function handleReport(ws, msg) {
-    if (!verifySig(ws, msg)) { sendSubmitResult(ws, false, { code: 'invalid_signature' }); return; }
+    if (!verifySig(ws, msg)) { sendSubmitResultBT(ws, false, 'lr', { code: 'invalid_signature' }); return; }
     const target = String(msg.target || '').slice(0, 64);
     const playerId = String(msg.playerId || '').slice(0, 64);
-    if (!target || !playerId || target === playerId) { sendSubmitResult(ws, false, { code: 'bad_report' }); return; }
+    if (!target || !playerId || target === playerId) { sendSubmitResultBT(ws, false, 'lr', { code: 'bad_report' }); return; }
     const now = Date.now();
-    if (now - (lastReportAt.get(playerId) || 0) < REPORT_GATE) { sendSubmitResult(ws, false, { code: 'rate_limited' }); return; }
+    if (now - (lastReportAt.get(playerId) || 0) < REPORT_GATE) { sendSubmitResultBT(ws, false, 'lr', { code: 'rate_limited' }); return; }
     lastReportAt.set(playerId, now);
     const map = scoreBoards['lr'];
-    if (!map || !map.has(target)) { sendSubmitResult(ws, false, { code: 'target_not_found' }); return; }
+    if (!map || !map.has(target)) { sendSubmitResultBT(ws, false, 'lr', { code: 'target_not_found' }); return; }
     flaggedForVerify.add(target);
     console.log(`[LB] ${playerId} 举报 ${target}（90s 间隔 OK），已标记强制核验`);
-    sendSubmitResult(ws, true, { code: 'reported' });
+    sendSubmitResultBT(ws, true, 'lr', { code: 'reported' });
 }
 
 /** 新身份风控：返回 false 表示该 IP 疑似刷榜，应忽略该新身份的上报 */
@@ -523,6 +547,16 @@ function loadLeaderboards() {
                 if (t === 'tt') ttCount = m.size;
             }
         }
+        // M1：从彗星 pl* 榜回填"全服已验证最优"levelBestToken（重启后不丢失）
+        for (const t of Object.keys(scoreBoards)) {
+            if (/^pl\d+(?:\/\d+)?$/.test(t)) {
+                let min = null;
+                for (const p of scoreBoards[t].values()) {
+                    if (min == null || p.score < min) min = p.score;
+                }
+                if (min != null) levelBestToken.set(t.slice(2), min);
+            }
+        }
         console.log(`[LB] 排行榜已加载: LR ${lrCount} 人 / TT ${ttCount} 人 / ELO ${eloBoard.size} 人`);
     } catch (e) {
         console.warn('[LB] 加载排行榜失败:', e.message);
@@ -551,8 +585,9 @@ function handleSubmitScore(ws, msg) {
     const ip = ws && ws._ip ? ws._ip : '';
     const now = Date.now();
 
-    // ── ELO：保持原信任模型（不验签，避免误伤 P2P 结算） ──
+    // ── ELO：签名上报（防伪造 submit_score 刷 ELO；结算仍按 roomKey 去重） ──
     if (boardType === 'elo') {
+        if (!verifySig(ws, msg)) { sendSubmitResultBT(ws, false, 'elo', { code: 'invalid_signature' }); return; }
         const opponentId = String(msg.opponentPlayerId || '').slice(0, 64);
         if (!opponentId || opponentId === playerId) return;
         const roomKey = String(msg.roomCode || '').slice(0, 64);
@@ -574,7 +609,7 @@ function handleSubmitScore(ws, msg) {
     const isRaceTime = /^rt\d+$/.test(boardType);
     const isComet = /^pl\d+$/.test(boardType);
     if (!isRaceTime && !isComet && boardType !== 'lr') return;
-    if (!verifySig(ws, msg)) { sendSubmitResult(ws, false, { code: 'invalid_signature' }); return; }
+    if (!verifySig(ws, msg)) { sendSubmitResultBT(ws, false, boardType, { code: 'invalid_signature' }); return; }
     const value = Number(msg.value);
     if (!Number.isFinite(value) || value < 0) return;
 
@@ -585,7 +620,7 @@ function handleSubmitScore(ws, msg) {
     }
     const wait = now - (lastSubmitAt.get(ip) || 0);
     if (wait < gate) {
-        sendSubmitResult(ws, false, { code: 'rate_limited', waitMs: Math.max(1, Math.ceil((gate - wait) / 1000)) });
+        sendSubmitResultBT(ws, false, boardType, { code: 'rate_limited', waitMs: Math.max(1, Math.ceil((gate - wait) / 1000)) });
         return;
     }
     lastSubmitAt.set(ip, now);
@@ -597,17 +632,22 @@ function handleSubmitScore(ws, msg) {
         if (needV) {
             // 方案二核验通道：逐关复算（务实版），通过后用服务器值入库
             const levels = Array.isArray(payload.levels) ? payload.levels : null;
-            if (!levels || !levels.length) { sendSubmitResult(ws, false, { code: 'verify_failed', reason: 'missing_levels' }); return; }
+            if (!levels || !levels.length) { sendSubmitResultBT(ws, false, 'lr', { code: 'verify_failed', reason: 'missing_levels' }); return; }
             recordVerify(ip);
             const res = verifyLRSigma(levels, payload.minTokens, value);
             if (!res.ok) {
                 if (flaggedForVerify.has(playerId)) { // D6 被举报且核验失败 → 清分
                     const lrMap = scoreBoards['lr'];
                     if (lrMap) lrMap.delete(playerId);
+                    // M2：连带清理该玩家在各彗星分关榜 pl* 的记录
+                    for (const t of Object.keys(scoreBoards)) {
+                        if (/^pl\d+(?:\/\d+)?$/.test(t)) scoreBoards[t].delete(playerId);
+                    }
                     flaggedForVerify.delete(playerId);
-                    console.log(`[LB] ${playerId} 被举报且核验失败(${res.reason}/${res.level})，已清分`);
+                    scheduleSave();
+                    console.log(`[LB] ${playerId} 被举报且核验失败(${res.reason}/${res.level})，已清分（含彗星榜）`);
                 }
-                sendSubmitResult(ws, false, { code: 'verify_failed', reason: res.reason, level: res.level });
+                sendSubmitResultBT(ws, false, 'lr', { code: 'verify_failed', reason: res.reason, level: res.level });
                 return;
             }
             flaggedForVerify.delete(playerId);
@@ -622,9 +662,9 @@ function handleSubmitScore(ws, msg) {
                 scheduleSave();
             }
             const minTokens = {};
-            for (const lv of levels) minTokens[String(lv.level)] = Number(lv.minToken);
-            updateCometBoards(playerId, nickname, minTokens);
-            sendSubmitResult(ws, true, { score: res.recomputedSum });
+            for (const lv of levels) if (lv.expr) minTokens[String(lv.level)] = Number(lv.minToken);
+            updateCometBoards(playerId, nickname, minTokens, true); // 仅核验关更新全服最优
+            sendSubmitResultBT(ws, true, 'lr', { score: res.recomputedSum });
             return;
         }
         // 签名通道：value 与 minTokens 均在签名内，信任入库
@@ -638,8 +678,8 @@ function handleSubmitScore(ws, msg) {
             map.set(playerId, { playerId, nickname, score: value, updatedAt: now });
             scheduleSave();
         }
-        updateCometBoards(playerId, nickname, payload.minTokens);
-        sendSubmitResult(ws, true);
+        updateCometBoards(playerId, nickname, payload.minTokens, false); // 签名通道不更新全服最优
+        sendSubmitResultBT(ws, true, 'lr', { score: value });
         return;
     }
 
@@ -650,8 +690,10 @@ function handleSubmitScore(ws, msg) {
         if (value < 1 || value > 1e6) return;
         const solvedCount = Number(msg.solvedCount);
         const totalRounds = Number(msg.totalRounds);
-        if (solvedCount !== RACE_PUZZLES || totalRounds !== RACE_PUZZLES) return; // 必须解满 10 题
-        if (value < raceFloorSeconds(levelId)) { sendSubmitResult(ws, false, { code: 'too_fast', level: levelId }); return; }
+        // L1：缺省（老客户端不带 / 传 0）视为 10 兼容；显式给了且不是 10 才拒（仍防"明确报不满题"）
+        if ((Number.isFinite(solvedCount) && solvedCount > 0 && solvedCount !== RACE_PUZZLES) ||
+            (Number.isFinite(totalRounds) && totalRounds > 0 && totalRounds !== RACE_PUZZLES)) return;
+        if (value < raceFloorSeconds(levelId)) { sendSubmitResultBT(ws, false, boardType, { code: 'too_fast', level: levelId }); return; }
         const map = ensureBoard(boardType);
         const cur = map.get(playerId);
         if (!cur || value < cur.score) {
@@ -662,12 +704,12 @@ function handleSubmitScore(ws, msg) {
             map.set(playerId, { playerId, nickname, score: value, updatedAt: now });
             scheduleSave();
         }
-        sendSubmitResult(ws, true);
+        sendSubmitResultBT(ws, true, boardType);
         return;
     }
 
     // 彗星 pl{N}：只读，不接受客户端直接提交
-    if (isComet) { sendSubmitResult(ws, false, { code: 'readonly' }); return; }
+    if (isComet) { sendSubmitResultBT(ws, false, boardType, { code: 'readonly' }); return; }
 }
 
 function handleQueryLeaderboard(ws, msg) {

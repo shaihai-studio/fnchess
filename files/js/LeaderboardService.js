@@ -27,7 +27,16 @@ class LeaderboardService {
             this.lobby.onPlayerEloResult = (data) => self._handleResult(data);   // 批量 ELO 查询结果（P2P 开场用）
             this.lobby.onChallenge = (data) => self._handleChallenge(data);
             this.lobby.onSubmitResult = (data) => {
+                // 失败原因控制台可见（之前只 setItem 成功路径，失败被吞，排障困难）
+                if (data && !data.ok) {
+                    console.warn(`[LB] 上报被拒: code=${data.code || '?'} reason=${data.reason || '?'} level=${data.level || ''} waitMs=${data.waitMs || ''} boardType=${data.boardType || '?'}`);
+                }
                 if (self.onSubmitResult) { try { self.onSubmitResult(data); } catch (e) { /* 忽略 */ } }
+                // LR∑ 上报真正被服务器接受后，才把"已上报值"写回 localStorage
+                // （之前的实现是 submit 之前 setItem，导致上报失败时 last 虚高、永远不报）
+                if (data && data.ok && data.boardType === 'lr' && Number.isFinite(data.score)) {
+                    try { localStorage.setItem('function_chess_lr_last_upload', String(data.score)); } catch (e) { /* 忽略 */ }
+                }
             };
             // 不用 onConnectionChange（UILobby 进入大厅时会覆盖该回调），改用轮询 flush：
             // 连接建立后，把等待中的消息统一补发出去。
@@ -114,9 +123,16 @@ class LeaderboardService {
         this._send(Object.assign({ type: 'submit_score' }, obj, { playerId, nonce, sig, payload: payload || {} }));
     }
 
-    /** 通用上报（ELO 等不签名消息用） */
+    /** 通用上报（不签名消息用；ELO 走 submitEloScore 签名版） */
     submitScore(payload) {
         this._send(Object.assign({ type: 'submit_score' }, payload || {}));
+    }
+
+    /** ELO 上报（签名版，防伪造消息刷 ELO；房主/访客结算各自上报，服务器按 roomKey 去重） */
+    submitEloScore(payload) {
+        const p = payload || {};
+        const playerId = typeof PlayerProfile !== 'undefined' ? PlayerProfile.getPlayerId() : '';
+        return this._submitSigned(Object.assign({ boardType: 'elo', value: 0 }, p, { playerId }), {});
     }
 
     /**
