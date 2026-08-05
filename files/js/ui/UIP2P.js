@@ -178,7 +178,7 @@ if (typeof UIController === 'undefined') {
             if (!this.p2pController || !this.p2pController.isHost) {
                 // 自己掉线后重连失败 → 判本方负（除非已收到房主解散通知）
                 if (reason === 'self_reconnect_failed') {
-                    if (this._p2pRoomDissolved) { this._showP2PDisconnectModal('dissolved'); return; }
+                    if (this._p2pRoomDissolved) { this._showP2PDisconnectModal(true); return; }
                     if (this.isP2PMode && this._p2pMatchStarted && !this._p2pEloSettled) {
                         this._reportP2PForfeit(true);
                     }
@@ -191,10 +191,10 @@ if (typeof UIController === 'undefined') {
                     this._p2pRoomDissolved = true;
                     if (this._p2pMatchMode === 'ranked') {
                         if (!this._reportP2PForfeitOpponent()) {
-                            this._showP2PDisconnectModal('dissolved');
+                            this._showP2PDisconnectModal(true); // 上报失败兜底：对手退，本局判我获胜
                         }
                     } else {
-                        this._showP2PDisconnectModal('dissolved');
+                        this._showP2PDisconnectModal(true); // 休闲模式：对手退，本局不结算 ELO（不上报）
                     }
                 } else {
                     this._showP2PDisconnectModal(null); // 非对局中 → 普通断线弹窗
@@ -677,9 +677,9 @@ if (typeof UIController === 'undefined') {
                     // 房主主动解散/退出：判房主负、扣 ELO（与访客掉线判负完全对称）
                     if (this._lobby) this._lobby.notifyRoomDissolve();
                     if (!this._reportP2PForfeit(true)) {
-                        // 对手资料缺失等兜底：本局作废不结算
+                        // 对手资料缺失等兜底：自己退本局判负（文案同 _reportP2PForfeit 成功路径）
                         this._p2pRoomDissolved = true;
-                        this._showP2PDisconnectModal('dissolved');
+                        this._showP2PDisconnectModal(false);
                     }
                 } else {
                     // 访客主动退出：判访客负、扣 ELO
@@ -773,9 +773,6 @@ if (typeof UIController === 'undefined') {
             } else if (opponentLeft === false) {
                 titleEl.textContent = '中途退出';
                 detailEl.textContent = '你已中途退出，本局判负，将扣除 ELO 积分。';
-            } else if (opponentLeft === 'dissolved') {
-                titleEl.textContent = '房间已解散';
-                detailEl.textContent = '房主已解散该房间，本局不结算 ELO。';
             } else {
                 titleEl.textContent = '对手已断开连接';
                 detailEl.textContent = '联机对局已中断';
@@ -797,13 +794,13 @@ if (typeof UIController === 'undefined') {
             if (this._p2pMatchMode === 'ranked' && this._p2pMatchStarted && !this._p2pEloSettled) {
                 // 访客结算为获胜得分（与房主判负完全对称）；服务端按 roomKey 去重，结果天然一致
                 if (!this._reportP2PForfeitOpponent()) {
-                    this._showP2PDisconnectModal('dissolved');
+                    this._showP2PDisconnectModal(true); // 上报失败兜底：对手退，本局判我获胜
                     return;
                 }
                 return;
             }
         }
-        this._showP2PDisconnectModal('dissolved');
+        this._showP2PDisconnectModal(true); // 非访客或非对局中：兜底显示对手退
     }
 ;
 
@@ -986,7 +983,7 @@ UIController.prototype._reportP2PForfeitOpponent = function() {
             const map = (data && data.players) || {};
             const my = map[myId] || {};
             const op = map[opp.playerId] || {};
-            const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = 'ELO ' + (v != null ? v : '—'); };
+            const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = 'ELO ' + (v != null ? v : 1200); };
             set('p2p-vs-my-elo', my.elo);
             set('p2p-vs-opp-elo', op.elo);
         });
@@ -999,9 +996,9 @@ UIController.prototype._reportP2PForfeitOpponent = function() {
         if (!overlay) return;
         const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = String(v); };
         set('p2p-vs-my-nick', myNick);
-        set('p2p-vs-my-elo', 'ELO ' + (myElo != null ? myElo : '—'));
+        set('p2p-vs-my-elo', 'ELO ' + (myElo != null ? myElo : 1200));
         set('p2p-vs-opp-nick', oppNick);
-        set('p2p-vs-opp-elo', 'ELO ' + (oppElo != null ? oppElo : '—'));
+        set('p2p-vs-opp-elo', 'ELO ' + (oppElo != null ? oppElo : 1200));
         overlay.style.display = 'flex';
         const numEl = document.getElementById('p2p-vs-number');
         const subEl = document.getElementById('p2p-vs-sub');

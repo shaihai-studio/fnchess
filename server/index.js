@@ -377,10 +377,21 @@ function needVerify(playerId, value) {
     return false;
 }
 
-/** D3：整批拒绝 + 细化报错（务实版核验） */
-function verifyLRSigma(levels, claimedValue) {
+/** D3：整批拒绝 + 细化报错（务实版核验）
+ *  长度总分一致性用 minTokens（全部有最佳记录的关，与客户端 calculateLRSigma 口径一致）；
+ *  levels 仅做逐关内容核验（缺表达式的旧关跳过，不参与总分校验，避免误清分）。 */
+function verifyLRSigma(levels, minTokens, claimedValue) {
     const parser = new ParserCls();
-    let sum = 0;
+    // 1) 总分一致性：Σ 100/(10+minToken) over minTokens == value
+    let sumAll = 0;
+    if (minTokens && typeof minTokens === 'object') {
+        for (const tokRaw of Object.values(minTokens)) {
+            const tok = Number(tokRaw);
+            if (Number.isFinite(tok) && tok > 0) sumAll += 100 / (10 + tok);
+        }
+    }
+    if (Math.abs(sumAll - Number(claimedValue)) > 1e-6) return { ok: false, reason: 'value_mismatch', level: '' };
+    // 2) 逐关内容核验
     for (const lv of levels) {
         const levelId = String(lv.level);
         const def = levelById.get(levelId);
@@ -391,10 +402,8 @@ function verifyLRSigma(levels, claimedValue) {
         if (usesLockedElement(expr, def.lockedElements || [])) return { ok: false, reason: 'not_pass', level: levelId };
         const realTok = tokenCount(expr);
         if (realTok !== Number(lv.minToken)) return { ok: false, reason: 'length_mismatch', level: levelId };
-        sum += 100 / (10 + realTok);
     }
-    if (Math.abs(sum - Number(claimedValue)) > 1e-6) return { ok: false, reason: 'value_mismatch', level: String((levels[0] || {}).level || '') };
-    return { ok: true, recomputedSum: sum };
+    return { ok: true, recomputedSum: sumAll };
 }
 
 /** 彗星：用该关最短 token 更新 levelBestToken 与 pl{lv} 榜（满分 10 颗 = 10 × 最优/我的） */
@@ -590,7 +599,7 @@ function handleSubmitScore(ws, msg) {
             const levels = Array.isArray(payload.levels) ? payload.levels : null;
             if (!levels || !levels.length) { sendSubmitResult(ws, false, { code: 'verify_failed', reason: 'missing_levels' }); return; }
             recordVerify(ip);
-            const res = verifyLRSigma(levels, value);
+            const res = verifyLRSigma(levels, payload.minTokens, value);
             if (!res.ok) {
                 if (flaggedForVerify.has(playerId)) { // D6 被举报且核验失败 → 清分
                     const lrMap = scoreBoards['lr'];

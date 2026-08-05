@@ -350,7 +350,7 @@ if (typeof UIController === 'undefined') {
     UIController.prototype._updateRaceLevelTrigger = function(level) {
         const key = String(level);
         if (this.raceLevelTrigger) {
-            this.raceLevelTrigger.textContent = (key.indexOf('/') >= 0) ? `分数 ${key} 关` : `第 ${key} 关`;
+            this.raceLevelTrigger.textContent = (key.indexOf('/') >= 0) ? `分数关 ${key}` : `第 ${key} 关`;
         }
         if (this.raceLevelDropdown) {
             this.raceLevelDropdown.querySelectorAll('.race-level-option').forEach((el) => {
@@ -381,7 +381,7 @@ if (typeof UIController === 'undefined') {
             try { fracUnlocked = typeof this.getCampaignFractionUnlockedMax === 'function' ? this.getCampaignFractionUnlockedMax() : 0; } catch (e) { /* 忽略 */ }
             if (Number(fracUnlocked) >= 2) {
                 const items = [];
-                for (let d = 2; d <= Math.min(Number(fracUnlocked), 20); d++) items.push({ key: `1/${d}`, text: `分数 ${d} 分位` });
+                for (let d = 2; d <= Math.min(Number(fracUnlocked), 20); d++) items.push({ key: `1/${d}`, text: `分数关 1/${d}` });
                 groups.push({ label: '分数关', items });
             }
             let html = '';

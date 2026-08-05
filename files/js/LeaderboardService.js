@@ -24,6 +24,7 @@ class LeaderboardService {
         if (this.lobby) {
             const self = this;
             this.lobby.onLeaderboardResult = (data) => self._handleResult(data);
+            this.lobby.onPlayerEloResult = (data) => self._handleResult(data);   // 批量 ELO 查询结果（P2P 开场用）
             this.lobby.onChallenge = (data) => self._handleChallenge(data);
             this.lobby.onSubmitResult = (data) => {
                 if (self.onSubmitResult) { try { self.onSubmitResult(data); } catch (e) { /* 忽略 */ } }
