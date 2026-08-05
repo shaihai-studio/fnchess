@@ -667,7 +667,7 @@ function handleQueryLeaderboard(ws, msg) {
 
     // 联机 ELO 榜：按 ELO 降序（未打过任何对局视为 1200，且显示"我的分数"）
     if (boardType === 'elo') {
-        const arr = [...eloBoard.values()].sort((a, b) => b.elo - a.elo || b.wins - a.wins || a.updatedAt - b.updatedAt);
+        const arr = [...eloBoard.values()].sort((a, b) => b.elo - a.elo || a.updatedAt - b.updatedAt);
         const list = arr.slice(0, topFor('elo')).map((p, i) => ({
             rank: i + 1,
             nickname: p.nickname,
