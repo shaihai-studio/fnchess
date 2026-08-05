@@ -477,6 +477,50 @@ function handleReport(ws, msg) {
     sendSubmitResultBT(ws, true, 'lr', { code: 'reported' });
 }
 
+/** 从彗星 pl* 榜回填"全服已验证最优"levelBestToken（重启 / 清分 / 删榜后调用） */
+function rebuildLevelBestTokens() {
+    levelBestToken.clear();
+    for (const t of Object.keys(scoreBoards)) {
+        if (/^pl\d+(?:\/\d+)?$/.test(t)) {
+            let min = null;
+            for (const p of scoreBoards[t].values()) {
+                if (min == null || p.score < min) min = p.score;
+            }
+            if (min != null) levelBestToken.set(String(t).slice(2), min);
+        }
+    }
+}
+
+/**
+ * 清除玩家自己的排行榜成绩（重置进度时选择"不保留"）。
+ * 签名防伪造：只能清自己的（playerId 在签名内锁定），无法清别人。
+ * mode: 'campaign' → 删 lr + 所有 pl*（闯关重置）；'race' → 删所有 rt*（竞速重置）。
+ * ELO 属于联机对局记录，与本地进度无关，不清。
+ */
+function handleDeleteMyScores(ws, msg) {
+    const resp = (ok, extra = {}) => sendSubmitResultBT(ws, ok, 'wipe', Object.assign({ id: String(msg.id || '') }, extra));
+    if (!verifySig(ws, msg)) { resp(false, { code: 'invalid_signature' }); return; }
+    const playerId = String(msg.playerId || '').slice(0, 64);
+    if (!playerId) { resp(false, { code: 'bad_request' }); return; }
+    const mode = String(msg.mode || '');
+    if (mode !== 'campaign' && mode !== 'race') { resp(false, { code: 'bad_mode' }); return; }
+    let removed = 0;
+    for (const t of Object.keys(scoreBoards)) {
+        let match = false;
+        if (mode === 'race') match = /^rt\d+$/.test(t);
+        else match = t === 'lr' || /^pl\d+(?:\/\d+)?$/.test(t);
+        if (!match) continue;
+        if (scoreBoards[t].delete(playerId)) removed++;
+    }
+    // 联机 ELO 不随本地进度清除（历史对局记录）；若确需同步清，另行决策
+    if (removed > 0) {
+        rebuildLevelBestTokens(); // 被删者可能持有该关最短 token，需重算全服最优
+        scheduleSave();
+    }
+    console.log(`[LB] ${playerId} 清除排行榜成绩(mode=${mode})，删除 ${removed} 条记录`);
+    resp(true, { removed, mode });
+}
+
 /** 新身份风控：返回 false 表示该 IP 疑似刷榜，应忽略该新身份的上报 */
 function checkIpNewIdentity(ip, playerId) {
     if (!ip) return true; // 无 IP 信息时不拦截（如未代理环境）
@@ -559,15 +603,7 @@ function loadLeaderboards() {
             }
         }
         // M1：从彗星 pl* 榜回填"全服已验证最优"levelBestToken（重启后不丢失）
-        for (const t of Object.keys(scoreBoards)) {
-            if (/^pl\d+(?:\/\d+)?$/.test(t)) {
-                let min = null;
-                for (const p of scoreBoards[t].values()) {
-                    if (min == null || p.score < min) min = p.score;
-                }
-                if (min != null) levelBestToken.set(t.slice(2), min);
-            }
-        }
+        rebuildLevelBestTokens();
         console.log(`[LB] 排行榜已加载: LR ${lrCount} 人 / TT ${ttCount} 人 / ELO ${eloBoard.size} 人`);
     } catch (e) {
         console.warn('[LB] 加载排行榜失败:', e.message);
@@ -1039,6 +1075,12 @@ lobbyWss.on('connection', (ws, req) => {
             // 排行榜：重新申请一次性 nonce（签名用）
             case 'request_challenge': {
                 try { issueNonce(ws); } catch (e) { console.warn('[LB] request_challenge 处理异常:', e.message); }
+                break;
+            }
+
+            // 排行榜：清除自己的成绩（重置进度时选择"不保留"；签名防伪造）
+            case 'delete_my_scores': {
+                try { handleDeleteMyScores(ws, msg); } catch (e) { console.warn('[LB] delete_my_scores 处理异常:', e.message); }
                 break;
             }
 

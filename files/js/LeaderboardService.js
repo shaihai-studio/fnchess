@@ -184,6 +184,33 @@ class LeaderboardService {
         this._send({ type: 'report', target: String(target || ''), playerId, reason: String(reason || ''), nonce, sig });
     }
 
+    /**
+     * 清除自己的排行榜成绩（重置进度时选择"不保留"）。
+     * @param {string} mode 'campaign'（删 lr + pl*）| 'race'（删 rt*）
+     * 签名防伪造：只能清自己的。返回 Promise，resolve 结果对象 { ok, removed, mode, code }；
+     * 服务器未连 / 超时 / 验签失败时 resolve { ok:false }。
+     */
+    deleteMyScores(mode) {
+        if (typeof VerifyCrypto === 'undefined') return Promise.resolve({ ok: false });
+        const playerId = typeof PlayerProfile !== 'undefined' ? PlayerProfile.getPlayerId() : '';
+        if (!playerId) return Promise.resolve({ ok: false });
+        return this._requestNonce().then(() => {
+            if (!this._nonce || Date.now() >= this._nonceExp) {
+                console.warn('[LB] 清除成绩失败：无法获取签名 nonce（服务器未连接？）');
+                return { ok: false };
+            }
+            const nonce = this._nonce;
+            this._nonce = null;
+            const sig = VerifyCrypto.sign(nonce, playerId, '', '', {});
+            return new Promise((resolve) => {
+                const id = 'wipe' + (++this._querySeq);
+                this._pendingQueries.set(id, resolve);
+                this._send({ type: 'delete_my_scores', playerId, mode: String(mode || ''), nonce, sig, id });
+                setTimeout(() => { if (this._pendingQueries.delete(id)) resolve({ ok: false, code: 'timeout' }); }, 3000);
+            });
+        });
+    }
+
     /** 兼容历史：上报竞速 TT∑ 星分（旧榜保留，服务器已不再接受新 tt 上报） */
     submitTTSigma(value, nickname) {
         let playerId = '';

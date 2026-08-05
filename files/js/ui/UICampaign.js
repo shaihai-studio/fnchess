@@ -616,14 +616,15 @@ if (typeof UIController === 'undefined') {
 
             const secondConfirm = await this.showGameDialog({
                 title: '再次确认',
-                message: '请再次确认：重置后将无法恢复已保存的闯关数据。\n真的要继续吗？',
+                message: '请再次确认：重置后将无法恢复已保存的闯关数据。\n是否同时在排行榜中保留你的成绩？',
                 options: [
-                    { label: '取消', value: false },
-                    { label: '确认重置', value: true }
+                    { label: '取消', value: 'cancel' },
+                    { label: '重置并保留排行榜成绩', value: 'keep' },
+                    { label: '重置并清除排行榜成绩', value: 'wipe' }
                 ],
                 showSkip: false
             });
-            if (!secondConfirm) return;
+            if (!secondConfirm || secondConfirm === 'cancel') return;
 
             localStorage.removeItem('function_chess_campaign_cleared');
             localStorage.removeItem('function_chess_campaign_fraction_cleared');
@@ -631,15 +632,32 @@ if (typeof UIController === 'undefined') {
             for (let i = 1; i <= 90; i++) {
                 localStorage.removeItem(`function_chess_campaign_best_${i}`);
                 localStorage.removeItem(`function_chess_campaign_best_stars_${i}`);
+                localStorage.removeItem(`function_chess_campaign_best_expr_${i}`);
             }
             for (let d = 2; d <= 20; d++) {
                 localStorage.removeItem(`function_chess_campaign_best_1/${d}`);
                 localStorage.removeItem(`function_chess_campaign_best_stars_1/${d}`);
+                localStorage.removeItem(`function_chess_campaign_best_expr_1/${d}`);
             }
             this.campaignCurrentLevelBestRecord = null;
             this.showMessage('✅ 闯关进度已重置', 'success');
             this.updateCampaignGlobalProgressText(0);
             this.refreshUnsovableDifficultyVisibility();
+
+            // 排行榜：仅当玩家选择"清除"时才删除自己在 lr / pl* 榜上的记录
+            if (secondConfirm === 'wipe' && this._leaderboardService) {
+                try {
+                    const res = await this._leaderboardService.deleteMyScores('campaign');
+                    // 清除本地"已上报 LRΣ 记录"，避免清榜后 last 残留导致不再上报
+                    try { localStorage.removeItem('function_chess_lr_last_upload'); } catch (e3) { /* 忽略 */ }
+                    if (typeof this.refreshLeaderboardIfOpen === 'function') this.refreshLeaderboardIfOpen();
+                    if (res && res.ok) {
+                        this.showMessage('🏆 已清除排行榜中的闯关成绩', 'success');
+                    } else {
+                        this.showMessage('⚠️ 排行榜成绩清除失败（服务器未连接？），本地进度已重置', 'error');
+                    }
+                } catch (e) { console.error('[LB] 清除闯关排行榜成绩失败:', e); }
+            }
         } catch (e) {
             this.showMessage('❌ 重置失败', 'error');
         }

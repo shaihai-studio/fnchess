@@ -227,14 +227,15 @@ if (typeof UIController === 'undefined') {
 
             const secondConfirm = await this.showGameDialog({
                 title: '再次确认',
-                message: '请再次确认：重置后将无法恢复已保存的竞速数据。\n真的要继续吗？',
+                message: '请再次确认：重置后将无法恢复已保存的竞速数据。\n是否同时在排行榜中保留你的成绩？',
                 options: [
-                    { label: '取消', value: false },
-                    { label: '确认重置', value: true }
+                    { label: '取消', value: 'cancel' },
+                    { label: '重置并保留排行榜成绩', value: 'keep' },
+                    { label: '重置并清除排行榜成绩', value: 'wipe' }
                 ],
                 showSkip: false
             });
-            if (!secondConfirm) return;
+            if (!secondConfirm || secondConfirm === 'cancel') return;
 
             if (this.raceModeManager) {
                 this.raceModeManager.clearProgress();
@@ -253,6 +254,19 @@ if (typeof UIController === 'undefined') {
             this.raceCurrentLevelId = null;
             this.renderRaceLevelList();
             this.showMessage('✅ 竞速进度已重置', 'success');
+
+            // 排行榜：仅当玩家选择"清除"时才删除自己在 rt* 分关榜上的记录
+            if (secondConfirm === 'wipe' && this._leaderboardService) {
+                try {
+                    const res = await this._leaderboardService.deleteMyScores('race');
+                    if (typeof this.refreshLeaderboardIfOpen === 'function') this.refreshLeaderboardIfOpen();
+                    if (res && res.ok) {
+                        this.showMessage('🏆 已清除排行榜中的竞速成绩', 'success');
+                    } else {
+                        this.showMessage('⚠️ 排行榜成绩清除失败（服务器未连接？），本地进度已重置', 'error');
+                    }
+                } catch (e) { console.error('[LB] 清除竞速排行榜成绩失败:', e); }
+            }
         } catch (e) {
             this.showMessage('❌ 重置失败', 'error');
         }
