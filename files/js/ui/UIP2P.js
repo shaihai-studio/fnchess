@@ -204,6 +204,7 @@ if (typeof UIController === 'undefined') {
             // 访客在对局中 Peer 断开（房主退出为最常见原因）→ 显示"房主已解散房间"；其余弹普通断开提示
             if (this._p2pMatchMode === 'casual') {
                 if (this._p2pRoomDissolved) return;
+                this._p2pRoomDissolved = true; // 置位防重：保证 _onRoomDissolved 后续到达时不再重复弹窗（P4）
                 const isGuestInMatch = this.p2pController && !this.p2pController.isHost && this._p2pMatchStarted;
                 this._showP2PDisconnectModal(isGuestInMatch ? true : null);
                 return;
@@ -276,6 +277,11 @@ if (typeof UIController === 'undefined') {
         // 全量状态镜像：接收对手的实时快照并直接重绘
         p2p.onStateSync = (state) => {
             console.log('[UI][P2P] 收到 state_sync');
+            // 收到对方推进（快照）→ 恢复兜底计时结束（访客重连后只要收到任意有效同步即视为恢复成功，P3）
+            if (this._p2pRecoveryPending) {
+                this._p2pRecoveryPending = false;
+                if (this._p2pRecoveryTimer) { clearTimeout(this._p2pRecoveryTimer); this._p2pRecoveryTimer = null; }
+            }
             // 收到对方推进（快照）→ 健康监测重置计时，视为对方在线
             this._p2pPeerActivityReset();
             this.applySyncSnapshot(state);
@@ -842,6 +848,7 @@ if (typeof UIController === 'undefined') {
     UIController.prototype._onRoomDissolved = function(data) {
         console.warn(`[UI][P2P][DBG] 收到房间解散通知：data=${JSON.stringify(data || {})}, isHost=${this.p2pController ? this.p2pController.isHost : '-'}, matchMode=${this._p2pMatchMode}, matchStarted=${this._p2pMatchStarted}`);
         // 对战方收到"房主已解散该房间"（大厅模式经 lobby WS 通知）
+        if (this._p2pRoomDissolved) return; // 防重：若 onDisconnected 已先行处理，避免重复弹窗（P4）
         this._p2pRoomDissolved = true;
         this._hideP2PReconnectWait();
         // 房主已退出：访客侧停止重连尝试，避免 60s 后重连失败重复弹窗
@@ -894,6 +901,19 @@ if (typeof UIController === 'undefined') {
             setTimeout(() => { if (typeof this._syncToPeer === 'function') this._syncToPeer(); }, 300);
         } else {
             // 访客：请求房主补发完整状态快照以恢复原对局
+            // 访客恢复兜底（P3）：重连后在 10s 内未收到任何有效快照（房主已不在/未响应），
+            // 则结束对局并提示，避免卡死在空白棋盘
+            this._p2pRecoveryPending = true;
+            if (this._p2pRecoveryTimer) { clearTimeout(this._p2pRecoveryTimer); this._p2pRecoveryTimer = null; }
+            this._p2pRecoveryTimer = setTimeout(() => {
+                this._p2pRecoveryTimer = null;
+                if (this._p2pRecoveryPending) {
+                    this._p2pRecoveryPending = false;
+                    console.warn('[P2P] 访客重连后 10s 未收到有效快照，兜底结束对局');
+                    if (this.p2pController) { try { this.p2pController.disconnect(); } catch (e) {} }
+                    this._showP2PDisconnectModal(null);
+                }
+            }, 10000);
             if (p2p.sendSyncRequest) p2p.sendSyncRequest();
         }
         this.showMessage('连接已恢复，继续对局', 'success');
@@ -956,15 +976,17 @@ if (typeof UIController === 'undefined') {
 ;
 
 // _reportP2PForfeit
-    UIController.prototype._reportP2PForfeit = function(isForfeitSelf) {
-        console.warn(`[UI][P2P][DBG] _reportP2PForfeit 被调用：isForfeitSelf=${isForfeitSelf}, isP2PMode=${this.isP2PMode}, matchStarted=${this._p2pMatchStarted}, eloSettled=${this._p2pEloSettled}`);
-        // 非对局中（未开局/建房等待/已结算）不处理，返回 false；
-        // 调用方（如 onDisconnected）据此决定是否弹普通断线弹窗
+    // 统一结算入口（P5）：无论休闲/排位、主动退出/断线/被解散，ELO 上报、置标、弹窗逻辑全部收敛于此，
+    // 消除 _reportP2PForfeit 与 _reportP2PForfeitOpponent 的重复实现，并统一 roomKey（用 UI 层持久真实房间码）。
+    // opts.forfeitSelf=true 表示本方弃权判负（对手胜，winner='B'）；false 表示对手弃权（本方胜，winner='A'）。
+    UIController.prototype._finalizeP2PMatch = function(opts) {
+        opts = opts || {};
+        const isForfeitSelf = !!opts.forfeitSelf;
+        // 非对局中（未开局/建房等待/已结算）不处理，返回 false；调用方据此决定是否弹普通断线弹窗
         if (!this.isP2PMode || !this._p2pMatchStarted || this._p2pEloSettled) {
             return false;
         }
         // ★ 休闲模式：不结算 ELO，但仍按"对手弃权"弹 disconnect-modal（语义上我方胜）
-        //   修复前：休闲模式也上报 ELO，与设计不符
         if (this._p2pMatchMode !== 'ranked') {
             this._p2pEloSettled = true; // 标记结算（防止重复弹窗/重复处理）
             this._showP2PDisconnectModal(!isForfeitSelf);
@@ -976,7 +998,7 @@ if (typeof UIController === 'undefined') {
         if (!p2p || !opp || !opp.playerId) return false;
         if (!this._leaderboardService) return false;
         const profile = PlayerProfile.getProfile();
-        const roomKey = (p2p.roomCode || 'room') + '#' + (p2p._gen || 0);
+        const roomKey = ((this._p2pRoomCode || p2p.roomCode) || 'room') + '#' + (p2p._gen || 0);
         // isForfeitSelf=true：本方弃权判负（对手胜）；false：对手弃权（本方胜）
         this._leaderboardService.submitEloScore({
             nickname: profile.nickname,
@@ -990,7 +1012,11 @@ if (typeof UIController === 'undefined') {
         this._p2pEloSettled = true;
         this._showP2PDisconnectModal(!isForfeitSelf);
         return true;
-    }
+    };
+
+    UIController.prototype._reportP2PForfeit = function(isForfeitSelf) {
+        return this._finalizeP2PMatch({ forfeitSelf: isForfeitSelf });
+    };
 ;
 
 // _reportP2PForfeitOpponent
@@ -998,29 +1024,9 @@ if (typeof UIController === 'undefined') {
 // 上报语义与 _reportP2PForfeit(false) 一致：本方略胜（scoreA=1, winner='A'）；
 // 服务端按 roomKey 去重，房主端已上报同样结果，两侧结果天然一致，不会重复扣分。
 UIController.prototype._reportP2PForfeitOpponent = function() {
-    if (!this.isP2PMode || !this._p2pMatchStarted || this._p2pEloSettled) {
-        return false;
-    }
-    if (typeof PlayerProfile === 'undefined') return false;
-    const p2p = this.p2pController;
-    const opp = this._p2pOpponentProfile;
-    if (!p2p || !opp || !opp.playerId) return false;
-    if (!this._leaderboardService) return false;
-    const profile = PlayerProfile.getProfile();
-    const roomKey = (p2p.roomCode || 'room') + '#' + (p2p._gen || 0);
-    // 对手（房主）弃权 → 本方（访客）获胜：scoreA=1, winner='A'
-    this._leaderboardService.submitEloScore({
-        nickname: profile.nickname,
-        opponentPlayerId: opp.playerId,
-        opponentNickname: opp.nickname || '棋手',
-        scoreA: 1,
-        scoreB: 0,
-        winner: 'A',
-        roomCode: roomKey
-    });
-    this._p2pEloSettled = true;
-    this._showP2PDisconnectModal(true); // 对手中途退出，本局判我获胜
-    return true;
+    // 访客收到房主解散/退出通知时，本方结算为获胜得分（与房主判负完全对称）；
+    // 语义与 _reportP2PForfeit(false) 一致：本方略胜（winner='A'），统一收敛到 _finalizeP2PMatch（P5）
+    return this._finalizeP2PMatch({ forfeitSelf: false });
 }
 ;
 

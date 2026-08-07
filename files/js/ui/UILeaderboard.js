@@ -154,7 +154,7 @@ if (typeof UIController === 'undefined') {
                 let cur = 1;
                 try { if (this.raceCurrentLevelId) cur = Number(this.raceCurrentLevelId) || 1; } catch (e) { /* 忽略 */ }
                 let maxLv = 30;
-                try { if (this.gameController && this.gameController.maxOpenRaceLevel) maxLv = this.gameController.maxOpenRaceLevel; } catch (e) { /* 忽略 */ }
+                try { const _un = (typeof this.getRaceUnlockedLevels === 'function') ? this.getRaceUnlockedLevels() : null; if (_un && _un.size) maxLv = Math.max.apply(null, Array.from(_un)); } catch (e) { /* 忽略 */ }
                 if (cur < 1 || cur > maxLv) cur = 1;
                 this._leaderboardRaceLevel = cur;
                 this._updateRaceLevelTrigger(cur);
@@ -269,19 +269,19 @@ if (typeof UIController === 'undefined') {
             else if (boardType === 'elo') label = 'ELO';
             else if (isRaceBoard) label = `第 ${raceLevel} 关 用时`;
             else if (isCometBoard) label = `彗星 第 ${cometLevel} 关 最短 token`;
-            else label = '竞速速度值';
+            else label = null; // [P6] 不再使用误导性的"竞速速度值"；解析不出榜类型时不显示标签
             if (myRank > 0) {
                 const myScoreText = isRaceBoard ? `${Number(myScore).toFixed(2)}s`
                     : isCometBoard ? `${Number(myScore)}`
                     : myScore;
-                this.leaderboardMyRankEl.textContent = `我的排名：第 ${myRank} 名（${label} ${myScoreText}）`;
+                this.leaderboardMyRankEl.textContent = (label != null) ? `我的排名：第 ${myRank} 名（${label} ${myScoreText}）` : `我的排名：第 ${myRank} 名`;
             } else {
                 const mine = (myScore == null)
                     ? '-'
                     : (isRaceBoard ? `${Number(myScore).toFixed(2)}s`
                         : isCometBoard ? `${Number(myScore)}`
                         : String(myScore));
-                this.leaderboardMyRankEl.textContent = `我的分数：${label} ${mine}`;
+                this.leaderboardMyRankEl.textContent = (label != null) ? `我的分数：${label} ${mine}` : `我的分数：${mine}`;
             }
         }
     }

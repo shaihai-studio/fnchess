@@ -34,6 +34,7 @@ if (typeof UIController === 'undefined') {
         this.confirmBtn = document.getElementById('confirm-btn');
         this.clearBtn = document.getElementById('clear-btn');
         this.exitBtn = document.getElementById('exit-btn');
+        this.skipBtn = document.getElementById('skip-btn');
 
         // 「提交失败后保留解析式」开关
         this.keepExprToggle = document.getElementById('keep-expr-toggle');
@@ -952,9 +953,13 @@ if (typeof UIController === 'undefined') {
         const scoreB = Number(data.scores.B) || 0;
         // 优先使用 GameController 的 authoritative winner（含 forcedWinner，如超时判负）
         const winner = data.winner || (scoreA > scoreB ? 'A' : (scoreB > scoreA ? 'B' : 'draw'));
+        // [P7] 联调告警：若 authoritative winner 与比分推算冲突，记录以便排查跨端不一致
+        if (data.winner && (data.winner === 'A' ? (scoreB > scoreA) : data.winner === 'B' ? (scoreA > scoreB) : false)) {
+            console.warn(`[ELO] authoritative winner=${data.winner} 与比分(scoreA=${scoreA},scoreB=${scoreB})冲突，采用 authoritative winner`);
+        }
 
         // roomCode + 对局 gen 组成唯一结算键：防止 rematch（房间码不变）被服务器去重误伤
-        const roomKey = (p2p.roomCode || 'room') + '#' + (p2p._gen || 0);
+        const roomKey = ((this._p2pRoomCode || p2p.roomCode) || 'room') + '#' + (p2p._gen || 0); // [P7] 用 UI 层持久真实房间码，避免正常结束时 p2p.roomCode 已被清空致去重失效
         this._leaderboardService.submitEloScore({
             nickname: profile.nickname,
             opponentPlayerId: opp.playerId,
@@ -1017,6 +1022,10 @@ if (typeof UIController === 'undefined') {
         this.confirmBtn.addEventListener('click', () => this.handleConfirm());
         this.clearBtn.addEventListener('click', () => this.handleClear());
         this.exitBtn.addEventListener('click', () => this.handleExitClick());
+        if (this.skipBtn) this.skipBtn.addEventListener('click', () => {
+            const gc = this.gameController;
+            if (gc && gc.skipSubPhase) gc.skipSubPhase();
+        });
         this.restartBtn.addEventListener('click', () => this.handleRestart());
         this.startBtn.addEventListener('click', () => this.handleStart());
         this.bindStartKeyboardSupport();

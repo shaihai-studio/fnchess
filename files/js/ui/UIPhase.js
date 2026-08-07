@@ -254,6 +254,15 @@ if (typeof UIController === 'undefined') {
         this.phaseHintElement.textContent = hint;
         this.confirmBtn.textContent = confirmText;
 
+        // 跳过本阶段按钮（P8）：仅 set_forbidden / set_locks 且轮到本地操作时显示；SELECT_TARGET 永不显示
+        if (this.skipBtn) {
+            const isHumanTurn = this.isP2PMode
+                ? this._isMyTurn()
+                : (this.gameController.gameMode === 'ai' ? this.gameController.currentPlayer === 'A' : true);
+            const canSkip = (phase === 'set_forbidden' || phase === 'set_locks') && isHumanTurn;
+            this.skipBtn.style.display = canSkip ? '' : 'none';
+        }
+
         // AI 对手回合 / P2P 对手回合：禁用元素按钮，避免"看似可点"
         const blockInput = notMyTurn || (this.gameController.gameMode === 'ai' && state.currentPlayer === 'B');
         if (this.elementsContainer) {

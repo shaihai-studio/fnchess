@@ -1725,7 +1725,24 @@ class GameController {
 
         this.setPhase(nextPhase);
     }
-    
+
+    /**
+     * 跳过当前子阶段（仅供 UI 的"跳过本阶段"按钮调用，P8）。
+     * 仅允许在 set_forbidden / set_locks 阶段调用：放弃当前设置，直接进入下一阶段。
+     * 与超时重试不同：跳过不扣分、清零连续超时计数，避免"不想设禁区/锁格却一直扣分"的困境。
+     * SELECT_TARGET 不允许跳过（目标格是对局核心步骤）。
+     */
+    skipSubPhase() {
+        if (this.currentPhase !== this.phases.SET_FORBIDDEN && this.currentPhase !== this.phases.SET_LOCKS) return;
+        this.stopTargetTimer();
+        this.targetConsecutiveTimeouts = 0;
+        this.nextPhase();
+        if (this.gameMode === 'p2p' && this.p2pActionSender) {
+            try { this._maybeSync(); } catch (e) {}
+            try { this.bumpStateVersion(); } catch (e) {}
+        }
+    }
+
     /**
      * 记录回合历史
      * @param {Object} roundData - 回合数据
