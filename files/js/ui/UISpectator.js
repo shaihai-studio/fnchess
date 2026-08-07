@@ -64,7 +64,11 @@ if (typeof UIController === 'undefined') {
             this.showMessage(`已加入房间 ${roomCode} 的观战`);
         };
         lobby.onSpectateJoinRejected = (roomCode, reason) => {
-            this.showMessage('该房间不可观战（可能已关闭观战或对局结束）', 'warning');
+            if (reason === 'elo_range') {
+                this.showMessage('该房间开启了「仅限相近ELO」，你的段位不在允许观战范围内', 'warning');
+            } else {
+                this.showMessage('该房间不可观战（可能已关闭观战或对局结束）', 'warning');
+            }
             this.exitSpectatorMode();
         };
         lobby.onSpectateEnded = (roomCode, reason) => {

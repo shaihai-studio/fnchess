@@ -2715,6 +2715,8 @@ body::before {
 .lobby-delete-btn:hover { background: rgba(239,68,68,0.3); color: #fca5a5; }
 .lobby-long-lived-label { display: flex; align-items: center; gap: 6px; margin-bottom: 12px; font-size: 12px; color: #94a3b8; cursor: pointer; }
 .lobby-long-lived-label input { accent-color: #eab308; }
+.lobby-elo-range-input { width: 60px; padding: 2px 6px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #eab308; font-size: 12px; text-align: center; }
+.lobby-room-elo { display: inline-block; margin-top: 2px; width: fit-content; font-size: 11px; font-weight: bold; color: #eab308; background: rgba(234,179,8,0.12); border: 1px solid rgba(234,179,8,0.35); border-radius: 999px; padding: 1px 8px; }
 
 /* 房主常驻状态条（顶部固定） */
 .lobby-host-banner {

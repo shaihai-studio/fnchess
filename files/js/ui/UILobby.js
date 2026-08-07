@@ -18,10 +18,23 @@ if (typeof UIController === 'undefined') {
         lobby.currentLobbyMode = this._getP2PMode();
         lobby.onConnectionChange = (connected) => this._renderLobbyStatus(connected);
         lobby.onRoomsUpdate = (rooms) => this._renderLobbyRooms(rooms);
+        // 我的 ELO：排位大厅排序基准；休闲大厅不需要（缓存初始 null，异步查回）
+        this._lobbyMyElo = null;
+        if (this._getP2PMode() === 'ranked') {
+            this._loadLobbyMyElo();
+        }
+        // ELO 距离过滤开关仅排位建房有意义，休闲模式隐藏
+        const eloWrap = document.getElementById('lobby-elo-range-wrap');
+        if (eloWrap) eloWrap.style.display = this._getP2PMode() === 'ranked' ? '' : 'none';
         lobby.onHostRegistered = (code, expiresAt) => this._onLobbyHostRegistered(code, expiresAt);
         lobby.onJoinAccepted = (code) => this._onLobbyJoinAccepted(code);
         lobby.onGuestJoining = (code) => this._onLobbyGuestJoining(code);
         lobby.onJoinRejected = (code, reason) => {
+            if (reason === 'elo_range') {
+                this._updateLobbyStatus('error', '加入失败：你的 ELO 距房主太远，该房间开启了相近 ELO 限制');
+                this.showMessage('房主开启了「仅限相近ELO」，你的段位不在此房间允许范围内', 'error');
+                return;
+            }
             this._updateLobbyStatus('error', '加入失败：房间不可用，请刷新列表');
             this.showMessage('该房间已被占用或已关闭，请刷新后重试', 'error');
         };
@@ -37,6 +50,30 @@ if (typeof UIController === 'undefined') {
         lobby.resumeRefresh();
         lobby.fetchRooms();
         if (alreadyConnected) this._renderLobbyStatus(true);
+    }
+;
+
+// _loadLobbyMyElo
+    // 查询我的 ELO 作为排位大厅排序基准。查回后重排一次房间列表（此时可能已有数据）。
+    UIController.prototype._loadLobbyMyElo = function() {
+        const svc = this._leaderboardService;
+        if (!svc || typeof svc.queryPlayerElo !== 'function'
+            || typeof PlayerProfile === 'undefined' || !PlayerProfile.getPlayerId) {
+            this._lobbyMyElo = null;
+            return;
+        }
+        const myId = PlayerProfile.getPlayerId();
+        if (!myId) return;
+        svc.queryPlayerElo([myId], (data) => {
+            const map = (data && data.players) || {};
+            const me = map[myId] || {};
+            if (me.elo != null) {
+                this._lobbyMyElo = Number(me.elo);
+                if (this._lobby && this._lobby.rooms && this._lobby.rooms.length) {
+                    this._renderLobbyRooms(this._lobby.rooms);
+                }
+            }
+        });
     }
 ;
 
@@ -89,8 +126,22 @@ if (typeof UIController === 'undefined') {
             list.innerHTML = '<div class="lobby-empty">暂无等待中的房间<br>点击「创建房间（进大厅）」等待其他玩家加入</div>';
             return;
         }
+        // 排位模式：按与我的 ELO 距离升序排列（同差值 ELO 高者在前，如我1200 A1210 B1190 → A 在 B 前）
+        const ranked = this._getP2PMode() === 'ranked';
+        let sorted = rooms;
+        if (ranked) {
+            const myElo = this._lobbyMyElo != null ? Number(this._lobbyMyElo) : 1200;
+            sorted = rooms.slice().sort((a, b) => {
+                const ea = Number(a.hostElo) || 1200;
+                const eb = Number(b.hostElo) || 1200;
+                const da = Math.abs(myElo - ea);
+                const db = Math.abs(myElo - eb);
+                if (da !== db) return da - db;
+                return eb - ea;
+            });
+        }
         list.innerHTML = '';
-        rooms.forEach((room) => {
+        sorted.forEach((room) => {
             if (!room || !room.code) return;
             const playing = room.status === 'playing';
             const row = document.createElement('div');
@@ -98,9 +149,14 @@ if (typeof UIController === 'undefined') {
             const desc = playing
                 ? `对战中 · 观众 ${room.spectatorCount || 0} 人 · ${this._escapeHtml(this._formatLobbyRoomDesc(room.options))}`
                 : this._escapeHtml(this._formatLobbyRoomDesc(room.options));
+            // 排位模式展示房主 ELO（房间行内的黄色徽章）；休闲模式不展示
+            const eloBadge = ranked
+                ? `<span class="lobby-room-elo">ELO ${Number(room.hostElo) || 1200}</span>`
+                : '';
             row.innerHTML = `
                 <div class="lobby-room-info">
                     <span class="lobby-room-code">${this._escapeHtml(String(room.code))}</span>
+                    ${eloBadge}
                     <span class="lobby-room-desc">${desc}</span>
                 </div>
                 <button type="button" class="btn btn-small lobby-join-btn">${playing ? '观战' : '加入'}</button>
@@ -178,10 +234,16 @@ if (typeof UIController === 'undefined') {
         // 允许观战：默认开启（未显式取消勾选即为开启）
         const allowSpectate = (document.getElementById('lobby-allow-spectate-toggle') || {}).checked !== false;
         this._spectateEnabled = allowSpectate;
+        // ELO 距离过滤（仅排位模式）：勾选后，距房主 ELO 超过 eloRange 的玩家不可见/不可加入本房间
+        let eloRange = null;
+        if (this._getP2PMode() === 'ranked' && (document.getElementById('lobby-elo-range-toggle') || {}).checked) {
+            const raw = Number((document.getElementById('lobby-elo-range-input') || {}).value);
+            if (isFinite(raw) && raw > 0) eloRange = Math.max(50, Math.min(2000, Math.round(raw)));
+        }
         const btn = document.getElementById('lobby-create-btn');
         if (btn) btn.disabled = true;
         this._updateLobbyStatus('creating', '正在向大厅登记房间...');
-        lobby.hostRegister({ rounds, difficulty, timeLimitMode, longLived, allowSpectate, mode: this._getP2PMode() });
+        lobby.hostRegister({ rounds, difficulty, timeLimitMode, longLived, allowSpectate, mode: this._getP2PMode(), eloRange });
     }
 ;
 
@@ -263,6 +325,9 @@ if (typeof UIController === 'undefined') {
         // 对局中观战开关（开局后状态条显示；关闭 → 立即隐藏房间并踢观众）
         const spectateToggle = $('lobby-spectate-toggle');
         if (spectateToggle) spectateToggle.onchange = () => this._toggleSpectate(spectateToggle.checked);
+        // ELO 距离过滤数字输入框：阻止点击冒泡到 label（否则点数字会误触发勾选框）
+        const eloRangeInput = $('lobby-elo-range-input');
+        if (eloRangeInput) eloRangeInput.onclick = (e) => e.stopPropagation();
     }
 ;
 

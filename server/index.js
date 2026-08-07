@@ -871,6 +871,13 @@ lobbyWss.on('connection', (ws, req) => {
                 const expiresAt = Date.now() + (longLived ? ROOM_TTL_LONG : ROOM_TTL_DEFAULT);
                 // 允许观战默认开启：仅当显式 allowSpectate === false 时关闭
                 const spectateEnabled = !(msg.options && msg.options.allowSpectate === false);
+                // 房主身份与 ELO：ELO 距离过滤以房主 ELO 为基准（从 eloBoard 实时取，最权威）
+                const hostPlayerId = String(msg.playerId || '').slice(0, 64);
+                const hostEloEntry = hostPlayerId ? eloBoard.get(hostPlayerId) : null;
+                const hostElo = hostEloEntry && hostEloEntry.elo != null ? hostEloEntry.elo : ELO_INIT;
+                // ELO 距离过滤阈值：仅排位房间可设置（>0 开启，超出范围的玩家不可见/不可加入）
+                const rawRange = Number(msg.eloRange);
+                const eloRange = isFinite(rawRange) && rawRange > 0 ? rawRange : null;
                 rooms.set(code, {
                     code,
                     options: msg.options || {},
@@ -881,7 +888,10 @@ lobbyWss.on('connection', (ws, req) => {
                     spectators: new Set(),
                     createdAt: Date.now(),
                     expiresAt,
-                    longLived
+                    longLived,
+                    hostPlayerId,
+                    hostElo,
+                    eloRange
                 });
                 send(ws, { type: 'host_registered', code, expiresAt });
                 console.log(`[Lobby] 房主登记房间 ${code}（${longLived ? '长效 30 分钟' : '5 分钟'}, 观战${spectateEnabled ? '开启' : '关闭'}）`, msg.options || {});
@@ -897,9 +907,13 @@ lobbyWss.on('connection', (ws, req) => {
 
             // 访客拉取房间列表（等待中的房间 + 对局中且开启观战的房间）
             // mode 过滤：休闲玩家看不到排位房间，反之亦然（未标记模式的老房间按排位处理）
+            // ELO 过滤：房主开启 ELO 距离过滤的房间，距房主 ELO 太远的访客不可见
             case 'list_rooms': {
                 const now = Date.now();
                 const modeFilter = msg.mode === 'casual' ? 'casual' : (msg.mode === 'ranked' ? 'ranked' : null);
+                const visitorId = String(msg.playerId || '').slice(0, 64);
+                const visitorEloEntry = visitorId ? eloBoard.get(visitorId) : null;
+                const visitorElo = visitorEloEntry && visitorEloEntry.elo != null ? visitorEloEntry.elo : ELO_INIT;
                 const list = [];
                 for (const [code, room] of rooms) {
                     if (room.expiresAt && now >= room.expiresAt) {
@@ -913,13 +927,22 @@ lobbyWss.on('connection', (ws, req) => {
                         const roomMode = (room.options && room.options.mode) || 'ranked';
                         if (roomMode !== modeFilter) continue;
                     }
+                    // 房主当前 ELO：实时从 eloBoard 取（房间登记后再打排位赛会变动，显示/过滤都用最新值）
+                    const hostEloEntry = room.hostPlayerId ? eloBoard.get(room.hostPlayerId) : null;
+                    const hostEloNow = hostEloEntry && hostEloEntry.elo != null ? hostEloEntry.elo : ELO_INIT;
+                    // ELO 距离过滤：开启过滤的房间，访客 ELO 距房主超过阈值 → 不可见
+                    if (room.eloRange) {
+                        if (!visitorId) continue; // 无法校验身份 → 保守隐藏
+                        if (Math.abs(hostEloNow - visitorElo) > room.eloRange) continue;
+                    }
                     list.push({
                         code: room.code,
                         options: room.options,
                         createdAt: room.createdAt,
                         expiresAt: room.expiresAt,
                         status: room.status,
-                        spectatorCount: room.spectators ? room.spectators.size : 0
+                        spectatorCount: room.spectators ? room.spectators.size : 0,
+                        hostElo: hostEloNow
                     });
                 }
                 send(ws, { type: 'rooms_list', rooms: list });
@@ -948,6 +971,18 @@ lobbyWss.on('connection', (ws, req) => {
                 if (room.status !== 'waiting') {
                     send(ws, { type: 'join_rejected', code: String(msg.code), reason: 'room_not_available' });
                     return;
+                }
+                // ELO 距离过滤：房主开启过滤的房间，访客 ELO 距房主超过阈值 → 拒绝加入
+                if (room.eloRange) {
+                    const visitorId = String(msg.playerId || '').slice(0, 64);
+                    const visitorEloEntry = visitorId ? eloBoard.get(visitorId) : null;
+                    const visitorElo = visitorEloEntry && visitorEloEntry.elo != null ? visitorEloEntry.elo : ELO_INIT;
+                    const hostEloEntry = room.hostPlayerId ? eloBoard.get(room.hostPlayerId) : null;
+                    const hostEloNow = hostEloEntry && hostEloEntry.elo != null ? hostEloEntry.elo : ELO_INIT;
+                    if (!visitorId || Math.abs(hostEloNow - visitorElo) > room.eloRange) {
+                        send(ws, { type: 'join_rejected', code: String(msg.code), reason: 'elo_range' });
+                        return;
+                    }
                 }
                 // 锁住房间，防止两个访客同时加入
                 room.status = 'joining';
@@ -1022,6 +1057,18 @@ lobbyWss.on('connection', (ws, req) => {
                 if (!room || room.status !== 'playing' || !room.spectateEnabled) {
                     send(ws, { type: 'spectate_join_rejected', code, reason: 'spectate_not_allowed' });
                     return;
+                }
+                // ELO 距离过滤同样约束观战：距房主太远的观众不可观战（与列表不可见保持一致）
+                if (room.eloRange) {
+                    const visitorId = String(msg.playerId || '').slice(0, 64);
+                    const visitorEloEntry = visitorId ? eloBoard.get(visitorId) : null;
+                    const visitorElo = visitorEloEntry && visitorEloEntry.elo != null ? visitorEloEntry.elo : ELO_INIT;
+                    const hostEloEntry = room.hostPlayerId ? eloBoard.get(room.hostPlayerId) : null;
+                    const hostEloNow = hostEloEntry && hostEloEntry.elo != null ? hostEloEntry.elo : ELO_INIT;
+                    if (!visitorId || Math.abs(hostEloNow - visitorElo) > room.eloRange) {
+                        send(ws, { type: 'spectate_join_rejected', code, reason: 'elo_range' });
+                        return;
+                    }
                 }
                 // 同一连接只能观战一场对局
                 for (const [c, r] of rooms) {

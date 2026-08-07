@@ -21,15 +21,19 @@
  * 通过 WebSocket 连接服务器的 /lobby 端点，与 PeerJS 信令同一端口。
  *
  * 协议（JSON，字符串收发）：
- *  - host_register  { options:{rounds,difficulty,timeLimitMode,longLived,allowSpectate} } → host_registered { code }
+ *  - host_register  { options:{rounds,difficulty,timeLimitMode,longLived,allowSpectate,eloRange}, playerId } → host_registered { code }
+ *    eloRange>0 = 开启 ELO 距离过滤（以房主 ELO 为基准，距房主超过该分差的玩家不可见/不可加入）
  *  - cancel_register { code }                                     → 房主取消登记
- *  - list_rooms      {}                                           → rooms_list { rooms:[{code,options,createdAt,status,spectatorCount}] }
- *  - join_request    { code }                                     → join_accepted { code } / join_rejected { code, reason }
+ *  - list_rooms      { mode, playerId }                           → rooms_list { rooms:[{code,options,createdAt,status,spectatorCount,hostElo}] }
+ *    （排位模式服务端按房主 hostElo 与访客 playerId 做 ELO 距离过滤；hostElo 用于前端"距我最近"排序）
+ *  - join_request    { code, mode, playerId }                     → join_accepted { code } / join_rejected { code, reason }
+ *    reason='elo_range' = 距房主 ELO 超过房间过滤阈值
  *  - join_cancel     { code }                                     → 访客取消加入
  *  - room_started    { code, spectate }                           → 房间开局；spectate=true 保留在大厅，否则移除
  *  - guest_joining   { code }                                     → 服务器推送给房主：有人申请加入
  *  - spectate_enable / spectate_disable { code }                  → 房主切换观战开关（对局中随时可切）
- *  - spectate_join   { code }                                     → 观众加入观战 → spectate_joined / spectate_join_rejected
+ *  - spectate_join   { code, playerId }                           → 观众加入观战 → spectate_joined / spectate_join_rejected
+ *    （房间开启 ELO 过滤时，距房主太远的观众同样被拒，reason='elo_range'）
  *  - spectate_leave  { code }                                     → 观众退出观战
  *  - spectate_sync   { payload }                                  → 房主推送快照 → 服务器广播 spectate_state 给观众
  *
@@ -238,11 +242,27 @@ class MatchLobbyController {
         }
     }
 
-    /** 房主登记房间（options: {rounds,difficulty,timeLimitMode,mode}；mode=排位/休闲） */
+    _getPlayerId() {
+        return (typeof PlayerProfile !== 'undefined' && PlayerProfile.getPlayerId)
+            ? PlayerProfile.getPlayerId()
+            : '';
+    }
+
+    /** 房主登记房间（options: {rounds,difficulty,timeLimitMode,mode,eloRange}；mode=排位/休闲）
+     *  eloRange>0 时开启 ELO 距离过滤（以房主 ELO 为基准，超出该分差的玩家不可见/不可加入） */
     hostRegister(options) {
         const opts = options || {};
         if (this.currentLobbyMode && !opts.mode) opts.mode = this.currentLobbyMode;
-        this._send({ type: 'host_register', options: opts });
+        // eloRange 是过滤开关配置，抽离为顶层字段（服务器入 room.eloRange），不混入 options 配置描述
+        const rawRange = Number(opts.eloRange);
+        const eloRange = isFinite(rawRange) && rawRange > 0 ? rawRange : null;
+        delete opts.eloRange;
+        this._send({
+            type: 'host_register',
+            options: opts,
+            playerId: this._getPlayerId(),
+            eloRange
+        });
     }
 
     /** 房主取消登记 */
@@ -252,14 +272,24 @@ class MatchLobbyController {
         this.myRoomExpiresAt = 0;
     }
 
-    /** 拉取房间列表（按当前大厅模式过滤：休闲看不到排位房间，反之亦然） */
+    /** 拉取房间列表（按当前大厅模式过滤：休闲看不到排位房间，反之亦然；
+     *  携带本机 playerId 供服务器做 ELO 距离过滤与房主 ELO 下发） */
     fetchRooms() {
-        this._send({ type: 'list_rooms', mode: this.currentLobbyMode || null });
+        this._send({
+            type: 'list_rooms',
+            mode: this.currentLobbyMode || null,
+            playerId: this._getPlayerId()
+        });
     }
 
-    /** 访客申请加入（带模式，服务器校验匹配） */
+    /** 访客申请加入（带模式与身份，服务器校验匹配及 ELO 距离过滤） */
     joinRoom(code) {
-        this._send({ type: 'join_request', code: String(code), mode: this.currentLobbyMode || null });
+        this._send({
+            type: 'join_request',
+            code: String(code),
+            mode: this.currentLobbyMode || null,
+            playerId: this._getPlayerId()
+        });
     }
 
     /** 访客取消加入 */
@@ -293,9 +323,9 @@ class MatchLobbyController {
         this._send({ type: 'spectate_sync', payload: snapshot });
     }
 
-    /** 观众加入观战（仅需房间码，不涉及 PeerJS） */
+    /** 观众加入观战（仅需房间码，不涉及 PeerJS；携带 playerId 供 ELO 距离过滤校验） */
     joinSpectate(code) {
-        this._send({ type: 'spectate_join', code: String(code) });
+        this._send({ type: 'spectate_join', code: String(code), playerId: this._getPlayerId() });
     }
 
     /** 观众退出观战 */
