@@ -84,6 +84,16 @@ if (typeof UIController === 'undefined') {
         if (this.gridSystem && this.gridSystem.canvas) {
             this.gridSystem.canvas.style.cursor = 'not-allowed';
         }
+        // 隐藏底部操作按钮：观战是只读的，观众不能确认/清除/退出对局
+        // （误点"退出对局"会走 handleExit → _cleanupP2P → 断开大厅连接，
+        //   但观战遮罩/回调/标志残留，第二次进入观战就空白/失败；
+        //   确认/清除对观众无意义，点了也无效果）
+        const exitBtn = document.getElementById('exit-btn');
+        if (exitBtn) exitBtn.style.display = 'none';
+        const confirmBtn = document.getElementById('confirm-btn');
+        if (confirmBtn) confirmBtn.style.display = 'none';
+        const clearBtn = document.getElementById('clear-btn');
+        if (clearBtn) clearBtn.style.display = 'none';
         // 加入观战
         lobby.joinSpectate(this._spectatorCode);
         this._updateLobbyStatus('spectating', `正在连接房间 ${this._spectatorCode} 观战...`);
@@ -139,6 +149,10 @@ if (typeof UIController === 'undefined') {
     UIController.prototype.exitSpectatorMode = function() {
         if (!this._isSpectating) return;
         this._isSpectating = false;
+        // 防御：停掉可能残留的本地选格子倒计时（观众端只读，不应有任何扣分/判负）
+        if (this.gameController && typeof this.gameController.stopTargetTimer === 'function') {
+            this.gameController.stopTargetTimer();
+        }
         const lobby = this._lobby;
         if (lobby && this._spectatorCode) {
             lobby.leaveSpectate(this._spectatorCode);
@@ -157,6 +171,13 @@ if (typeof UIController === 'undefined') {
         if (this.gridSystem && this.gridSystem.canvas) {
             this.gridSystem.canvas.style.cursor = 'default';
         }
+        // 恢复底部按钮（仅观战时隐藏）
+        const exitBtn = document.getElementById('exit-btn');
+        if (exitBtn) exitBtn.style.display = '';
+        const confirmBtn = document.getElementById('confirm-btn');
+        if (confirmBtn) confirmBtn.style.display = '';
+        const clearBtn = document.getElementById('clear-btn');
+        if (clearBtn) clearBtn.style.display = '';
         this.showMessage('已退出观战');
         // 返回开始界面（观战结束即回主页）
         this.handleRestart();

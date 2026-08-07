@@ -408,7 +408,7 @@ if (typeof UIController === 'undefined') {
                         const profile = PlayerProfile.getProfile();
                         // 附题数供服务器难度下限拦截（通关必然解满 10 题）
                         const solved = Number(data.solvedCount) || 0;
-                        const totalR = Number(data.totalRounds) || solved;
+                        const totalR = Number(data.totalSolved) || solved;
                         this._leaderboardService.submitRaceTime(lv, bestTime, profile.nickname, solved, totalR);
                         this.refreshLeaderboardIfOpen();
                     }
@@ -419,33 +419,10 @@ if (typeof UIController === 'undefined') {
     }
 ;
 
-// startRaceElapsedTimer
-    UIController.prototype.startRaceElapsedTimer = function() {
-        if (this._raceElapsedTimer) clearInterval(this._raceElapsedTimer);
-        if (this.gameController?.gameMode !== 'race' || !this.gameController?.raceState?.active) return;
-        this._raceElapsedStart = Date.now();
-        this._raceElapsedTimer = setInterval(() => {
-            if (!this.gameController || this.gameController.gameMode !== 'race' || !this.gameController.raceState?.active) {
-                clearInterval(this._raceElapsedTimer);
-                this._raceElapsedTimer = null;
-                return;
-            }
-            const elapsed = (Date.now() - this._raceElapsedStart) / 1000;
-            this.updateRaceBattleUI(this.raceCurrentLevelId || this.gameController?.currentRound || 1, elapsed);
-            this.updateRaceCountdownElapsed(elapsed);
-        }, 50);
-    }
-;
+// startRaceElapsedTimer（旧实现已被下方同名的第二版覆盖，此处删除重复定义：
+// 第一版基于 Date.now() 计时、第二版基于 raceState.startedAt 并兼容冻结/阈值逻辑，
+// 第二版实际生效，第一版属于死代码）
 
-// stopRaceElapsedTimer
-    UIController.prototype.stopRaceElapsedTimer = function() {
-        if (this._raceElapsedTimer) {
-            clearInterval(this._raceElapsedTimer);
-            this._raceElapsedTimer = null;
-        }
-        this._raceElapsedFrozen = true;
-    }
-;
 
 // playRaceNewRecordIntro
     UIController.prototype.playRaceNewRecordIntro = function(done) {
@@ -599,6 +576,9 @@ if (typeof UIController === 'undefined') {
             clearInterval(this._raceElapsedTimer);
             this._raceElapsedTimer = null;
         }
+        // 冻结倒计时阈值触发（startRaceElapsedTimer 会重置 false）；
+        // 否则 updateRaceCountdownElapsed 的 _raceElapsedFrozen 分支永为死代码
+        this._raceElapsedFrozen = true;
     }
 ;
 
@@ -738,7 +718,7 @@ if (typeof UIController === 'undefined') {
         host.innerHTML = `
             <div class="race-victory-extra-line">关卡 ${levelId} · ${totalSolved} 谜题 · ${elapsed.toFixed(2)}s</div>
             <div class="race-victory-extra-line">${isNewRecord ? 'NEW BEST' : '稳定发挥'} · ${hasPreviousBest ? `PB ${previousBestTime.toFixed(2)}s` : 'PB 未记录'}</div>
-            <div class="race-victory-extra-line">${diff === null ? '首通记录已建立' : (diff <= 0 ? '领先最佳成绩' : '仍可再快一点')}</div>
+            <div class="race-victory-extra-line">${diff === null ? '首通记录已建立' : (diff < 0 ? '领先最佳成绩' : (diff === 0 ? '追平最佳成绩' : '仍可再快一点'))}</div>
         `;
     }
 ;
@@ -831,7 +811,10 @@ if (typeof UIController === 'undefined') {
         [allowedEl, forbiddenEl, locksEl].forEach(el => {
             if (el) el.addEventListener('input', () => this._refreshRaceCustomHint());
         });
-        cancelBtn.addEventListener('click', () => this.closeRaceCustomModal());
+        cancelBtn.addEventListener('click', () => {
+            if (window.audioManager) window.audioManager.playClick();
+            this.closeRaceCustomModal();
+        });
         startBtn.addEventListener('click', () => this.startCustomRace());
         this._raceCustomSyncArcNote = syncArcNote;
         this.initRaceCustomSteppers();
@@ -872,7 +855,10 @@ if (typeof UIController === 'undefined') {
                 updateArrows();
                 self._refreshRaceCustomHint();
             };
-            const step = delta => commit(delta);
+            const step = delta => {
+                if (window.audioManager) window.audioManager.playClick();
+                commit(delta);
+            };
             const attach = (btn, delta) => {
                 let timer = null, interval = null;
                 const start = () => {

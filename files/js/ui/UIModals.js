@@ -278,6 +278,7 @@ if (typeof UIController === 'undefined') {
                     btn.className = 'summa-dialog-option-btn';
                     btn.textContent = opt.label;
                     btn.addEventListener('click', () => {
+                        if (window.audioManager) window.audioManager.playClick();
                         resolve(opt.value);
                         this.hideSummaDialog();
                     });
@@ -488,6 +489,9 @@ if (typeof UIController === 'undefined') {
         let winnerText = '';
         if (data.winner === 'draw') {
             winnerText = '平局！';
+        } else if (data && data.forfeit) {
+            // 消极比赛判负：明确标注原因（判负方可能分数更高，需按判负而非比分判定）
+            winnerText = `${this.getPlayerDisplayName(data.forfeit.winner)} 获胜！（${this.getPlayerDisplayName(data.forfeit.loser)} ${data.forfeit.reason}）`;
         } else {
             winnerText = `${this.getPlayerDisplayName(data.winner)} 获胜！`;
         }

@@ -45,6 +45,15 @@ class GameController {
         this.timeLimitMultiplier = 1;
         this.remainingTime = 40;
         this.timerInterval = null;
+
+        // 选格子倒计时（消极比赛判定）：首次 40s，超时后重新计时 20s；同阶段连续 3 次超时直接判负
+        this.TARGET_TIMEOUT = 40;
+        this.TARGET_TIMEOUT_RETRY = 20;
+        this.targetRemaining = 40;
+        this.targetConsecutiveTimeouts = 0;
+        this.targetTimerInterval = null;
+        this.forcedWinner = null;   // 判负强制的胜者（endGame 优先使用，之后复位）
+        this.lastForfeit = null;    // 判负信息（gameEnd 携带）
         
         // 回合状态
         this.roundState = {
@@ -152,6 +161,12 @@ class GameController {
         this.gameMode = gameMode;
         this.players.A.score = 0;
         this.players.B.score = 0;
+        
+        // 复位消极比赛判负状态（新一局）
+        this.forcedWinner = null;
+        this.lastForfeit = null;
+        this.targetConsecutiveTimeouts = 0;
+        this.stopTargetTimer();
         
         // 清空测试模式函数和游戏历史
         this.testModeFunctions = [];
@@ -909,19 +924,27 @@ class GameController {
             currentRound: this.currentRound
         });
         
+        // 离开当前阶段即停止选格子倒计时（SELECT_TARGET 分支会按需重新启动）
+        this.stopTargetTimer();
+        
         // 根据阶段执行相应逻辑
         switch (phase) {
             case this.phases.SELECT_TARGET:
-                // 选择目标阶段不需要计时器
+                // 选格子倒计时（选允许格）：首次 40s，超时扣分重新 20s，同阶段连续 3 次判负
                 this.stopTimer();
-                this.remainingTime = this.timeLimit;
-                this.emit('timerUpdate', { remainingTime: this.remainingTime });
+                this.startTargetTimer();
                 break;
             case this.phases.SET_FORBIDDEN:
+                // 选禁止格同样启用选格子倒计时
+                this.stopTimer();
+                this.startTargetTimer();
                 // 注意：不在这里自动跳过，让AI有机会执行
                 // 如果需要跳过，应该在nextPhase中处理
                 break;
             case this.phases.SET_LOCKS:
+                // 选锁定元素同样启用选格子倒计时
+                this.stopTimer();
+                this.startTargetTimer();
                 // 注意：不在这里自动跳过，让AI有机会执行
                 // 如果需要跳过，应该在nextPhase中处理
                 break;
@@ -1043,6 +1066,122 @@ class GameController {
             // 其他阶段超时，自动进入下一阶段
             this.nextPhase();
         }
+    }
+    
+    /**
+     * 启动选格子倒计时（选允许格/禁止格/锁定元素）：首次 40s，超时扣分后重新 20s；
+     * 同阶段连续 3 次超时判负"消极比赛"。
+     * 本地对战 / AI 对战 / P2P 启用；闯关 / 竞速 / 测试模式不启用（保持原静态显示）。
+     */
+    startTargetTimer() {
+        this.stopTargetTimer();
+        // 观战/只读端（p2p 模式但无 p2pActionSender）：纯被动接收快照，
+        // 不启动本地倒计时、不扣分、不判负（否则观战 40s 后会自动触发超时/判负弹窗）
+        if (this.gameMode === 'p2p' && !this.p2pActionSender) {
+            this.remainingTime = this.timeLimit;
+            this.emit('timerUpdate', { remainingTime: this.remainingTime });
+            return;
+        }
+        // 非对抗模式（闯关/竞速/测试）不启用选格子倒计时
+        if (this.isTestMode() || (this.campaignState && this.campaignState.active) || (this.raceState && this.raceState.active)) {
+            this.remainingTime = this.timeLimit;
+            this.emit('timerUpdate', { remainingTime: this.remainingTime });
+            return;
+        }
+        // 进入新的选格子子阶段（允许格/禁止格/锁定元素），重置连续超时计数，首次给 40s
+        this.targetConsecutiveTimeouts = 0;
+        this._startTargetCountdown(this.TARGET_TIMEOUT);
+    }
+    
+    /** 开始一轮递减（默认 40s；超时后传 TARGET_TIMEOUT_RETRY=20s 重新计时）；不清连续超时计数 */
+    _startTargetCountdown(seconds) {
+        this.stopTargetTimer();
+        this.targetRemaining = (typeof seconds === 'number' && seconds > 0) ? seconds : this.TARGET_TIMEOUT;
+        // P2P：只有当前操作玩家本地驱动倒计时，对手仅接收 timer_sync；
+        // 被动方直接返回、不重置 remainingTime（保留 timer_sync 同步到的真实剩余时间，
+        // 避免倒计时跳回初始值造成 UI 闪烁/误判）
+        const isP2P = this.gameMode === 'p2p' && this.p2pActionSender;
+        if (isP2P && this.currentPlayer !== this.p2pActionSender.myPlayerId) {
+            return;
+        }
+        this.remainingTime = this.targetRemaining;
+        this.emit('timerUpdate', { remainingTime: this.targetRemaining });
+        this.targetTimerInterval = setInterval(() => {
+            this.targetRemaining--;
+            this.remainingTime = this.targetRemaining;
+            this.emit('timerUpdate', { remainingTime: this.targetRemaining });
+            if (isP2P && this.p2pActionSender && this.p2pActionSender.sendTimerSync) {
+                this.p2pActionSender.sendTimerSync(this.targetRemaining);
+            }
+            if (this.targetRemaining <= 0) {
+                this.handleTargetTimeout();
+            }
+        }, 1000);
+    }
+    
+    /** 停止选格子倒计时 */
+    stopTargetTimer() {
+        if (this.targetTimerInterval) {
+            clearInterval(this.targetTimerInterval);
+            this.targetTimerInterval = null;
+        }
+    }
+    
+    /**
+     * 选格子超时：扣 1 分并重新计时 20s；连续 3 次 → 消极比赛判负。
+     */
+    handleTargetTimeout() {
+        this.stopTargetTimer();
+        
+        this.targetConsecutiveTimeouts++;
+        this.players[this.currentPlayer].score -= 1;
+        this.emit('targetTimeout', {
+            player: this.currentPlayer,
+            consecutive: this.targetConsecutiveTimeouts,
+            score: this.players[this.currentPlayer].score
+        });
+        // 复用超时提示（UI 显示"xx超时！扣1分"）
+        this.emit('timeout', { player: this.currentPlayer, reason: 'select_target', consecutive: this.targetConsecutiveTimeouts });
+        
+        // P2P：通知对手超时（对方显示提示；倒计时由操作方驱动，无需对手本地计时）
+        if (this.gameMode === 'p2p' && this.p2pActionSender && this.p2pActionSender.sendTimeout) {
+            this.p2pActionSender.sendTimeout(this.currentPlayer);
+        }
+        // P2P：扣分后立即同步分数给对手（否则被动方看不到本次扣分，只能等后续 state_sync）
+        this.bumpStateVersion();
+        this._maybeSync();
+        
+        // 连续 3 次超时 → 消极比赛判负
+        if (this.targetConsecutiveTimeouts >= 3) {
+            this.forfeitGame(this.currentPlayer);
+            return;
+        }
+        
+        // 重新计时 20 秒（不清连续超时计数）
+        this._startTargetCountdown(this.TARGET_TIMEOUT_RETRY);
+    }
+    
+    /**
+     * 消极比赛判负（选格子连续超时 3 次）。
+     * @param {string} loser 'A' | 'B'
+     */
+    forfeitGame(loser) {
+        this.stopTimer();
+        this.stopTargetTimer();
+        this.forcedWinner = loser === 'A' ? 'B' : 'A';
+        this.lastForfeit = { loser, winner: this.forcedWinner, reason: '选格子连续超时（消极比赛）' };
+        this.emit('forfeit', Object.assign({}, this.lastForfeit));
+        // P2P：通知对手判负（对手端设置 winner 后结束，避免按分数误判——判负方可能分数仍占优）
+        if (this.gameMode === 'p2p' && this.p2pActionSender) {
+            this._sendP2PAction('end_game', {
+                scoreA: this.players.A.score,
+                scoreB: this.players.B.score,
+                winner: this.forcedWinner,
+                forfeit: this.lastForfeit
+            });
+        }
+        // END → endGame()：forcedWinner 生效，保证判负方必定落败（即使分数占优）
+        this.setPhase(this.phases.END);
     }
     
     /**
@@ -1639,9 +1778,11 @@ class GameController {
      */
     endGame() {
         this.stopTimer();
+        this.stopTargetTimer();
         
-        const winner = this.players.A.score > this.players.B.score ? 'A' :
-                      this.players.B.score > this.players.A.score ? 'B' : 'draw';
+        const winner = this.forcedWinner || (this.players.A.score > this.players.B.score ? 'A' :
+                      this.players.B.score > this.players.A.score ? 'B' : 'draw');
+        this.forcedWinner = null; // 复位，防止影响下一局
         
         // P2P：同步最终比分后再弹出结算界面
         this._maybeSync();
@@ -1652,7 +1793,8 @@ class GameController {
                 A: this.players.A.score,
                 B: this.players.B.score
             },
-            report: this.getGameReport()
+            report: this.getGameReport(),
+            forfeit: this.lastForfeit || null
         });
     }
     
@@ -2004,6 +2146,9 @@ class GameController {
                     this.players.A.score = payload.scoreA ?? this.players.A.score;
                     this.players.B.score = payload.scoreB ?? this.players.B.score;
                 }
+                // 判负场景：对端明确给出胜者与原因（本地分数判定可能因"判负方分数仍占优"而误判）
+                if (payload && payload.winner) this.forcedWinner = payload.winner;
+                if (payload && payload.forfeit) this.lastForfeit = payload.forfeit;
                 this.endGame();
                 return true;
                 

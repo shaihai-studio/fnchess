@@ -5189,6 +5189,21 @@ body.device-mobile {
     background: rgba(59,130,246,0.26);
     box-shadow: 0 0 18px rgba(59,130,246,0.28);
 }
+.p2p-mode-select-back {
+    margin-top: 14px;
+    padding: 8px 18px;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.18);
+    background: rgba(255,255,255,0.04);
+    color: #cbd5e1;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all .15s;
+}
+.p2p-mode-select-back:hover {
+    background: rgba(255,255,255,0.10);
+    color: #f1f5f9;
+}
 
 /* ── 访客掉线等待重连 ─────────────────────────────── */
 .p2p-reconnect-text {

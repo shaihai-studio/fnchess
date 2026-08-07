@@ -91,12 +91,29 @@ class AIController {
             phase = this.gameController.currentPhase;
         }
 
+        // ── 阶段守卫：执行前确认当前阶段仍是请求的阶段，且轮到 AI（B） ──
+        // 防止 AI 因触发延迟/思考超时，把上一阶段的动作（尤其构造表达式）执行到
+        // 玩家当前回合（玩家选格子时 AI 抢跑输入表达式的 bug）。
+        const gc = this.gameController;
+        if (gc && gc.currentPhase !== phase) {
+            console.warn(`[AI] playTurn(${phase}) 但当前阶段已变为 ${gc.currentPhase}，丢弃本次执行`);
+            this.isThinking = false;
+            return;
+        }
+
         console.log('[AI] ========== 开始执行阶段 ==========');
         console.log('[AI] 阶段:', phase);
         console.log('[AI] 当前玩家:', this.gameController.currentPlayer);
 
         // 模拟思考时间
         await this.think(1000 + Math.random() * 1000);
+
+        // 思考后再校验一次（思考期间阶段可能被超时/玩家操作推进）
+        if (gc.currentPhase !== phase) {
+            console.warn(`[AI] playTurn(${phase}) 思考后阶段已变为 ${gc.currentPhase}，丢弃本次执行`);
+            this.isThinking = false;
+            return;
+        }
 
         try {
             if (phase === 'select_target') {

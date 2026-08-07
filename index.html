@@ -573,6 +573,7 @@
                     <span class="p2p-mode-select-sub">不计 ELO · 娱乐对局</span>
                 </button>
             </div>
+            <button class="p2p-mode-select-back" id="p2p-mode-select-back" type="button">返回主菜单</button>
         </div>
     </div>
 
@@ -717,6 +718,19 @@
         <div class="modal-content" style="max-width:320px;text-align:center;">
             <h2>网络断开</h2>
             <p class="p2p-reconnect-text">正在自动重连…</p>
+        </div>
+    </div>
+
+    <!-- 访客大退后重开页面：检测到未结束的排位对局，询问是否恢复 -->
+    <div class="modal" id="p2p-resume-modal" style="display:none;">
+        <div class="modal-content" style="max-width:380px;text-align:center;">
+            <h2>检测到未结束的对局</h2>
+            <p class="p2p-resume-text" id="p2p-resume-detail">你有一局排位对战因断线未结束，是否恢复？</p>
+            <div style="display:flex;flex-direction:column;gap:10px;margin-top:16px;">
+                <button class="btn btn-primary" id="p2p-resume-btn" onclick="uiController.confirmP2PResume()">恢复对局</button>
+                <button class="btn btn-secondary" id="p2p-resume-cancel-btn" onclick="uiController.cancelP2PResume()">放弃（返回主菜单）</button>
+            </div>
+            <p class="p2p-resume-tip" style="margin-top:12px;font-size:12px;color:#888;">提示：房主端仅在断开后 60 秒内等待重连，请尽快恢复。</p>
         </div>
     </div>
 
@@ -916,7 +930,6 @@
     <script src="files/js/ai/AIExpressionHandler.js"></script>
     <script src="files/js/ai/AIPersistence.js"></script>
     <script src="files/js/AIController.js"></script>
-    <script src="files/js/ai/AITurnHandler.js"></script>
     <!-- 联机信令服务器配置（必须在 P2PController.js 之前） -->
     <script>
         window.P2P_SIGNALING = {
@@ -1017,6 +1030,8 @@
             const splash = document.getElementById('splash-screen');
             if (splash) {
                 uiController.showSplash();   // 绑定「点击 + 键盘」进入监听
+                // 启动后检测访客大退未结束的排位对局，弹窗询问是否恢复
+                uiController._checkP2PResume();
             } else {
                 uiController.showModal(document.getElementById('start-modal'));
             }

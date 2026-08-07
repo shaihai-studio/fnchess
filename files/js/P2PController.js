@@ -389,9 +389,16 @@ class P2PController {
             this._syncVerifyInterval = setInterval(() => this._sendSyncVerify(), 3000);
             console.log(`[P2P] DataChannel 已打开，isHost=${this.isHost}, myPlayerId=${this.myPlayerId}`);
             this._notifyStatus('connected', this.isHost ? '对手已加入！游戏即将开始...' : '已连接到房间！游戏即将开始...');
-            // 重连成功后：清除重连状态并通知 UI（Host 会重发 game_init，双方从新一局开始）
+            // 重连成功后：清除重连状态并通知 UI（UI 层通过 state_sync 快照继续原对局，不重新开局、不扣分）
+            console.log(`[P2P][DBG] DataChannel open：_reconnecting=${this._reconnecting}, isHost=${this.isHost} → 调 _handleReconnectSuccess 后 onConnected`);
+            // 关键修复：若此前处于断线重连等待（对局进行中），必须走重连恢复链路
+            // （_handleReconnectSuccess → onReconnected 推送/拉取快照），绝不能触发
+            // onConnected → startP2PGame 重新开局。大退恢复场景下房主端 _reconnecting 为
+            // true（仍在 60s 宽限内），同样走此分支避免重开；访客端为全新会话（_reconnecting
+            // 为 false）才会触发 onConnected，并在其中判断是否走快照续局。
+            const _wasReconnecting = this._reconnecting;
             this._handleReconnectSuccess();
-            if (this.onConnected) this.onConnected();
+            if (!_wasReconnecting && this.onConnected) this.onConnected();
         });
         conn.on('data', (data) => {
             this._resetWatchdog();
@@ -884,6 +891,7 @@ class P2PController {
     }
 
     _handleDisconnect() {
+        console.warn(`[P2P][DBG] _handleDisconnect 触发：_disconnecting=${this._disconnecting}, _disconnectHandled=${this._disconnectHandled}, wasConnected=${this.isConnected}, roomCode=${this.roomCode}, reconnectEnabled=${this.reconnectEnabled}, _reconnecting=${this._reconnecting}, isHost=${this.isHost}`);
         // 主动断开（disconnect() 已设置 _disconnecting = true），跳过 UI 弹窗
         if (this._disconnecting) { this._disconnecting = false; return; }
         // 断线清理已执行（DataChannel 的 close/error 可能连续触发），防重复清理与重复弹窗
@@ -917,11 +925,13 @@ class P2PController {
         // 对局中断线（曾建立过连接且仍有房间码，且启用重连）→ 保留 peer/roomCode/_gameInitConfig，
         // 进入重连等待；休闲模式（reconnectEnabled=false）断线即结束
         if (wasConnected && this.roomCode && this.reconnectEnabled) {
+            console.log('[P2P][DBG] 对局中断线 → 进入重连等待');
             this._startReconnect();
             return;
         }
 
         // 非对局中断线（连接失败 / 建房等待阶段）→ 完整清理
+        console.warn(`[P2P][DBG] 未进入重连（wasConnected=${wasConnected}, roomCode=${this.roomCode}, reconnectEnabled=${this.reconnectEnabled}）→ 完整清理`);
         this._gameInitConfig = null;
         this._handledInitGen = 0;
         this._lastRemoteVerify = null;
@@ -940,6 +950,7 @@ class P2PController {
 
     _startReconnect() {
         if (this._reconnecting) return;
+        console.log(`[P2P][DBG] _startReconnect 进入重连：isHost=${this.isHost}, roomCode=${this.roomCode}, peer=${!!this.peer}, peer.destroyed=${this.peer ? this.peer.destroyed : '-'}`);
         this._reconnecting = true;
         this._reconnectAttempts = 0;
         if (this.onReconnectingChange) this.onReconnectingChange(true);
@@ -947,14 +958,30 @@ class P2PController {
     }
 
     _scheduleReconnectAttempt() {
-        if (this._disconnecting || this.isConnected) { this._clearReconnectState(); return; }
+        if (this._disconnecting || this.isConnected) {
+            console.warn(`[P2P][DBG] 调度检查取消重连：_disconnecting=${this._disconnecting}, isConnected=${this.isConnected}`);
+            this._clearReconnectState(); return;
+        }
         // 20 次 × 3 秒 ≈ 60 秒（1 分钟重连宽限）；超时未恢复 → 放弃重连，判对应方负
         if (this._reconnectAttempts >= 20) { this._giveUpReconnect(); return; }
         this._reconnectTimer = setTimeout(() => {
-            if (this._disconnecting || this.isConnected) { this._clearReconnectState(); return; }
+            if (this._disconnecting || this.isConnected) {
+                console.warn(`[P2P][DBG] 重连定时器检查取消重连：_disconnecting=${this._disconnecting}, isConnected=${this.isConnected}`);
+                this._clearReconnectState(); return;
+            }
             this._reconnectAttempts++;
-            // 复用 peer 重新连接（PeerJS 会重新打洞建 DataChannel；房间码即目标 peer id）
-            if (this.peer && !this.peer.destroyed && this.roomCode) {
+            const peerOk = this.peer && !this.peer.destroyed;
+            if (!peerOk) {
+                console.warn(`[P2P][DBG] 重连尝试 #${this._reconnectAttempts}/20 跳过 connect：peer=${!!this.peer}, destroyed=${this.peer ? this.peer.destroyed : '-'}, roomCode=${this.roomCode}`);
+            } else {
+                console.log(`[P2P][DBG] 重连尝试 #${this._reconnectAttempts}/20：isHost=${this.isHost}, roomCode=${this.roomCode}${this.isHost ? '（房主被动等待，不主动 connect）' : ' → 主动 connect 房主'}`);
+            }
+            // 仅访客端主动 connect（目标 peer id = roomCode = 房主）；
+            // 房主端 peer id 就是 roomCode，若也执行 peer.connect(roomCode) 等于连接自己
+            //（peerjs-server 会把 OFFER 转发回发送者 → 本地回环假连接占位 isConnected、
+            //  或触发 unavailable-id/peer-unavailable 提前中断重连宽限），
+            // 因此房主不主动 connect，只依赖 peer.on('connection') 接受访客连回。
+            if (peerOk && this.roomCode && !this.isHost) {
                 try {
                     const conn = this.peer.connect(this.roomCode, { reliable: true });
                     this._setupConnection(conn);
@@ -966,6 +993,7 @@ class P2PController {
 
     _giveUpReconnect() {
         if (!this._reconnecting) return;
+        console.warn(`[P2P][DBG] _giveUpReconnect 放弃重连：attempts=${this._reconnectAttempts}, isHost=${this.isHost}, roomCode=${this.roomCode}`);
         this._reconnecting = false;
         clearTimeout(this._reconnectTimer); this._reconnectTimer = null;
         if (this.onReconnectingChange) this.onReconnectingChange(false);
@@ -986,16 +1014,18 @@ class P2PController {
         clearTimeout(this._reconnectTimer); this._reconnectTimer = null;
         if (this.onReconnectingChange) this.onReconnectingChange(false);
         if (this.onReconnected) this.onReconnected();
-        // 重新开局由 UI 层处理：房主端调用 sendGameInit 产生新 gen，
-        // 访客端收到后重新 initGame（避免旧 gen 被去重忽略）
+        // 重连恢复由 UI 层处理：房主端 _syncToPeer() 发送 state_sync 快照、访客端 sendSyncRequest()
+        // 请求快照，双方继续原对局（不重新开局、不扣分）。
     }
 
     _clearReconnectState() {
+        console.log('[P2P][DBG] _clearReconnectState 清除重连状态');
         this._reconnecting = false;
         clearTimeout(this._reconnectTimer); this._reconnectTimer = null;
     }
 
     disconnect() {
+        console.warn(`[P2P][DBG] disconnect() 主动断开：_reconnecting=${this._reconnecting}, isHost=${this.isHost}, roomCode=${this.roomCode}, isConnected=${this.isConnected}`);
         this._disconnecting = true;
         this._disconnectHandled = true; // 主动断开后，DataChannel close/error 回调不得再重复清理
         this._clearReconnectState();    // 主动断开时取消重连

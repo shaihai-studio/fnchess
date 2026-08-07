@@ -514,7 +514,20 @@ if (typeof UIController === 'undefined') {
         
         this.gameController.on('timeout', (data) => {
             if (window.audioManager) window.audioManager.playError();
-            this.showMessage(`${this.getPlayerDisplayName(data.player)}超时！扣1分`, 'error');
+            if (data && data.reason === 'select_target') {
+                const n = Number(data.consecutive) || 1;
+                this.showMessage(`${this.getPlayerDisplayName(data.player)}选格子超时！扣1分（第${n}/3次，再超时${Math.max(0, 3 - n)}次判负）`, 'error');
+            } else {
+                this.showMessage(`${this.getPlayerDisplayName(data.player)}超时！扣1分`, 'error');
+            }
+            // 扣分后立即刷新分数显示（选格子超时不经过 roundComplete）
+            try { this.updateScoreboard(); } catch (e) { /* 忽略 */ }
+        });
+
+        // 选格子连续超时 3 次 → 消极比赛判负
+        this.gameController.on('forfeit', (data) => {
+            if (window.audioManager) window.audioManager.playError();
+            this.showMessage(`${this.getPlayerDisplayName(data.loser)} 选格子连续超时 3 次，消极比赛判负！${this.getPlayerDisplayName(data.winner)}获胜`, 'error');
         });
 
         // 统一的输入阶段准备：只做 UI 侧清理（模型清理由 GameController.prepareInputPhase() 负责）
@@ -894,6 +907,7 @@ if (typeof UIController === 'undefined') {
 
             // 对局正常结束 → 双方都标记已结算，防止"中途退出判负"逻辑误触发
             this._p2pEloSettled = true;
+            this._clearP2PResumeContext(); // 正常结束也清除可恢复上下文
 
             // 排行榜：仅排位模式且房主（Host）唯一上报 ELO 结果（服务器按房间码去重）
             // 休闲模式（_p2pMatchMode === 'casual'）不计算任何 ELO
@@ -936,7 +950,8 @@ if (typeof UIController === 'undefined') {
 
         const scoreA = Number(data.scores.A) || 0;
         const scoreB = Number(data.scores.B) || 0;
-        const winner = scoreA > scoreB ? 'A' : (scoreB > scoreA ? 'B' : 'draw');
+        // 优先使用 GameController 的 authoritative winner（含 forcedWinner，如超时判负）
+        const winner = data.winner || (scoreA > scoreB ? 'A' : (scoreB > scoreA ? 'B' : 'draw'));
 
         // roomCode + 对局 gen 组成唯一结算键：防止 rematch（房间码不变）被服务器去重误伤
         const roomKey = (p2p.roomCode || 'room') + '#' + (p2p._gen || 0);
@@ -1534,6 +1549,14 @@ if (typeof UIController === 'undefined') {
     UIController.prototype.handleExit = function() {
         if (window.audioManager) window.audioManager.playClick();
         this.hideExitConfirm();
+
+        // ★ 观战兜底：观战中任何"退出对局"入口都应走观战退出，
+        //   否则 gameMode==='p2p' 会触发 _cleanupP2P（断开大厅连接）而观战状态残留，
+        //   导致第二次进入观战空白/失败
+        if (this._isSpectating) {
+            this.exitSpectatorMode();
+            return;
+        }
 
         // ★ 先强制停止游戏运行（停计时器、清AI队列、标记非活跃）
         this.forceStopGame();

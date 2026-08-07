@@ -22,7 +22,10 @@ if (typeof UIController === 'undefined') {
         this._initRaceLevelSelector();
 
         const openBtn = document.getElementById('leaderboard-open-btn');
-        if (openBtn) openBtn.addEventListener('click', () => this.openLeaderboard());
+        if (openBtn) openBtn.addEventListener('click', () => {
+            if (window.audioManager) window.audioManager.playClick();
+            this.openLeaderboard();
+        });
 
         const closeBtn = document.getElementById('leaderboard-close-btn');
         if (closeBtn) closeBtn.addEventListener('click', () => {
@@ -165,6 +168,7 @@ if (typeof UIController === 'undefined') {
 
 // _leaderboardReport
     UIController.prototype._leaderboardReport = function(targetPlayerId, targetName) {
+        if (window.audioManager) window.audioManager.playClick();
         const myId = (typeof PlayerProfile !== 'undefined') ? PlayerProfile.getPlayerId() : '';
         if (!targetPlayerId || targetPlayerId === myId) {
             if (typeof this.showMessage === 'function') this.showMessage('不能举报自己', 'error');

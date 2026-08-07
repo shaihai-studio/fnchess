@@ -22,6 +22,27 @@ class AIExpressionHandler {
     async submitExpression(expression) {
         console.log('[AI] 准备提交表达式:', expression);
 
+        // ── 阶段守卫 ─────────────────────────────────────────────
+        // AI 只能在"自己的输入阶段"（input_function 且 AI=B）输入/提交表达式。
+        // 若生成表达式过慢导致 INPUT_FUNCTION 超时进入新回合（玩家已在选格子），
+        // 继续逐个输入会把 AI 的表达式塞进玩家当前回合的输入框（抢跑 bug）。
+        const canSubmit = () => {
+            const gc = this.ai && this.ai.gameController;
+            return !!(gc && gc.currentPhase === 'input_function' && gc.currentPlayer === 'B');
+        };
+        const abort = () => {
+            const gc = this.ai && this.ai.gameController;
+            console.warn(`[AI] 阶段已切换（当前 phase=${gc ? gc.currentPhase : '?'}），放弃输入/提交表达式`);
+            // 仅在仍轮到 AI（B）时清空输入框：若阶段已切到玩家（A）回合，
+            // 输入框可能已被玩家编辑，无条件清空会误删玩家输入（bug 修复）。
+            if (this.ai && this.ai.uiController && gc && gc.currentPlayer === 'B') {
+                this.ai.uiController.expressionElements = [];
+                this.ai.uiController.cursorIndex = 0;
+                this.ai.uiController.updateExpressionDisplay();
+            }
+        };
+        if (!canSubmit()) { abort(); return; }
+
         // 验证表达式不为空
         if (!expression || expression.trim() === '') {
             console.error('[AI] 表达式为空！');
@@ -44,17 +65,12 @@ class AIExpressionHandler {
         this.ai.uiController.cursorIndex = 0;
         this.ai.uiController.updateExpressionDisplay();
 
-        /*
-        // 在 UI 测试泡泡上显示调试信息（推演了多少次）
-        if (window.summaCharacter && this.ai.lastThinkCount) {
-            window.summaCharacter.messageBox.textContent = `[深度演算了 ${this.ai.lastThinkCount} 次]`;
-            window.summaCharacter.messageBox.classList.add('visible');
-        }
-        */
-
         // 逐个添加元素，模拟思考过程
         for (let i = 0; i < tokens.length; i++) {
             const token = tokens[i];
+
+            // 每步前检查阶段是否仍是 AI 的输入阶段（异步期间可能已超时/被玩家推进）
+            if (!canSubmit()) { abort(); return; }
 
             // 添加当前元素
             this.ai.uiController.expressionElements.push(token);
@@ -72,6 +88,9 @@ class AIExpressionHandler {
 
         // 输入完成后稍微等待，然后提交
         await this.ai.think(500);
+
+        // 提交前最后检查：阶段若已切换则放弃（不能污染玩家回合）
+        if (!canSubmit()) { abort(); return; }
 
         // 通过UIController提交
         await this.ai.uiController.submitFunction();

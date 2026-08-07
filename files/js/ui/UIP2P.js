@@ -23,6 +23,11 @@ if (typeof UIController === 'undefined') {
             const btnC = document.getElementById('p2p-mode-select-casual');
             if (btnR) btnR.onclick = () => { if (window.audioManager) window.audioManager.playClick(); pick('ranked'); };
             if (btnC) btnC.onclick = () => { if (window.audioManager) window.audioManager.playClick(); pick('casual'); };
+            const btnBack = document.getElementById('p2p-mode-select-back');
+            if (btnBack) btnBack.onclick = () => {
+                if (window.audioManager) window.audioManager.playClick();
+                this.hideModal(sel);
+            };
             this.showModal(sel);
             return;
         }
@@ -83,6 +88,7 @@ if (typeof UIController === 'undefined') {
         this._p2pEloSettled = false;
         this._p2pRoomDissolved = false;
         this._p2pOpponentProfile = null;
+        this._p2pResuming = false; // 每次进入联机界面复位恢复标志，避免上次失败恢复污染新局
         if (!this._p2pMatchMode) this._p2pMatchMode = 'ranked'; // 默认排位
         // 对战方/观众收到"房主已解散该房间"（大厅模式经 lobby WS；房间码模式靠 Peer 断开兜底）
         if (this._lobby) {
@@ -94,6 +100,7 @@ if (typeof UIController === 'undefined') {
         };
         // 连接成功回调
         p2p.onConnected = () => {
+            console.warn(`[UI][P2P][DBG] onConnected 触发：isHost=${p2p.isHost}, _reconnecting=${p2p._reconnecting}（若为重连后触发将走 startP2PGame 重新开局）`);
             this._updateP2PStatus('connected', '对手已连接！');
             this.showMessage('对手已加入，游戏开始！');
             // 若从匹配大厅创建的房间，开局后通知服务器：
@@ -104,6 +111,8 @@ if (typeof UIController === 'undefined') {
                 // 默认开启观战：仅当建房时显式取消勾选才关闭
                 this._spectateEnabled = this._spectateEnabled !== false;
                 this._lobby.notifyStarted(this._p2pRoomCode, this._spectateEnabled);
+                // notifyStarted 已清空 myRoomCode → 刷新"删除房间"按钮（开局后该按钮使命完成，应隐藏）
+                if (typeof this._refreshHostDeleteBtn === 'function') this._refreshHostDeleteBtn();
                 // 显示"对战中"状态条（含观战开关），房主对局中可随时切换
                 this._showHostGameBanner(this._p2pRoomCode);
             }
@@ -112,6 +121,19 @@ if (typeof UIController === 'undefined') {
             if (p2pModal) this.hideModal(p2pModal);
             this.hideStartModal();
             this.startP2PGame(); // 内含房主 initGame + sendGameInit（首局与 Rematch 统一路径）
+            // 访客大退后重开页面恢复：本地已无任何对局状态，房主走重连恢复链路不会重发 game_init，
+            // 因此此处不等 game_init，直接以存储的 gen 请求房主推送完整快照续局。
+            if (this._p2pResuming && !p2p.isHost) {
+                this._p2pResuming = false;
+                this._p2pMatchStarted = true;
+                const _rc = this._loadP2PResumeContext();
+                if (_rc && _rc.opponent) this._p2pOpponentProfile = _rc.opponent;
+                this.showMessage('已重连，正在恢复对局状态…');
+                console.warn('[UI][P2P][DBG] 访客大退恢复：本地 _gen=' + (this.p2pController && this.p2pController._gen) + '，请求房主快照');
+                if (this.p2pController && typeof this.p2pController.sendSyncRequest === 'function') {
+                    this.p2pController.sendSyncRequest();
+                }
+            }
         };
         // 收到游戏初始化（访客端）
         p2p.onGameInit = (config) => {
@@ -129,12 +151,20 @@ if (typeof UIController === 'undefined') {
                 this._p2pMatchMode = config.mode;
             }
             if (p2p) p2p.reconnectEnabled = (this._p2pMatchMode === 'ranked');
+            console.log(`[UI][P2P][DBG] onGameInit：mode=${this._p2pMatchMode}, reconnectEnabled=${p2p.reconnectEnabled}, isHost=${p2p.isHost}, isP2PMode=${this.isP2PMode}`);
             // 应用对手共享的时间限制模式
             if (config?.timeLimitMode && this.gameController) {
                 this.gameController.timeLimitMode = config.timeLimitMode;
             }
             this.gameController.initGame(config.rounds || 8, config.difficulty || 'normal', 'p2p');
             this._p2pMatchStarted = true;
+            // 持久化断线恢复上下文（仅访客需要；房主始终在线等待，无需恢复）
+            this._saveP2PResumeContext({
+                roomCode: p2p.roomCode,
+                mode: this._p2pMatchMode,
+                opponent: this._p2pOpponentProfile || null,
+                gen: p2p._gen
+            });
             this.showMessage('收到对手游戏配置，开始对战！');
             // 排行榜：开场 VS 动画（访客侧）
             this._startP2PVSIntro();
@@ -166,12 +196,16 @@ if (typeof UIController === 'undefined') {
             this.showMessage(`${this.getPlayerDisplayName(player)}超时！扣1分`, 'error');
         };
         // 断开连接回调
-        p2p.onDisconnected = () => {
-            console.log('[UI][P2P] onDisconnected 触发', reason || '');
+        p2p.onDisconnected = (reason) => {
+            const _p = this.p2pController;
+            console.warn(`[UI][P2P][DBG] onDisconnected 触发：reason=${reason || '(无)'}, isHost=${_p ? _p.isHost : '-'}, matchMode=${this._p2pMatchMode}, matchStarted=${this._p2pMatchStarted}, eloSettled=${this._p2pEloSettled}, roomDissolved=${this._p2pRoomDissolved}, isP2PMode=${this.isP2PMode}, reconnectEnabled=${_p ? _p.reconnectEnabled : '-'}, _reconnecting=${_p ? _p._reconnecting : '-'}`);
             this._updateP2PStatus('disconnected', '对手已断开连接');
-            // 休闲模式：不计算 ELO，断线直接弹普通断开提示（等同原始联机体验）
+            // 休闲模式：不计算 ELO。已收到房主解散通知（_onRoomDissolved 已弹"房主已解散房间"）则不重复；
+            // 访客在对局中 Peer 断开（房主退出为最常见原因）→ 显示"房主已解散房间"；其余弹普通断开提示
             if (this._p2pMatchMode === 'casual') {
-                this._showP2PDisconnectModal(null);
+                if (this._p2pRoomDissolved) return;
+                const isGuestInMatch = this.p2pController && !this.p2pController.isHost && this._p2pMatchStarted;
+                this._showP2PDisconnectModal(isGuestInMatch ? true : null);
                 return;
             }
             // 我是访客（对端是房主）
@@ -299,6 +333,7 @@ if (typeof UIController === 'undefined') {
         const createBtn = $('p2p-create-btn');
         if (createBtn) {
             createBtn.onclick = () => {
+                if (window.audioManager) window.audioManager.playClick();
                 createBtn.disabled = true;
                 this._updateP2PStatus('creating', '正在创建房间...');
                 this.p2pController?.createRoom();
@@ -326,6 +361,7 @@ if (typeof UIController === 'undefined') {
         const joinBtn = $('p2p-join-btn');
         if (joinBtn) {
             joinBtn.onclick = () => {
+                if (window.audioManager) window.audioManager.playClick();
                 const code = $('p2p-room-input')?.value?.trim();
                 if (!code || code.length !== 6) {
                     this.showMessage('请输入6位数字房间码', 'error');
@@ -340,6 +376,7 @@ if (typeof UIController === 'undefined') {
         const copyBtn = $('p2p-copy-btn');
         if (copyBtn) {
             copyBtn.onclick = () => {
+                if (window.audioManager) window.audioManager.playClick();
                 const code = $('p2p-room-code-text')?.textContent;
                 if (code && code !== '------') {
                     navigator.clipboard.writeText(code).then(() => {
@@ -355,6 +392,7 @@ if (typeof UIController === 'undefined') {
             const tab = $(tabId), content = $(contentId);
             if (!tab || !content) return;
             tab.onclick = () => {
+                if (window.audioManager) window.audioManager.playClick();
                 document.querySelectorAll('.p2p-tab').forEach(t => t.classList.remove('active'));
                 document.querySelectorAll('.p2p-tab-content').forEach(c => c.style.display = 'none');
                 tab.classList.add('active');
@@ -372,7 +410,10 @@ if (typeof UIController === 'undefined') {
         // 返回按钮：房主有活跃房间时先弹二次确认
         const backBtn = $('p2p-back-btn');
         if (backBtn) {
-            backBtn.onclick = () => this._p2pCloseRoomModal();
+            backBtn.onclick = () => {
+                if (window.audioManager) window.audioManager.playClick();
+                this._p2pCloseRoomModal();
+            };
         }
     }
 ;
@@ -394,6 +435,7 @@ if (typeof UIController === 'undefined') {
     UIController.prototype.startP2PGame = function() {
         const p2p = this.p2pController;
         if (!p2p) return;
+        console.warn(`[UI][P2P][DBG] startP2PGame 被调用：isHost=${p2p.isHost}, _reconnecting=${p2p._reconnecting}, _p2pMatchStarted=${this._p2pMatchStarted}（重连成功后若仍触发 → 会 initGame+sendGameInit 重新开局，覆盖快照恢复）`);
         // 退出可能残留的关卡编辑器 UI
         if (this.levelEditor) this.levelEditor.deactivate();
         this._markGameActive();
@@ -664,6 +706,7 @@ if (typeof UIController === 'undefined') {
 
 // _cleanupP2P
     UIController.prototype._cleanupP2P = function() {
+        console.warn(`[UI][P2P][DBG] _cleanupP2P 被调用：isP2PMode=${this.isP2PMode}, matchStarted=${this._p2pMatchStarted}, eloSettled=${this._p2pEloSettled}, roomDissolved=${this._p2pRoomDissolved}, matchMode=${this._p2pMatchMode}`);
     // 对局进行中 + 主动退出（点退出/解散/返回主菜单）→ 立即结算并弹 disconnect-modal
     // - 排位模式：房主解散判负扣 ELO（弹"中途退出"）；访客判负扣 ELO（弹"你已中途退出判负"）
     //   两端对称：房主解散=房主判负，访客收到解散=访客判负、房主获胜
@@ -717,6 +760,10 @@ if (typeof UIController === 'undefined') {
         if (!keepHostWaiting && typeof this._stopHostRoomBanner === 'function') {
             this._stopHostRoomBanner();
         }
+        // 兜底刷新"删除房间"按钮：房主解散/退出/开局后 myRoomCode 已清空，按钮应隐藏
+        if (!keepHostWaiting && typeof this._refreshHostDeleteBtn === 'function') {
+            this._refreshHostDeleteBtn();
+        }
         // 清理创建房间时轮询房间码的定时器，避免重开弹窗后叠加残留轮询
         if (this._p2pCheckCodeInterval) {
             clearInterval(this._p2pCheckCodeInterval);
@@ -763,16 +810,24 @@ if (typeof UIController === 'undefined') {
 
 // _showP2PDisconnectModal
     UIController.prototype._showP2PDisconnectModal = function(opponentLeft) {
+        this._clearP2PResumeContext(); // 断线弹窗即本局结束，清除可恢复上下文
         // opponentLeft: true=对手中途退出(本局获胜) / false=自己中途退出(判负) / null=普通断线
         const titleEl = document.getElementById('p2p-disc-title');
         const detailEl = document.getElementById('p2p-disc-detail');
+        const isCasual = this._p2pMatchMode === 'casual';
+        // 休闲模式 + 访客视角 + 对局中：房主退出/解散/掉线 → 统一显示"房主已解散房间"
+        const guestSeesHostLeave = isCasual && opponentLeft === true &&
+            this.p2pController && !this.p2pController.isHost && this._p2pMatchStarted;
         if (titleEl && detailEl) {
-            if (opponentLeft === true) {
-                titleEl.textContent = '对手中途退出';
-                detailEl.textContent = '对手已中途退出，本局判你获胜，对手将扣除 ELO 积分。';
+            if (guestSeesHostLeave) {
+                titleEl.textContent = '房主已解散房间';
+                detailEl.textContent = '房主已解散房间，联机对局结束。';
+            } else if (opponentLeft === true) {
+                titleEl.textContent = isCasual ? '对手已退出对局' : '对手中途退出';
+                detailEl.textContent = isCasual ? '对手已退出对局，本局结束。' : '对手已中途退出，本局判你获胜，对手将扣除 ELO 积分。';
             } else if (opponentLeft === false) {
-                titleEl.textContent = '中途退出';
-                detailEl.textContent = '你已中途退出，本局判负，将扣除 ELO 积分。';
+                titleEl.textContent = isCasual ? '已退出对局' : '中途退出';
+                detailEl.textContent = isCasual ? '你已退出对局，本局结束。' : '你已中途退出，本局判负，将扣除 ELO 积分。';
             } else {
                 titleEl.textContent = '对手已断开连接';
                 detailEl.textContent = '联机对局已中断';
@@ -785,6 +840,7 @@ if (typeof UIController === 'undefined') {
 
 // _onRoomDissolved
     UIController.prototype._onRoomDissolved = function(data) {
+        console.warn(`[UI][P2P][DBG] 收到房间解散通知：data=${JSON.stringify(data || {})}, isHost=${this.p2pController ? this.p2pController.isHost : '-'}, matchMode=${this._p2pMatchMode}, matchStarted=${this._p2pMatchStarted}`);
         // 对战方收到"房主已解散该房间"（大厅模式经 lobby WS 通知）
         this._p2pRoomDissolved = true;
         this._hideP2PReconnectWait();
@@ -806,6 +862,7 @@ if (typeof UIController === 'undefined') {
 
 // _onP2PReconnectingChange
     UIController.prototype._onP2PReconnectingChange = function(isReconnecting) {
+        console.warn(`[UI][P2P][DBG] onReconnectingChange：isReconnecting=${isReconnecting}, isP2PMode=${this.isP2PMode}, matchMode=${this._p2pMatchMode}, isHost=${this.p2pController ? this.p2pController.isHost : '-'}`);
         if (!this.isP2PMode) return;
         // 休闲模式：不弹重连等待（reconnectEnabled=false 正常不会触发，兜底防意外）
         if (this._p2pMatchMode === 'casual') return;
@@ -825,6 +882,7 @@ if (typeof UIController === 'undefined') {
 
 // _onP2PReconnected
     UIController.prototype._onP2PReconnected = function() {
+        console.log(`[UI][P2P][DBG] onReconnected 恢复连接：isHost=${this.p2pController ? this.p2pController.isHost : '-'}`);
         this._hideP2PReconnectWait();
         this._hideP2PReconnectingToast();
         const p2p = this.p2pController;
@@ -856,6 +914,10 @@ if (typeof UIController === 'undefined') {
             if (el) el.textContent = String(left);
             if (left > 0 && self._p2pReconnectingNow) {
                 self._p2pReconnectCountTimer = setTimeout(update, 500);
+            } else if (left <= 0 && self._p2pReconnectingNow) {
+                // 倒计时归零：controller 侧 20×3s≈60s 兜底（_giveUpReconnect）即将触发
+                // onDisconnected('self_reconnect_failed') 判负，保持弹窗等待其回调收尾
+                console.warn('[P2P] 房主重连等待 60s 倒计时归零，等待 controller 兜底结算');
             }
         };
         this._p2pReconnectingNow = true;
@@ -895,10 +957,18 @@ if (typeof UIController === 'undefined') {
 
 // _reportP2PForfeit
     UIController.prototype._reportP2PForfeit = function(isForfeitSelf) {
+        console.warn(`[UI][P2P][DBG] _reportP2PForfeit 被调用：isForfeitSelf=${isForfeitSelf}, isP2PMode=${this.isP2PMode}, matchStarted=${this._p2pMatchStarted}, eloSettled=${this._p2pEloSettled}`);
         // 非对局中（未开局/建房等待/已结算）不处理，返回 false；
         // 调用方（如 onDisconnected）据此决定是否弹普通断线弹窗
         if (!this.isP2PMode || !this._p2pMatchStarted || this._p2pEloSettled) {
             return false;
+        }
+        // ★ 休闲模式：不结算 ELO，但仍按"对手弃权"弹 disconnect-modal（语义上我方胜）
+        //   修复前：休闲模式也上报 ELO，与设计不符
+        if (this._p2pMatchMode !== 'ranked') {
+            this._p2pEloSettled = true; // 标记结算（防止重复弹窗/重复处理）
+            this._showP2PDisconnectModal(!isForfeitSelf);
+            return true;
         }
         if (typeof PlayerProfile === 'undefined') return false;
         const p2p = this.p2pController;
@@ -1138,6 +1208,7 @@ UIController.prototype._reportP2PForfeitOpponent = function() {
         this._p2pWaitStartAt = null;
         this._p2pLastTimerVal = null;
         this._p2pStallWarnedAt = 0;
+        this._p2pHealthCheckAt = 0;
         this._p2pHealthTimer = setInterval(() => this._tickP2PHealth(), 500);
     }
 ;
@@ -1244,4 +1315,83 @@ UIController.prototype._reportP2PForfeitOpponent = function() {
         }
     }
 ;
+
+// ===== 访客大退后重开页面恢复对局 =====
+// 仅访客侧需要：房主始终在线等待，访客关闭页面后重新打开可通过存储的 roomCode 重连，
+// 由房主端快照续局（房主在断开后 60s 宽限内等待重连；休闲模式房主不等待，故不支持恢复）。
+
+    UIController.prototype._saveP2PResumeContext = function(extra) {
+        try {
+            const existing = this._loadP2PResumeContext() || {};
+            const ctx = Object.assign(existing, extra || {}, { timestamp: Date.now() });
+            if (!ctx.roomCode) return;
+            localStorage.setItem('function_chess_p2p_resume', JSON.stringify(ctx));
+        } catch (e) { /* localStorage 不可用（隐私模式等）时静默忽略 */ }
+    };
+
+    UIController.prototype._loadP2PResumeContext = function() {
+        try {
+            const raw = localStorage.getItem('function_chess_p2p_resume');
+            if (!raw) return null;
+            const ctx = JSON.parse(raw);
+            if (!ctx || !ctx.roomCode) return null;
+            return ctx;
+        } catch (e) { return null; }
+    };
+
+    UIController.prototype._clearP2PResumeContext = function() {
+        try { localStorage.removeItem('function_chess_p2p_resume'); } catch (e) {}
+        this._p2pResumeCtx = null;
+    };
+
+    // 启动检测：若有未结束的排位对局，弹出恢复询问
+    UIController.prototype._checkP2PResume = function() {
+        const ctx = this._loadP2PResumeContext();
+        // 仅排位对局支持断线恢复（休闲模式房主不等待重连，无法续局）
+        if (!ctx || !ctx.roomCode || ctx.mode !== 'ranked') {
+            this._clearP2PResumeContext();
+            return;
+        }
+        // 隐藏封面，直接弹出恢复询问
+        const splash = document.getElementById('splash-screen');
+        if (splash) { splash.classList.add('splash-exit'); splash.style.display = 'none'; }
+        const modal = document.getElementById('p2p-resume-modal');
+        if (modal) this.showModal(modal);
+    };
+
+    // 用户确认恢复：以存储的 roomCode 重新加入房主房间，并走快照续局链路
+    UIController.prototype.confirmP2PResume = function() {
+        const ctx = this._loadP2PResumeContext();
+        if (!ctx || !ctx.roomCode) { this._clearP2PResumeContext(); return; }
+        this.hideStartModal();
+        this._p2pRole = 'guest';
+        this._p2pRoomCode = ctx.roomCode;
+        this._p2pResumeCtx = ctx;
+        const modal = document.getElementById('p2p-resume-modal');
+        if (modal) this.hideModal(modal);
+        this.showMessage('正在重连恢复对局…');
+        // 直接建立 P2PController 并绑定回调（不弹房间选择弹窗），
+        // 再以存储的 roomCode 加入房主房间（房主端处于 60s 重连等待，走快照续局，不会重开）。
+        if (typeof this._cleanupP2P === 'function') this._cleanupP2P();
+        if (!this.p2pController) this.p2pController = new P2PController();
+        this._p2pMatchMode = ctx.mode || 'ranked';
+        if (typeof this._setupP2PCallbacks === 'function') this._setupP2PCallbacks();
+        // 必须在连接打开前把房主当前 gen 设回：访客大退后是全新会话，_gen 重置为 0，
+        // 否则后续 action/timer_sync 会被房主按 gen 拒绝，且 request_sync 也会被房主过滤。
+        // 房主主动推送的 state_sync 虽不过滤 gen，但续局后的交互必须 gen 匹配。
+        if (this.p2pController && ctx.gen != null) this.p2pController._gen = ctx.gen;
+        if (this.p2pController && typeof this.p2pController.joinRoom === 'function') {
+            this.p2pController.joinRoom(ctx.roomCode);
+        }
+        // 标记恢复中：在 onConnected 中据此走快照续局而非等待 game_init
+        this._p2pResuming = true;
+    };
+
+    // 用户放弃恢复：清除上下文并返回主菜单
+    UIController.prototype.cancelP2PResume = function() {
+        this._clearP2PResumeContext();
+        const modal = document.getElementById('p2p-resume-modal');
+        if (modal) this.hideModal(modal);
+        this.showSplash();
+    };
 
