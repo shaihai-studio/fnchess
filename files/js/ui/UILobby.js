@@ -235,10 +235,11 @@ if (typeof UIController === 'undefined') {
         const allowSpectate = (document.getElementById('lobby-allow-spectate-toggle') || {}).checked !== false;
         this._spectateEnabled = allowSpectate;
         // ELO 距离过滤（仅排位模式）：勾选后，距房主 ELO 超过 eloRange 的玩家不可见/不可加入本房间
+        // 值被清空/非法时回退默认 200，保证"勾选即生效"，不会被空值静默关闭
         let eloRange = null;
         if (this._getP2PMode() === 'ranked' && (document.getElementById('lobby-elo-range-toggle') || {}).checked) {
             const raw = Number((document.getElementById('lobby-elo-range-input') || {}).value);
-            if (isFinite(raw) && raw > 0) eloRange = Math.max(50, Math.min(2000, Math.round(raw)));
+            eloRange = isFinite(raw) && raw > 0 ? Math.max(50, Math.min(2000, Math.round(raw))) : 200;
         }
         const btn = document.getElementById('lobby-create-btn');
         if (btn) btn.disabled = true;
@@ -327,7 +328,19 @@ if (typeof UIController === 'undefined') {
         if (spectateToggle) spectateToggle.onchange = () => this._toggleSpectate(spectateToggle.checked);
         // ELO 距离过滤数字输入框：阻止点击冒泡到 label（否则点数字会误触发勾选框）
         const eloRangeInput = $('lobby-elo-range-input');
-        if (eloRangeInput) eloRangeInput.onclick = (e) => e.stopPropagation();
+        if (eloRangeInput) {
+            eloRangeInput.onclick = (e) => e.stopPropagation();
+            // min/max 属性对 type=number 的手动输入无约束，实时钳制到 [50, 2000]
+            eloRangeInput.oninput = () => {
+                const v = eloRangeInput.valueAsNumber;
+                if (!isFinite(v)) return; // 空值或非法输入不干预
+                if (v < 50) {
+                    eloRangeInput.value = 50;
+                } else if (v > 2000) {
+                    eloRangeInput.value = 2000;
+                }
+            };
+        }
     }
 ;
 
