@@ -153,9 +153,14 @@ if (typeof UIController === 'undefined') {
             const eloBadge = ranked
                 ? `<span class="lobby-room-elo">ELO ${Number(room.hostElo) || 1200}</span>`
                 : '';
+            // 房主昵称（服务端 host_register 带上、list_rooms 回传）；无昵称时不展示
+            const hostNick = (room.hostNickname && String(room.hostNickname).trim())
+                ? `<span class="lobby-room-host">房主 ${this._escapeHtml(String(room.hostNickname))}</span>`
+                : '';
             row.innerHTML = `
                 <div class="lobby-room-info">
                     <span class="lobby-room-code">${this._escapeHtml(String(room.code))}</span>
+                    ${hostNick}
                     ${eloBadge}
                     <span class="lobby-room-desc">${desc}</span>
                 </div>

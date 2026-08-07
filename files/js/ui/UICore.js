@@ -9,6 +9,8 @@ if (typeof UIController === 'undefined') {
         // 顶部信息栏
         this.scoreAElement = document.getElementById('score-a');
         this.scoreBElement = document.getElementById('score-b');
+        this.playerNameAElement = document.getElementById('player-name-a');
+        this.playerNameBElement = document.getElementById('player-name-b');
         this.scoreDisplays = document.querySelectorAll('.score-display');
         this.roundElement = document.getElementById('current-round');
         this.totalRoundsElement = document.getElementById('total-rounds');
@@ -417,6 +419,7 @@ if (typeof UIController === 'undefined') {
             this.clearExpression();
             this._syncKeepExprToggleVisibility();
             this.updateScoreboard();
+            this.updateHeaderPlayerNames();
             this.roundElement.textContent = data.currentRound;
             this.totalRoundsElement.textContent = data.totalRounds;
             this.messageElement.textContent = '';
@@ -1212,21 +1215,49 @@ if (typeof UIController === 'undefined') {
     UIController.prototype.getPlayerDisplayName = function(playerId, turn = false) {
         if (!playerId) return '未知';
 
+        const myName = (typeof PlayerProfile !== 'undefined' && typeof PlayerProfile.getNickname === 'function')
+            ? PlayerProfile.getNickname() : null;
+
+        // 观战端：优先使用房主快照携带的双方昵称（替代"玩家A/玩家B"）
+        if (this._isSpectating && this._spectateNicknames && this._spectateNicknames[playerId]) {
+            const sn = this._spectateNicknames[playerId];
+            return turn ? `${sn}的回合` : sn;
+        }
+
         const state = this.gameController?.getGameState();
         const gameMode = state?.gameMode;
 
         if (gameMode === 'p2p' && this.p2pController) {
-            if (playerId === this.p2pController.myPlayerId) {
-                return turn ? '我的回合' : '我';
-            }
-            return turn ? '对方回合' : '对方';
+            const isMe = playerId === this.p2pController.myPlayerId;
+            const name = isMe
+                ? (myName || '我')
+                : (this._p2pOpponentProfile?.nickname || `玩家 ${playerId}`);
+            return turn ? `${name}的回合` : name;
         }
 
-        if (gameMode === 'ai' && playerId === 'B') {
-            return 'Summa';
+        if (gameMode === 'ai') {
+            const name = playerId === 'A' ? (myName || '玩家 A') : 'Summa';
+            return turn ? `${name}的回合` : name;
+        }
+
+        if (gameMode === 'local' && playerId === 'A') {
+            // 本地对战：A 方用自己昵称（若未设置则兜底"玩家 A"）
+            const name = myName || '玩家 A';
+            return turn ? `${name}的回合` : name;
         }
 
         return `玩家 ${playerId}`;
+    }
+;
+
+// updateHeaderPlayerNames
+    // 顶部信息栏的玩家名（左侧 A / 右侧 B）随模式刷新：
+    // 人机=自己/Summa；联机=双方真实昵称；观战=房主快照携带的昵称
+    UIController.prototype.updateHeaderPlayerNames = function() {
+        const aEl = this.playerNameAElement;
+        const bEl = this.playerNameBElement;
+        if (aEl) aEl.textContent = this.getPlayerDisplayName('A');
+        if (bEl) bEl.textContent = this.getPlayerDisplayName('B');
     }
 ;
 
@@ -1271,11 +1302,16 @@ if (typeof UIController === 'undefined') {
 
 // buildSyncSnapshot
     UIController.prototype.buildSyncSnapshot = function() {
-        return {
+        const snapshot = {
             gc: this.gameController.getStateSnapshot(),
             expr: this.expressionElements.slice(),
             cursorIndex: this.cursorIndex
         };
+        // 房主观战快照附带双方昵称：观众端据此用昵称替代"玩家A/玩家B"文案
+        if (this.isP2PMode && this.p2pController && this.p2pController.isHost && this._p2pMatchStarted) {
+            snapshot.players = this._buildSpectatePlayers();
+        }
+        return snapshot;
     }
 ;
 

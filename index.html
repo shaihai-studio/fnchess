@@ -44,7 +44,7 @@
     <!-- 顶部信息栏 -->
     <header class="header" id="header">
         <div class="score-display">
-            <span class="player">玩家A</span>
+            <span class="player" id="player-name-a">玩家A</span>
             <span class="score" id="score-a">0</span>
             <span>分</span>
         </div>
@@ -57,7 +57,7 @@
         </div>
         
         <div class="score-display">
-            <span class="player">玩家B</span>
+            <span class="player" id="player-name-b">玩家B</span>
             <span class="score" id="score-b">0</span>
             <span>分</span>
         </div>
@@ -769,6 +769,15 @@
     </div>
     <!-- 观战水印（右下角半透明） -->
     <div class="spectator-watermark" id="spectator-watermark" style="display:none;">观战中</div>
+
+    <!-- 观战即时通知弹窗（如"访客已退出对局"） -->
+    <div class="modal" id="spectator-notice-modal" style="display:none;">
+        <div class="modal-content" style="max-width:400px;text-align:center;">
+            <h2 id="spectator-notice-title">观战通知</h2>
+            <p id="spectator-notice-text" style="margin:12px 0 20px;"></p>
+            <button class="btn btn-primary" id="spectator-notice-close" style="width:100%;">知道了</button>
+        </div>
+    </div>
 
     <!-- 加载 JavaScript 模块 -->
     <!-- KaTeX 数学排版引擎（本地 vendor，离线可用） -->

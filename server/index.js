@@ -891,7 +891,8 @@ lobbyWss.on('connection', (ws, req) => {
                     longLived,
                     hostPlayerId,
                     hostElo,
-                    eloRange
+                    eloRange,
+                    hostNickname: String(msg.nickname || '').slice(0, 32)
                 });
                 send(ws, { type: 'host_registered', code, expiresAt });
                 console.log(`[Lobby] 房主登记房间 ${code}（${longLived ? '长效 30 分钟' : '5 分钟'}, 观战${spectateEnabled ? '开启' : '关闭'}）`, msg.options || {});
@@ -942,7 +943,8 @@ lobbyWss.on('connection', (ws, req) => {
                         expiresAt: room.expiresAt,
                         status: room.status,
                         spectatorCount: room.spectators ? room.spectators.size : 0,
-                        hostElo: hostEloNow
+                        hostElo: hostEloNow,
+                        hostNickname: room.hostNickname || ''
                     });
                 }
                 send(ws, { type: 'rooms_list', rooms: list });

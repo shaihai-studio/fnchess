@@ -26,6 +26,8 @@ if (typeof UIController === 'undefined') {
         }
         this._spectatorCode = String(code);
         this._isSpectating = true;
+        this._spectateNicknames = null;       // 房主快照携带的双方昵称（替代"玩家A/玩家B"）
+        this._lastSpectateNoticeKey = null;   // 通知去重（观战快照循环推送，防止重复弹窗）
         // 观战状态下禁用 P2P 相关操作入口
         this.isP2PMode = false;
         // 观众端必须作为「纯被动接收方」：清掉可能残留的 p2pActionSender，
@@ -83,6 +85,7 @@ if (typeof UIController === 'undefined') {
         if (overlay) { overlay.style.display = 'flex'; this._makeDraggable(overlay); }
         if (watermark) watermark.style.display = 'block';
         this._bindSpectatorButtons();
+        this._bindSpectateNoticeButton();
         this._updateSpectatorRoomCode(this._spectatorCode);
         // 标记棋盘只读
         if (this.gridSystem && this.gridSystem.canvas) {
@@ -113,6 +116,43 @@ if (typeof UIController === 'undefined') {
     }
 ;
 
+// _bindSpectateNoticeButton
+    // 绑定观战通知弹窗的"知道了"关闭按钮（仅绑定一次）
+    UIController.prototype._bindSpectateNoticeButton = function() {
+        const btn = document.getElementById('spectator-notice-close');
+        if (!btn || btn.dataset.bound) return;
+        btn.dataset.bound = '1';
+        btn.addEventListener('click', () => {
+            const modal = document.getElementById('spectator-notice-modal');
+            if (modal) this.hideModal(modal);
+        });
+    }
+;
+
+// _handleSpectateNotice
+    // 观众端收到房主推送的通知（如"访客已退出对局"）→ 弹窗提示；
+    // 对相同通知去重，避免观战快照循环推送导致重复弹窗
+    UIController.prototype._handleSpectateNotice = function(notice) {
+        if (!notice || typeof notice !== 'object') return;
+        const key = JSON.stringify(notice);
+        if (this._lastSpectateNoticeKey === key) return;
+        this._lastSpectateNoticeKey = key;
+        const modal = document.getElementById('spectator-notice-modal');
+        if (!modal) return;
+        const titleEl = document.getElementById('spectator-notice-title');
+        const textEl = document.getElementById('spectator-notice-text');
+        if (notice.type === 'guest_left') {
+            const name = notice.nickname || '访客';
+            if (titleEl) titleEl.textContent = '访客已退出对局';
+            if (textEl) textEl.textContent = `${name} 已退出对局，本局已结束。`;
+        } else {
+            if (titleEl) titleEl.textContent = '观战通知';
+            if (textEl) textEl.textContent = (notice.message || '');
+        }
+        this.showModal(modal);
+    }
+;
+
 // _updateSpectatorRoomCode
     UIController.prototype._updateSpectatorRoomCode = function(code) {
         const el = document.getElementById('spectator-room-code');
@@ -126,6 +166,16 @@ if (typeof UIController === 'undefined') {
         if (!this._isSpectating || !payload || !payload.gc) return;
         const gc = this.gameController;
         if (!gc) return;
+        // 房主快照携带的双方昵称：观众端用昵称替代"玩家A/玩家B"文案
+        if (payload.players && typeof payload.players === 'object') {
+            this._spectateNicknames = payload.players;
+        }
+        // 顶部信息栏玩家名随快照昵称刷新
+        this.updateHeaderPlayerNames();
+        // 房主推送的通知（如"访客已退出对局"）→ 弹窗提示
+        if (payload._notice) {
+            this._handleSpectateNotice(payload._notice);
+        }
         const applied = gc.loadStateSnapshot(payload.gc);
         if (!applied) return;
         // 历史函数剥离采样点 → 本地重新采样绘制
@@ -167,6 +217,9 @@ if (typeof UIController === 'undefined') {
             lobby.onSpectateEnded = null;
         }
         this._spectatorCode = null;
+        this._spectateNicknames = null;
+        // 恢复顶部玩家名为默认（观战昵称已清空，按当前模式重新解析）
+        this.updateHeaderPlayerNames();
         const overlay = document.getElementById('spectator-overlay');
         const watermark = document.getElementById('spectator-watermark');
         if (overlay) overlay.style.display = 'none';

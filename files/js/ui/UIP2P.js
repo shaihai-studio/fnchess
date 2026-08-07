@@ -101,8 +101,8 @@ if (typeof UIController === 'undefined') {
         // 连接成功回调
         p2p.onConnected = () => {
             console.warn(`[UI][P2P][DBG] onConnected 触发：isHost=${p2p.isHost}, _reconnecting=${p2p._reconnecting}（若为重连后触发将走 startP2PGame 重新开局）`);
-            this._updateP2PStatus('connected', '对手已连接！');
-            this.showMessage('对手已加入，游戏开始！');
+            this._updateP2PStatus('connected', `${this._p2pOpponentProfile?.nickname || '对手'}已连接！`);
+            this.showMessage(`${this._p2pOpponentProfile?.nickname || '对手'}已加入，游戏开始！`);
             // 若从匹配大厅创建的房间，开局后通知服务器：
             //  - 开启观战（默认）→ 房间保留在大厅，观众可直接加入
             //  - 关闭观战 → 房间从大厅移除
@@ -165,7 +165,7 @@ if (typeof UIController === 'undefined') {
                 opponent: this._p2pOpponentProfile || null,
                 gen: p2p._gen
             });
-            this.showMessage('收到对手游戏配置，开始对战！');
+            this.showMessage(`收到${this._p2pOpponentProfile?.nickname || '对手'}的游戏配置，开始对战！`);
             // 排行榜：开场 VS 动画（访客侧）
             this._startP2PVSIntro();
         };
@@ -174,6 +174,8 @@ if (typeof UIController === 'undefined') {
             if (info && info.playerId) {
                 this._p2pOpponentProfile = { playerId: String(info.playerId), nickname: info.nickname || '棋手' };
             }
+            // 顶部信息栏玩家名随对手身份刷新（房主侧此时才知道访客昵称）
+            this.updateHeaderPlayerNames();
             // 排行榜：开场 VS 动画（房主侧，等访客身份回传后再播放）
             this._startP2PVSIntro();
         };
@@ -199,7 +201,7 @@ if (typeof UIController === 'undefined') {
         p2p.onDisconnected = (reason) => {
             const _p = this.p2pController;
             console.warn(`[UI][P2P][DBG] onDisconnected 触发：reason=${reason || '(无)'}, isHost=${_p ? _p.isHost : '-'}, matchMode=${this._p2pMatchMode}, matchStarted=${this._p2pMatchStarted}, eloSettled=${this._p2pEloSettled}, roomDissolved=${this._p2pRoomDissolved}, isP2PMode=${this.isP2PMode}, reconnectEnabled=${_p ? _p.reconnectEnabled : '-'}, _reconnecting=${_p ? _p._reconnecting : '-'}`);
-            this._updateP2PStatus('disconnected', '对手已断开连接');
+            this._updateP2PStatus('disconnected', `${this._p2pOpponentProfile?.nickname || '对手'}已断开连接`);
             // 休闲模式：不计算 ELO。已收到房主解散通知（_onRoomDissolved 已弹"房主已解散房间"）则不重复；
             // 访客在对局中 Peer 断开（房主退出为最常见原因）→ 显示"房主已解散房间"；其余弹普通断开提示
             if (this._p2pMatchMode === 'casual') {
@@ -245,6 +247,8 @@ if (typeof UIController === 'undefined') {
         // 访客掉线重连：房主等待（倒计时弹窗）/ 访客自动重连提示
         p2p.onReconnectingChange = (isReconnecting) => this._onP2PReconnectingChange(isReconnecting);
         p2p.onReconnected = () => this._onP2PReconnected();
+        // 对方主动退出（quit 消息，非断线）：立即结算，房主不进入 60s 重连等待
+        p2p.onOpponentQuit = () => this._onOpponentQuit();
         // 错误回调
         p2p.onError = (err) => {
             console.error('[UI][P2P] onError:', err);
@@ -288,7 +292,7 @@ if (typeof UIController === 'undefined') {
         };
         // 对方拒绝动作（nack）：提示并请求整局状态重同步（P20）
         p2p.onNack = (action, rollback, reason) => {
-            this.showMessage('对手拒绝了操作，正在同步状态...', 'error');
+            this.showMessage(`${this._p2pOpponentProfile?.nickname || '对手'}拒绝了操作，正在同步状态...`, 'error');
             if (typeof rollback === 'function') {
                 try { rollback(); } catch (e) { /* 回滚失败时静默处理，避免影响同步流程 */ }
             }
@@ -326,7 +330,7 @@ if (typeof UIController === 'undefined') {
         // 对方请求再战：保持 P2P 连接与 host/guest 角色，直接重置对局
         // （翻转 isHost 但不重建连接会导致 myPlayerId 与 isHost 不一致，故不再翻转）
         p2p.onRematch = () => {
-            this.showMessage('对手请求再战，准备新对局...');
+            this.showMessage(`${this._p2pOpponentProfile?.nickname || '对手'}请求再战，准备新对局...`);
             this.startP2PGame();
         };
     }
@@ -353,7 +357,7 @@ if (typeof UIController === 'undefined') {
                         const t = $('p2p-room-code-text');
                         if (d) d.style.display = 'flex';
                         if (t) t.textContent = code;
-                        this._updateP2PStatus('waiting', '等待对手加入...');
+                        this._updateP2PStatus('waiting', '等待访客加入...');
                     }
                 }, 200);
                 this._p2pCheckCodeInterval = checkCode;
@@ -731,7 +735,11 @@ if (typeof UIController === 'undefined') {
                         this._showP2PDisconnectModal(false);
                     }
                 } else {
-                    // 访客主动退出：判访客负、扣 ELO
+                    // 访客主动退出：先通过 PeerJS 告知房主"主动退出"（房主据此跳过 60s 重连等待、
+                    // 立即结算判本方胜），再判访客负、扣 ELO
+                    if (this.p2pController && this.p2pController.isConnected) {
+                        try { this.p2pController.send({ type: 'quit', reason: 'active_exit' }); } catch (e) {}
+                    }
                     this._reportP2PForfeit(true);
                 }
                 this._p2pShowDisconnectReturnToMenu = true; // 告知 handleExit 跳过弹主菜单
@@ -821,21 +829,24 @@ if (typeof UIController === 'undefined') {
         const titleEl = document.getElementById('p2p-disc-title');
         const detailEl = document.getElementById('p2p-disc-detail');
         const isCasual = this._p2pMatchMode === 'casual';
+        const myName = (typeof PlayerProfile !== 'undefined' && typeof PlayerProfile.getNickname === 'function')
+            ? PlayerProfile.getNickname() : '你';
+        const oppName = this._p2pOpponentProfile?.nickname || '对手';
         // 休闲模式 + 访客视角 + 对局中：房主退出/解散/掉线 → 统一显示"房主已解散房间"
         const guestSeesHostLeave = isCasual && opponentLeft === true &&
             this.p2pController && !this.p2pController.isHost && this._p2pMatchStarted;
         if (titleEl && detailEl) {
             if (guestSeesHostLeave) {
                 titleEl.textContent = '房主已解散房间';
-                detailEl.textContent = '房主已解散房间，联机对局结束。';
+                detailEl.textContent = `房主 ${oppName} 已解散房间，联机对局结束。`;
             } else if (opponentLeft === true) {
-                titleEl.textContent = isCasual ? '对手已退出对局' : '对手中途退出';
-                detailEl.textContent = isCasual ? '对手已退出对局，本局结束。' : '对手已中途退出，本局判你获胜，对手将扣除 ELO 积分。';
+                titleEl.textContent = isCasual ? `${oppName} 已退出对局` : `${oppName} 中途退出`;
+                detailEl.textContent = isCasual ? `${oppName} 已退出对局，本局结束。` : `${oppName} 已中途退出，本局判 ${myName} 获胜，${oppName} 将扣除 ELO 积分。`;
             } else if (opponentLeft === false) {
                 titleEl.textContent = isCasual ? '已退出对局' : '中途退出';
-                detailEl.textContent = isCasual ? '你已退出对局，本局结束。' : '你已中途退出，本局判负，将扣除 ELO 积分。';
+                detailEl.textContent = isCasual ? `${myName} 已退出对局，本局结束。` : `${myName} 已中途退出，本局判负，将扣除 ELO 积分。`;
             } else {
-                titleEl.textContent = '对手已断开连接';
+                titleEl.textContent = `${oppName} 已断开连接`;
                 detailEl.textContent = '联机对局已中断';
             }
         }
@@ -979,12 +990,46 @@ if (typeof UIController === 'undefined') {
     // 统一结算入口（P5）：无论休闲/排位、主动退出/断线/被解散，ELO 上报、置标、弹窗逻辑全部收敛于此，
     // 消除 _reportP2PForfeit 与 _reportP2PForfeitOpponent 的重复实现，并统一 roomKey（用 UI 层持久真实房间码）。
     // opts.forfeitSelf=true 表示本方弃权判负（对手胜，winner='B'）；false 表示对手弃权（本方胜，winner='A'）。
+// _buildSpectatePlayers
+    // 构造观战快照的 players 映射（A/B → 昵称），观众端据此替换"玩家A/玩家B"文案
+    UIController.prototype._buildSpectatePlayers = function() {
+        const players = {};
+        const me = (this.p2pController && this.p2pController.myPlayerId) || 'A';
+        const myName = (typeof PlayerProfile !== 'undefined' && typeof PlayerProfile.getNickname === 'function')
+            ? PlayerProfile.getNickname() : '房主';
+        const opp = this._p2pOpponentProfile;
+        players[me] = myName;
+        players[me === 'A' ? 'B' : 'A'] = (opp && opp.nickname) || '访客';
+        return players;
+    }
+;
+
+// _notifySpectatorsGuestLeft
+    // 访客中途退出/弃权：房主立即推送一条带 _notice 的观战快照，观众端收到后弹窗提示
+    UIController.prototype._notifySpectatorsGuestLeft = function() {
+        try {
+            const lobby = this._lobby;
+            if (!lobby || !lobby.isConnected || !this._p2pRoomCode) return;
+            const opp = this._p2pOpponentProfile;
+            const snapshot = this.buildSyncSnapshot();
+            snapshot._notice = { type: 'guest_left', nickname: (opp && opp.nickname) || '访客' };
+            lobby.sendSpectateSync(snapshot);
+        } catch (e) {
+            console.warn('[UI][P2P] 通知观众访客退出失败：', e);
+        }
+    }
+;
+
     UIController.prototype._finalizeP2PMatch = function(opts) {
         opts = opts || {};
         const isForfeitSelf = !!opts.forfeitSelf;
         // 非对局中（未开局/建房等待/已结算）不处理，返回 false；调用方据此决定是否弹普通断线弹窗
         if (!this.isP2PMode || !this._p2pMatchStarted || this._p2pEloSettled) {
             return false;
+        }
+        // 访客中途退出/弃权（对手弃权）且本端为房主时：即时推送观战通知，观众端弹窗"访客已退出"
+        if (!isForfeitSelf && this.p2pController && this.p2pController.isHost) {
+            this._notifySpectatorsGuestLeft();
         }
         // ★ 休闲模式：不结算 ELO，但仍按"对手弃权"弹 disconnect-modal（语义上我方胜）
         if (this._p2pMatchMode !== 'ranked') {
@@ -1016,6 +1061,31 @@ if (typeof UIController === 'undefined') {
 
     UIController.prototype._reportP2PForfeit = function(isForfeitSelf) {
         return this._finalizeP2PMatch({ forfeitSelf: isForfeitSelf });
+    };
+
+    // _onOpponentQuit
+    // 收到对方"主动退出"通知（PeerJS quit 消息，非断线）：
+    // - 排位：对手弃权 → 本方判胜（ELO 对称，服务端按 roomKey 去重）
+    // - 休闲：弹"对手已退出对局"
+    // 立即结算并主动断开，不进入 60s 重连等待；结算后由 disconnect-modal 的
+    // "返回主菜单"按钮走 _cleanupP2P 完成剩余清理（踢观众/关房间/回主菜单）。
+    UIController.prototype._onOpponentQuit = function() {
+        console.warn(`[UI][P2P][DBG] _onOpponentQuit 收到对手主动退出通知：matchMode=${this._p2pMatchMode}, eloSettled=${this._p2pEloSettled}, roomDissolved=${this._p2pRoomDissolved}`);
+        if (!this.isP2PMode) return;
+        if (this._p2pEloSettled || this._p2pRoomDissolved) return;
+        // 标记对局已结束，避免后续 onDisconnected / _cleanupP2P 重复结算
+        this._p2pRoomDissolved = true;
+        this._hideP2PReconnectWait();
+        this._hideP2PReconnectingToast();
+        // 对手弃权：本方判胜（休闲模式同样弹"对手已退出对局"）。
+        // 先结算（此时 p2p.roomCode 仍保留，roomKey 稳定），再断开本方连接。
+        if (!this._reportP2PForfeit(false)) {
+            this._showP2PDisconnectModal(true);
+        }
+        // 主动断开本方连接（_disconnecting=true → _handleDisconnect 直接返回，不弹窗、不重连）
+        if (this.p2pController) this.p2pController.disconnect();
+        // 告知 handleExit 跳过弹主菜单，等待用户看完结算弹窗后点"返回主菜单"
+        this._p2pShowDisconnectReturnToMenu = true;
     };
 ;
 

@@ -61,7 +61,7 @@ if (typeof UIController === 'undefined') {
         // P2P：非本方回合禁止确认
         if (this.isP2PMode && !this._isMyTurn()) {
             console.log(`[UI][Confirm] 非本方回合，已阻止 phase=${phase}`);
-            this.showMessage('等待对手操作中…', 'info');
+            this.showMessage(`等待${this._p2pOpponentProfile?.nickname || '对手'}操作中…`, 'info');
             return;
         }
 
@@ -231,7 +231,7 @@ if (typeof UIController === 'undefined') {
                 break;
             case 'input_function':
                 if (notMyTurn) {
-                    hint = '等待对手构造函数…';
+                    hint = `等待${this._p2pOpponentProfile?.nickname || '对手'}构造函数…`;
                 } else {
                     hint = '点击下方元素构建函数表达式';
                 }

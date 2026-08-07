@@ -248,6 +248,12 @@ class MatchLobbyController {
             : '';
     }
 
+    _getNickname() {
+        return (typeof PlayerProfile !== 'undefined' && PlayerProfile.getProfile)
+            ? (PlayerProfile.getProfile().nickname || '')
+            : '';
+    }
+
     /** 房主登记房间（options: {rounds,difficulty,timeLimitMode,mode,eloRange}；mode=排位/休闲）
      *  eloRange>0 时开启 ELO 距离过滤（以房主 ELO 为基准，超出该分差的玩家不可见/不可加入） */
     hostRegister(options) {
@@ -261,7 +267,8 @@ class MatchLobbyController {
             type: 'host_register',
             options: opts,
             playerId: this._getPlayerId(),
-            eloRange
+            eloRange,
+            nickname: this._getNickname()
         });
     }
 

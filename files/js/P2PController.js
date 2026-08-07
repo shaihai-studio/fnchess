@@ -114,6 +114,8 @@ class P2PController {
         this.reconnectEnabled = true;      // 排位模式启用；休闲模式关闭（断线即结束）
         this.onReconnectingChange = null;  // (isReconnecting) => void，UI 显示等待/重连提示
         this.onReconnected = null;         // () => void，重连成功，UI 恢复对局
+        this._opponentQuit = false;        // 对方主动退出标志（收到 quit 消息置位；据此跳过本方重连等待）
+        this.onOpponentQuit = null;        // () => void，收到对方"主动退出"通知（quit 消息），UI 立即结算
 
         // sync_verify 周期验证（固定频率核对双方状态，发现不同步即重发/补发）
         this._syncVerifyInterval = null;
@@ -534,6 +536,19 @@ class P2PController {
                 if (this.onPlayerInfo) this.onPlayerInfo(data.payload || {});
                 break;
 
+            case 'quit':
+                // 对方主动退出（主动点击退出/解散，非意外断线）：
+                // 置位标志并通知 UI 立即结算（本方不进入 60s 重连等待）；
+                // 若本方已在重连等待中，则取消等待。
+                this._opponentQuit = true;
+                if (this._reconnecting) {
+                    this._reconnecting = false;
+                    clearTimeout(this._reconnectTimer); this._reconnectTimer = null;
+                    if (this.onReconnectingChange) this.onReconnectingChange(false);
+                }
+                if (this.onOpponentQuit) this.onOpponentQuit();
+                break;
+
             default:
                 // 未知消息类型，静默忽略
                 break;
@@ -921,6 +936,20 @@ class P2PController {
             if (this.onAwaitChange) this.onAwaitChange(false);
         }
         if (this._pendingAck) { clearTimeout(this._pendingAck.timer); this._pendingAck = null; }
+
+        // 对方主动退出（quit 消息已置位并完成 UI 结算）→ 不进入重连等待，仅清理连接状态。
+        // 正常路径下 UI 的 _onOpponentQuit 已调用 disconnect()（_disconnecting=true）在 896 行返回，
+        // 此处作为兜底：即使 quit 与 close 交错到达也不会误进 60s 等待。
+        if (wasConnected && this._opponentQuit) {
+            console.log('[P2P][DBG] 对方主动退出（quit）→ 跳过重连等待，直接清理');
+            this._opponentQuit = false;
+            this._gameInitConfig = null;
+            this._handledInitGen = 0;
+            this._lastRemoteVerify = null;
+            if (this.peer) { try { this.peer.destroy(); } catch (e) {} this.peer = null; }
+            this.roomCode = '';
+            return; // onOpponentQuit 已完成 UI 结算，此处不重复触发断线回调
+        }
 
         // 对局中断线（曾建立过连接且仍有房间码，且启用重连）→ 保留 peer/roomCode/_gameInitConfig，
         // 进入重连等待；休闲模式（reconnectEnabled=false）断线即结束
