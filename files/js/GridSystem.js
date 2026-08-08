@@ -221,19 +221,6 @@ class GridSystem {
     }
     
     /**
-     * 将 Canvas 像素坐标转换为数学坐标
-     * @param {number} canvasX - Canvas 像素坐标 x
-     * @param {number} canvasY - Canvas 像素坐标 y
-     * @returns {Object} {x, y} 数学坐标
-     */
-    canvasToMath(canvasX, canvasY) {
-        const size = this.canvas.width;
-        const x = (canvasX / size) * (this.range * 2) - this.range;
-        const y = ((size - canvasY) / size) * (this.range * 2) - this.range;
-        return { x, y };
-    }
-    
-    /**
      * 获取点击位置对应的网格坐标
      * @param {number} canvasX - Canvas 像素坐标 x
      * @param {number} canvasY - Canvas 像素坐标 y
@@ -291,37 +278,6 @@ class GridSystem {
     }
     
     /**
-     * 添加目标网格
-     * @param {Object} cell - {x, y}
-     */
-    addTargetCell(cell) {
-        // 检查是否已存在
-        const exists = this.targetCells.some(c => c.x === cell.x && c.y === cell.y);
-        if (!exists) {
-            this.targetCells.push(cell);
-            this.targetCell = this.targetCells[0]; // 兼容旧代码
-            this.draw();
-            return true;
-        }
-        return false;
-    }
-    
-    /**
-     * 移除目标网格
-     * @param {Object} cell - {x, y}
-     */
-    removeTargetCell(cell) {
-        const index = this.targetCells.findIndex(c => c.x === cell.x && c.y === cell.y);
-        if (index !== -1) {
-            this.targetCells.splice(index, 1);
-            this.targetCell = this.targetCells[0] || null; // 兼容旧代码
-            this.draw();
-            return true;
-        }
-        return false;
-    }
-    
-    /**
      * 添加禁止区
      * @param {Object} cell - {x, y}
      */
@@ -350,23 +306,6 @@ class GridSystem {
             return true;
         }
         return false;
-    }
-    
-    /**
-     * 清除目标网格
-     */
-    clearTargetCell() {
-        this.targetCell = null;
-        this.targetCells = [];
-        this.draw();
-    }
-    
-    /**
-     * 清除所有禁止区
-     */
-    clearForbiddenCells() {
-        this.forbiddenCells = [];
-        this.draw();
     }
     
     /**
@@ -620,88 +559,11 @@ class GridSystem {
         return color;
     }
     
-    /**
-     * 扩展函数采样点到新的范围
-     * @param {string} expression - 函数表达式
-     * @param {Array} oldPoints - 旧的采样点
-     * @param {number} newMinX - 新的最小x
-     * @param {number} newMaxX - 新的最大x
-     * @returns {Array} 新的采样点
-     */
-    extendFunctionPoints(expression, oldPoints, newMinX, newMaxX) {
-        // 如果没有expression，返回原点
-        if (!expression) return oldPoints;
-        
-        // 创建临时的FunctionParser来重新采样
-        // 这里我们使用简单的扩展策略：在两端添加新点
-        const deltaX = 0.01; // 采样精度
-        const newPoints = [];
-        
-        // 获取旧的采样范围
-        const oldMinX = oldPoints[0].x;
-        const oldMaxX = oldPoints[oldPoints.length - 1].x;
-        
-        // 采样左边扩展部分
-        for (let x = newMinX; x < oldMinX; x += deltaX) {
-            const y = this.evaluateExpression(expression, x);
-            if (y !== null && isFinite(y)) {
-                newPoints.push({ x, y });
-            } else {
-                newPoints.push({ x, y: null, isBreak: true });
-            }
-        }
-        
-        // 添加旧点
-        newPoints.push(...oldPoints);
-        
-        // 采样右边扩展部分
-        for (let x = oldMaxX; x <= newMaxX; x += deltaX) {
-            const y = this.evaluateExpression(expression, x);
-            if (y !== null && isFinite(y)) {
-                newPoints.push({ x, y });
-            } else {
-                newPoints.push({ x, y: null, isBreak: true });
-            }
-        }
-        
-        return newPoints;
-    }
-    
     /** 单位换算单一真源：每「数学单位」对应的 canvas 像素数（修复项 ⑨） */
     get pxPerUnit() {
         return this.canvas.height / (this.range * 2);
     }
 
-    /** 单位换算单一真源：每个格子的 canvas 像素边长（修复项 ⑨） */
-    get cellSizePx() {
-        return this.canvas.height / (this.range * 2);
-    }
-
-    /**
-     * 表达式求值（用于扩展采样点）
-     * 复用 FunctionRenderer 同款的 FunctionParser AST 引擎，
-     * 与渲染/碰撞检测走同一条已验证的求值路径，从根本上消除
-     * 此前基于 eval + 正则字符串替换导致的 exp/e 顺序错误、
-     * π/i 等 token 缺失、以及注入风险（修复项 ②、⑧）。
-     */
-    evaluateExpression(expression, x) {
-        try {
-            if (!this._functionParser) this._functionParser = new FunctionParser();
-            if (!this._exprAstCache) this._exprAstCache = {};
-            let ast = this._exprAstCache[expression];
-            if (ast === undefined) {
-                ast = this._functionParser.parse(expression);
-                this._exprAstCache[expression] = ast;
-            }
-            const y = this._functionParser.evaluateAst(ast, x);
-            // 仅实数且有限值参与判定（与 FunctionRenderer 保持一致）
-            if (y === null || !Number.isFinite(y)) return null;
-            return y;
-        } catch (e) {
-            return null;
-        }
-    }
-    
     /**
      * 根据坐标系范围获取刻度间隔
      * @returns {number} 刻度间隔
@@ -805,43 +667,6 @@ class GridSystem {
         return { min: -this.range, max: this.range };
     }
     
-    /**
-     * 获取目标网格（兼容旧代码）
-     * @returns {Object|null}
-     */
-    getTargetCell() {
-        return this.targetCell;
-    }
-    
-    /**
-     * 获取所有目标网格
-     * @returns {Array}
-     */
-    getTargetCells() {
-        return [...this.targetCells];
-    }
-    
-    /**
-     * 获取所有禁止区
-     * @returns {Array}
-     */
-    getForbiddenCells() {
-        return [...this.forbiddenCells];
-    }
-    
-    /**
-     * 获取网格单元格的矩形边界（用于碰撞检测）
-     * @param {Object} cell - {x, y}
-     * @returns {Object} {x1, y1, x2, y2}
-     */
-    getCellRect(cell) {
-        return {
-            x1: cell.x,
-            y1: cell.y,
-            x2: cell.x + 1,
-            y2: cell.y + 1
-        };
-    }
 }
 
 // 导出模块

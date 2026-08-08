@@ -326,15 +326,6 @@ if (typeof UIController === 'undefined') {
     }
 ;
 
-// updateRaceProgressUI
-    UIController.prototype.updateRaceProgressUI = function(data) {
-        const progress = this.gameController?.getRaceProgress?.() || { cleared: 0, stars: 0 };
-        this.raceCurrentLevelId = data.levelId;
-        if (this.raceLevelProgress) this.raceLevelProgress.textContent = `已通关 ${progress.cleared}/${this._raceTotalLevels()}，TT∑分：${progress.stars}`;
-        this.renderRaceLevelList();
-    }
-;
-
 // updateRacePuzzleProgress
     UIController.prototype.updateRacePuzzleProgress = function(solved, total) {
         if (!this.raceLevelProgress) return;

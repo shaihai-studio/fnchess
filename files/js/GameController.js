@@ -711,14 +711,6 @@ class GameController {
         } catch (e) { }
     }
 
-    advanceCampaignLevel() {
-        if (!this.campaignState.active) return false;
-        const currentId = this.campaignState.currentLevelId;
-        const currentLevel = this.campaignState.levelPack?.levels?.find(l => String(l.id) === String(currentId));
-        const nextId = currentLevel?.nextId ?? (Number.isFinite(Number(currentId)) ? Number(currentId) + 1 : currentId);
-        return this.loadCampaignLevel(nextId);
-    }
-    
     /**
      * 检查是否为测试模式
      * @returns {boolean}
@@ -1482,11 +1474,6 @@ class GameController {
             score = -1;
         }
         
-        // 当summa单次加分特别高时（>4）给额外加分（已根据要求禁用）
-        // if (this.currentPlayer === 'B' && score > 4) {
-        //     score += 4;
-        // }
-        
         this.roundState.score = score;
         this.players[this.currentPlayer].score += score;
         
@@ -1844,13 +1831,6 @@ class GameController {
             getElementLockCount: (element) => this.getElementLockCount(element),
             functionHistory: this.functionHistory
         };
-    }
-    
-    /**
-     * 跳过当前阶段（用于快速测试）
-     */
-    skipPhase() {
-        this.nextPhase();
     }
     
     // ─── P2P 联机同步 ──────────────────────────────────────────────────────

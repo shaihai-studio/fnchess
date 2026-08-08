@@ -211,13 +211,6 @@ class LeaderboardService {
         });
     }
 
-    /** 兼容历史：上报竞速 TT∑ 星分（旧榜保留，服务器已不再接受新 tt 上报） */
-    submitTTSigma(value, nickname) {
-        let playerId = '';
-        if (typeof PlayerProfile !== 'undefined') playerId = PlayerProfile.getPlayerId();
-        this.submitScore({ boardType: 'tt', value: Number(value) || 0, nickname: nickname || '', playerId });
-    }
-
     /** 查询榜单；boardType: 'lr' | 'rt{level}' | 'pl{level}' | 'elo'；回调收到 leaderboard_result */
     query(boardType, playerId, callback) {
         const id = 'q' + (++this._querySeq);

@@ -122,10 +122,6 @@ UIController.prototype.initEditor = function() {
         const cellSize = Math.min(w, h) / 20;
         return { w, h, cellSize, originX: w / 2, originY: h / 2 };
     }
-    function worldToCanvas(x, y) {
-        const { w, h, cellSize, originX, originY } = gridMetrics();
-        return { x: originX + x * cellSize, y: originY - y * cellSize, cellSize, w, h };
-    }
     function canvasToWorld(px, py) {
         const { w, h, cellSize, originX, originY } = gridMetrics();
         return { x: (px - originX) / cellSize, y: (originY - py) / cellSize, cellSize, w, h };
@@ -221,10 +217,6 @@ UIController.prototype.initEditor = function() {
                        "forbiddenCells":  ${JSON.stringify(lvl.forbiddenCells, null, 4).replace(/\n/g, '\n                                            ')},
                        "lockedElements":  ${JSON.stringify(lvl.lockedElements, null, 4).replace(/\n/g, '\n                                              ')}
                    }`;
-    }
-
-    function snapLevelPoints(level) {
-        return level;
     }
 
     function exportAll() {

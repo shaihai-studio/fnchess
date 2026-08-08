@@ -384,20 +384,6 @@ if (typeof UIController === 'undefined') {
     }
 ;
 
-// getTimeLimitValue
-    UIController.prototype.getTimeLimitValue = function() {
-        const timeLimitText = this.timeLimitValue?.textContent || '普通棋';
-        const map = {
-            '超慢棋': 120,
-            '慢棋': 60,
-            '普通棋': 40,
-            '快棋': 20,
-            '超快棋': 10
-        };
-        return map[timeLimitText] || 40;
-    }
-;
-
 // getSelectedDifficulty
     UIController.prototype.getSelectedDifficulty = function() {
         const difficultyText = this.difficultyValue?.textContent || '简单 - 1个目标格';
@@ -992,28 +978,6 @@ if (typeof UIController === 'undefined') {
     }
 ;
 
-// calculateTTSpeed：竞速速度值（在线竞速榜主维度，Time Attack）
-// 把每关最佳时间折算为连续速度分，未通关关卡按惩罚秒数计入，
-// 总分 = BASE / 有效总时长。有效时长越小（越快、越接近全通）分数越高，
-// 且永不封顶：每快一秒都能拉开差距，对抗性远强于 5 档封顶的 TTΣ 星分。
-    UIController.prototype.calculateTTSpeed = function() {
-        const gc = this.gameController;
-        if (!gc || typeof gc.getRaceBestTime !== 'function') return 0;
-        const totalLevels = (gc.raceState && gc.raceState.totalLevels) || 30;
-        const PENALTY = 300;    // 未通关关卡折算的惩罚秒数（让全通玩家天然领先）
-        const BASE = 3000000;   // 缩放基数，使速度值落在易读的整数区间
-        let effective = 0, cleared = 0;
-        for (let lv = 1; lv <= totalLevels; lv++) {
-            let best;
-            try { best = gc.getRaceBestTime(lv); } catch (e) { best = Infinity; }
-            if (Number.isFinite(best) && best > 0) { effective += best; cleared++; }
-            else effective += PENALTY;
-        }
-        if (cleared === 0) return 0;
-        return Math.round(BASE / effective);
-    }
-;
-
 // bindEvents
     UIController.prototype.bindEvents = function() {
         // Canvas 点击事件
@@ -1517,25 +1481,6 @@ if (typeof UIController === 'undefined') {
     }
 ;
 
-// handleSkip
-    UIController.prototype.handleSkip = function() {
-        // 测试模式：结束测试返回开始界面
-        if (this.gameController.isTestMode()) {
-            this.exitTestMode();
-            return;
-        }
-        
-        // 人机模式下，如果当前是AI的回合，禁止玩家操作
-        const state = this.gameController.getGameState();
-        if (this.gameController.gameMode === 'ai' && state.currentPlayer === 'B') {
-            this.showMessage('Summa 正在思考中...', 'info');
-            return;
-        }
-        
-        this.gameController.skipPhase();
-    }
-;
-
 // forceStopGame
     UIController.prototype.forceStopGame = function() {
         // 1. 停止计时器
@@ -1947,26 +1892,6 @@ if (typeof UIController === 'undefined') {
         this.updateFunctionList();
         
         this.showMessage('函数已删除');
-    }
-;
-
-// addClearFunctionsButton
-    UIController.prototype.addClearFunctionsButton = function() {
-        // 检查是否已存在
-        if (document.getElementById('clear-functions-btn')) return;
-        
-        const btn = document.createElement('button');
-        btn.id = 'clear-functions-btn';
-        btn.className = 'btn btn-secondary';
-        btn.textContent = '清空所有函数';
-        btn.addEventListener('click', () => {
-            this.gameController.clearTestModeFunctions();
-            this.gridSystem.clearAll();
-            this.showMessage('已清空所有函数');
-        });
-        
-        // 插入到确认按钮之前
-        this.confirmBtn.parentElement.insertBefore(btn, this.confirmBtn);
     }
 ;
 

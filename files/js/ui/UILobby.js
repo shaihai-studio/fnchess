@@ -212,14 +212,6 @@ if (typeof UIController === 'undefined') {
     }
 ;
 
-// _escapeHtml
-    UIController.prototype._escapeHtml = function(str) {
-        return String(str).replace(/[&<>"']/g, (c) => ({
-            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-        }[c]));
-    }
-;
-
 // _lobbyHostRegister
     UIController.prototype._lobbyHostRegister = function() {
         const lobby = this._lobby;
@@ -500,38 +492,6 @@ if (typeof UIController === 'undefined') {
         this._stopHostRoomBanner();
         this._cleanupHostWaiting();
         this._refreshHostDeleteBtn();
-    }
-;
-
-// _confirmP2PExit
-    // 退出拦截：房主有活跃房间时弹二次确认
-    // 确认 = 销毁房间并退出；取消 = 返回界面
-    UIController.prototype._confirmP2PExit = function(onConfirm) {
-        const modal = document.getElementById('p2p-exit-confirm-modal');
-        if (!modal || !this._lobby || !this._lobby.myRoomCode) {
-            if (onConfirm) onConfirm();
-            return;
-        }
-        this._p2pExitConfirmCb = onConfirm;
-        this.showModal(modal);
-        const ok = document.getElementById('p2p-exit-confirm-ok');
-        const cancel = document.getElementById('p2p-exit-confirm-cancel');
-        if (ok) ok.onclick = () => {
-            this._destroyHostRoom();
-            this.hideModal(modal);
-            const cb = this._p2pExitConfirmCb;
-            this._p2pExitConfirmCb = null;
-            if (cb) cb();
-        };
-        if (cancel) cancel.onclick = () => {
-            this.hideModal(modal);
-            this._p2pExitConfirmCb = null;
-        };
-        // ESC / 点遮罩 = 取消
-        this.bindModalDismiss(modal, () => {
-            this.hideModal(modal);
-            this._p2pExitConfirmCb = null;
-        });
     }
 ;
 

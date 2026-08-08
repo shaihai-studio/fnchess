@@ -46,21 +46,9 @@ class RaceModeController {
         this.emit('delayChange', { delay: this.currentDelay });
     }
 
-    getElapsed() {
-        return this.startedAt ? (Date.now() - this.startedAt) / 1000 : 0;
-    }
-
     getBest(levelId) {
         const v = Number(this.bestTimes[levelId]);
         return Number.isFinite(v) && v > 0 ? v : null;
-    }
-
-    setBest(levelId, elapsed) {
-        const prev = this.getBest(levelId);
-        if (prev === null || elapsed < prev) {
-            this.bestTimes[levelId] = elapsed;
-            this.saveBestTimes();
-        }
     }
 
     start(levelId = 1) {
@@ -68,40 +56,6 @@ class RaceModeController {
         this.active = true;
         this.startedAt = Date.now();
         this.emit('levelLoad', { levelId: this.currentLevelId, totalLevels: this.totalLevels, delay: this.currentDelay });
-    }
-
-    completeLevel() {
-        if (!this.active) return;
-        const elapsed = this.getElapsed();
-        this.setBest(this.currentLevelId, elapsed);
-        this.active = false;
-        this.startedAt = null;
-        this.emit('victory', {
-            levelId: this.currentLevelId,
-            elapsed,
-            bestElapsed: this.getBest(this.currentLevelId),
-            stars: this.getStarsByElapsed(elapsed)
-        });
-    }
-
-    failAndRetry() {
-        this.emit('retry', { levelId: this.currentLevelId });
-        this.startedAt = Date.now();
-        this.active = true;
-        this.emit('levelLoad', { levelId: this.currentLevelId, totalLevels: this.totalLevels, delay: this.currentDelay });
-    }
-
-    nextLevel() {
-        const next = Math.min(this.totalLevels, this.currentLevelId + 1);
-        this.start(next);
-    }
-
-    getStarsByElapsed(t) {
-        if (t < 100) return 5;
-        if (t < 150) return 4;
-        if (t < 300) return 3;
-        if (t < 1000) return 2;
-        return 1;
     }
 
     clearProgress() {

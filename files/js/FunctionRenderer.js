@@ -57,15 +57,6 @@ class FunctionRenderer {
         return 1;
     }
 
-    getAdaptiveBatchSize() {
-        const range = this.gridSystem.range;
-        if (range <= 5) return 25;
-        if (range <= 10) return 35;
-        if (range <= 20) return 50;
-        if (range <= 35) return 70;
-        return 100;
-    }
-
     getAdaptiveGlowColor(color = null) {
         const range = this.gridSystem.range;
         let alpha;
@@ -85,32 +76,6 @@ class FunctionRenderer {
     }
 
     // ========== 适配层：将 GridSystem 包装为 geogebra-lite 需要的接口 ==========
-
-    /**
-     * 构造 view 对象，供 geogebra-lite 的 GeneralPathClippedForCurvePlotter 和 CurveSegmentInfo 使用
-     */
-    _buildView() {
-        const gs = this.gridSystem;
-        return {
-            getWidth: () => gs.canvas.width,
-            getHeight: () => gs.canvas.height,
-            toScreenCoordXd: (x) => gs.mathToCanvas(x, 0).x,
-            toScreenCoordYd: (y) => gs.mathToCanvas(0, y).y,
-            isOnView: () => true,
-            getYscale: () => gs.canvas.height / (gs.range * 2),
-            isSegmentOffView: (a, b) => {
-                const left = gs.mathToCanvas(a[0], a[1]);
-                const right = gs.mathToCanvas(b[0], b[1]);
-                const w = gs.canvas.width, h = gs.canvas.height;
-                return (left.x < 0 && right.x < 0) || (left.x > w && right.x > w) ||
-                       (left.y < 0 && right.y < 0) || (left.y > h && right.y > h);
-            },
-            getMaxBend: () => Math.tan(10 * Math.PI / 180),
-            getMaxBendOffScreen: () => Math.tan(45 * Math.PI / 180),
-            getEuclidianController: () => ({ addZoomerAnimationListener() {}, removeZoomerAnimationListener() {} }),
-            getSettings: () => null
-        };
-    }
 
     /**
      * 构造 curve adapter，供 CurveSegmentPlotter.evaluateCurve() 使用
@@ -175,116 +140,7 @@ class FunctionRenderer {
         return true;
     }
 
-    _buildAdapter(expr) {
-        const parser = this.parser;
-        const gs = this.gridSystem;
-        // 预解析 AST，避免 evaluateCurve 和 _isJumpDiscontinuity 中重复 parse
-        const ast = parser.parse(expr);
-        const jumpThresh = Math.max(gs.range / 100, 0.01);
-        const isJumpFn = (x1, y1, x2, y2) => this._isJumpDiscontinuity(ast, x1, y1, x2, y2, jumpThresh);
-        // 跳跃间断点检测：上次有效求值点，用于判断 Y 跳变
-        let lastValidX = null;
-        let lastValidY = null;
-
-        return {
-            expr,
-            newDoubleArray() { return [0, 0]; },
-            isFunctionInX() { return true; },
-            getMinDistX() { return 1e-4; },
-            /** 无副作用求值：不修改 lastValidX/Y 追踪状态，供间断检测使用 */
-            evaluateRaw(x) { return parser.evaluateAst(ast, x); },
-            evaluateCurve(x, out) {
-                out[0] = x;
-                const y = parser.evaluateAst(ast, x);
-
-                // 求值失败 → 标记 undefined，重置追踪
-                if (y === null || !Number.isFinite(y)) {
-                    out[1] = NaN;
-                    lastValidX = null;
-                    lastValidY = null;
-                    return;
-                }
-
-                // 跳跃间断点检测：与上一个有效点比较 Y 跳变
-                if (lastValidX !== null && lastValidY !== null) {
-                    const dx = Math.abs(x - lastValidX);
-                    // 只在 x 间距较小时才检测跳变（避免跨区间误判）
-                    if (dx > 1e-12 && dx < gs.range * 0.1) {
-                        if (isJumpFn(lastValidX, lastValidY, x, y)) {
-                            out[1] = NaN;
-                            // 不更新 lastValid，下次将从新位置重新开始追踪
-                            return;
-                        }
-                    }
-                }
-
-                out[1] = y;
-                lastValidX = x;
-                lastValidY = y;
-            },
-            updateExpandedFunctions() {},
-            distanceMax(a, b) { return Math.max(Math.abs(a[0] - b[0]), Math.abs(a[1] - b[1])); }
-        };
-    }
-
     // ========== CapturingPath：捕获数学坐标 segments 供动画回放 ==========
-
-    /**
-     * CapturingPath 继承 PathPlotter，但不绘制到 Canvas。
-     * 它记录每次 moveTo / lineTo 的数学坐标，形成 segments 数组。
-     * 每个 segment 是一个连续曲线段（数学坐标点数组），segment 之间代表断点。
-     */
-    _createCapturingPath(view) {
-        const segments = []; // segments: [ [{x,y}, ...], [{x,y}, ...], ... ]
-        let currentSegment = [];
-
-        const cp = new PathPlotter(null); // 基类
-        const viewRef = view; // 闭包引用
-
-        // 覆盖基类方法
-        cp.firstPoint = function(pos, moveToAllowed) {
-            currentSegment = [{ x: pos[0], y: pos[1] }];
-        };
-
-        cp.lineTo = function(pos) {
-            currentSegment.push({ x: pos[0], y: pos[1] });
-        };
-
-        cp.moveTo = function(pos) {
-            if (currentSegment.length > 0) {
-                segments.push(currentSegment);
-            }
-            currentSegment = [{ x: pos[0], y: pos[1] }];
-        };
-
-        cp.drawTo = function(pos, lineTo) {
-            if (lineTo === Gap.LINE_TO) {
-                this.lineTo(pos);
-            } else {
-                this.moveTo(pos);
-            }
-        };
-
-        cp.corner = function() {};
-        cp.cornerPos = function(pos) {
-            currentSegment.push({ x: pos[0], y: pos[1] });
-        };
-        cp.cornerXY = function(x, y) {
-            // cornerXY 接收屏幕坐标，这里我们无法完美还原数学坐标，但 corner 在动画中不关键
-        };
-        cp.endPlot = function() {
-            if (currentSegment.length > 0) {
-                segments.push(currentSegment);
-            }
-        };
-
-        cp.newDoubleArray = function() { return [0, 0]; };
-        cp.supports = function() { return true; };
-
-        cp._getSegments = function() { return segments; };
-
-        return cp;
-    }
 
     // ========== 采样方法 ==========
 
@@ -301,11 +157,6 @@ class FunctionRenderer {
 
         const segments = this._denseResampleSegments(expr, xMin, xMax);
         return segments;
-    }
-
-    _shouldForceDenseResample(expr) {
-        const s = String(expr || '').toLowerCase().replace(/\s+/g, '');
-        return s.includes('!') || s.includes('/cos(') || s.includes('/x') || s.includes('tan(') || s.includes('cot(') || s.includes('sec(') || s.includes('csc(') || s.includes('x^');
     }
 
     /**
@@ -615,77 +466,6 @@ class FunctionRenderer {
     // ========== 直接绘制（无动画，geogebra-lite 引擎即时绘制） ==========
 
     /**
-     * 通过 geogebra-lite 引擎即时绘制函数曲线到 Canvas
-     * ln(...) 走专用采样 + polyline 绘制
-     */
-    _drawViaGeoGebra(expr, color) {
-        const ctx = this.gridSystem.ctx;
-        const view = this._buildView();
-
-        // 设置绘制样式
-        ctx.strokeStyle = color || this.colors.function;
-        ctx.lineWidth = this.getAdaptiveLineWidth();
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-
-        // 光晕效果（测试模式有自定义颜色时不显示）
-        if (!color) {
-            ctx.shadowColor = this.getAdaptiveGlowColor(color);
-            ctx.shadowBlur = this.getAdaptiveGlowSize();
-        }
-
-        // ln(...) 走专用轻量采样
-        if (/(?:^|[^a-z])ln\s*(?:\(|x|X)/i.test(expr)) {
-            const range = this.gridSystem.getRange();
-            const points = this._buildLnPoints(expr, range.min, range.max);
-            this._drawLnPolyline(points, ctx);
-            ctx.shadowBlur = 0;
-            return;
-        }
-
-        // 其他函数：直接通过 GeneralPathClippedForCurvePlotter 绘制
-        const adapter = this._buildAdapter(expr);
-        const range = this.gridSystem.getRange();
-
-        const gp = new GeneralPathClippedForCurvePlotter(view, ctx);
-        ctx.beginPath();
-
-        try {
-            CurvePlotter.plotCurve(adapter, range.min, range.max, view, gp, false, Gap.MOVE_TO);
-        } catch (e) {
-            console.warn('[FunctionRenderer] geogebra-lite 绘制异常，回退到等步长:', e);
-            // 回退到 polyline
-            const segments = this._fallbackSegments(expr, range.min, range.max);
-            this._drawSegmentsImmediate(segments, ctx);
-        }
-
-        ctx.shadowBlur = 0;
-    }
-
-    /**
-     * 绘制 ln points（geogebra-lite 格式：{break: true} 分隔）
-     */
-    _drawLnPolyline(points, ctx) {
-        let started = false;
-        ctx.beginPath();
-        for (const p of points) {
-            if (p.break || p.y === null) {
-                if (started) { ctx.stroke(); ctx.beginPath(); }
-                started = false;
-                continue;
-            }
-            const c = this.gridSystem.mathToCanvas(p.x, p.y);
-            if (!started) {
-                ctx.moveTo(c.x, c.y);
-                started = true;
-            } else {
-                ctx.lineTo(c.x, c.y);
-            }
-        }
-        if (started) ctx.stroke();
-    }
-
-    /**
      * 即时绘制 segments（回退用）
      */
     _drawSegmentsImmediate(segments, ctx) {
@@ -909,14 +689,6 @@ class FunctionRenderer {
     }
 
     /**
-     * 预览函数（快速绘制，用于输入时预览）
-     */
-    previewFunction(expression) {
-        this.gridSystem.draw();
-        this._drawViaGeoGebra(expression, null);
-    }
-
-    /**
      * 获取函数在特定 x 值处的 y 值
      */
     getYAtX(expression, x) {
@@ -973,10 +745,6 @@ class FunctionRenderer {
         ctx.stroke();
     }
 
-    isPointVisible(point, size) {
-        return point.x >= -50 && point.x <= size + 50 &&
-               point.y >= -50 && point.y <= size + 50;
-    }
 }
 
 // 导出模块

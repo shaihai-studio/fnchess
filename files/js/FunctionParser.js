@@ -343,10 +343,6 @@ class FunctionParser {
 
     // ========== 锁定元素管理 ==========
 
-    setLockedElements(elements) {
-        this.lockedElements = [...elements];
-    }
-
     clearLockedElements() {
         this.lockedElements = [];
     }
@@ -568,13 +564,6 @@ class FunctionParser {
             }));
         }
         return result;
-    }
-
-    formatExpression(expression) {
-        let formatted = expression;
-        formatted = formatted.replace(/([+\-*/^()])/g, ' $1 ');
-        formatted = formatted.replace(/\s+/g, ' ').trim();
-        return formatted;
     }
 
     // ========== 测试方法 ==========

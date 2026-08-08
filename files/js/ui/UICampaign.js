@@ -875,19 +875,6 @@ if (typeof UIController === 'undefined') {
         return null;
     }
 
-// _isFractionLevelUnlocked
-    UIController.prototype._isFractionLevelUnlocked = function(id) {
-        const n = this._getFractionLevelNumber(id);
-        if (n === null) return false;
-        return n <= this.getCampaignFractionUnlockedMax();
-    }
-
-// _renderCampaignBranchTree — 分数关分支树（预留）
-    UIController.prototype._renderCampaignBranchTree = function(parentDiv) {
-        // 占位：目前分数关为线性 1/2 → 1/3 → ... → 1/20，无需分支树
-    }
-;
-
 // ─── 反三角函数解锁机制 ─────────────────────────────────────────
 
 // 反三角函数元素集合（解锁后可在普通及以上难度/对战中使用）

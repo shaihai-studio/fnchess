@@ -884,8 +884,6 @@ class P2PController {
     // ─── 查询 ────────────────────────────────────────────────
 
     isMyTurn(currentPlayer)  { return currentPlayer === this.myPlayerId; }
-    getMyPlayerId()          { return this.myPlayerId; }
-    getOpponentPlayerId()    { return this.opponentPlayerId; }
 
     // ─── 错误 / 断线 ─────────────────────────────────────────
 

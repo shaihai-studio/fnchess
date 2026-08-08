@@ -119,7 +119,6 @@ if (typeof UIController === 'undefined') {
 
 // syncModeButtonsFromDifficulty
     UIController.prototype.syncModeButtonsFromDifficulty = function() {
-        const difficulty = this.difficultySelect ? this.difficultySelect.value : 'easy';
         if (!this.modeAiBtn || !this.modeLocalBtn || !this.modeCampaignBtn || !this.modeRaceBtn || !this.modeTestBtn) return;
 
         // 修复 #23：selectedMode 恒为 'battle'，子模式高亮应依据 _battleSubMode
@@ -315,46 +314,6 @@ if (typeof UIController === 'undefined') {
             if (this.campaignPanel) this.campaignPanel.style.display = 'none';
             this.hideRaceUI();
             this.setStartSelectorsEnabled(false);
-        }
-    }
-;
-
-// getSelectedTimeLimitMode
-    UIController.prototype.getSelectedTimeLimitMode = function() {
-        const timeLimitText = this.timeLimitValue?.textContent || '普通棋';
-        const map = {
-            '超慢棋': 'super_slow',
-            '慢棋': 'slow',
-            '普通棋': 'normal',
-            '快棋': 'fast',
-            '超快棋': 'super_fast'
-        };
-        return map[timeLimitText] || 'normal';
-    }
-;
-
-// handleStartButtonClick
-    UIController.prototype.handleStartButtonClick = function() {
-        const mode = this.selectedMode;
-        // 对战模式：提取子模式
-        const battleMode = mode === 'battle' ? this._battleSubMode : mode;
-        switch (battleMode) {
-            case 'p2p':
-                // P2P触发房间弹窗
-                this.showP2PRoomModal();
-                break;
-            case 'campaign':
-                // 闯关模式：显示闯关难度选择
-                this.showCampaignDifficulty();
-                break;
-            case 'race':
-                // 竞速模式：显示等级选择
-                this.showRaceLevelList();
-                break;
-            default:
-                // 本地、AI、测试模式：直接开始游戏
-                this.startNormalGame();
-                break;
         }
     }
 ;

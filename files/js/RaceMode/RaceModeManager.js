@@ -29,24 +29,6 @@ class RaceModeManager {
         return Number.isFinite(v) && v > 0 ? v : Infinity;
     }
 
-    setBestTime(levelId, seconds) {
-        const map = this.loadBestTimes();
-        const next = Number(seconds);
-        if (!Number.isFinite(next) || next <= 0) return;
-        const prev = Number(map[levelId]);
-        if (!Number.isFinite(prev) || prev <= 0 || next < prev) {
-            map[levelId] = next;
-            this.saveBestTimes(map);
-        }
-    }
-
-    getDrawDelay() {
-        try {
-            const v = Number(localStorage.getItem(this.storageKey.drawDelay));
-            return this.drawDelayOptions.includes(v) ? v : 0;
-        } catch { return 0; }
-    }
-
     setDrawDelay(value) {
         const next = this.drawDelayOptions.includes(Number(value)) ? Number(value) : 0;
         try { localStorage.setItem(this.storageKey.drawDelay, String(next)); } catch {}

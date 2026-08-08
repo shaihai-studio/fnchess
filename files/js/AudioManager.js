@@ -265,7 +265,6 @@ class AudioManager {
     playGameWin() { this.playSound('win', 1.0); }
     playPhaseChange() { this.playSound('phaseChange', 0.6); }
     playSummaGrab() { this.playSound('elementClick', 0.45); }
-    playSummaDrag() { this.playSound('tick', 0.25); }
     playSummaThrow() { this.playSound('phaseChange', 0.45); }
     playRaceCountdown() { this.playSound('raceCountdown', 0.95); }
     playRaceBeep() { this.playSound('raceBeep', 0.9); }
