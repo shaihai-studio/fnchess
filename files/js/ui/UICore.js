@@ -1231,22 +1231,22 @@ if (typeof UIController === 'undefined') {
             const isMe = playerId === this.p2pController.myPlayerId;
             const name = isMe
                 ? (myName || '我')
-                : (this._p2pOpponentProfile?.nickname || `玩家 ${playerId}`);
+                : (this._p2pOpponentProfile?.nickname || `玩家${playerId}`);
             return turn ? `${name}的回合` : name;
         }
 
         if (gameMode === 'ai') {
-            const name = playerId === 'A' ? (myName || '玩家 A') : 'Summa';
+            const name = playerId === 'A' ? (myName || '玩家A') : 'Summa';
             return turn ? `${name}的回合` : name;
         }
 
-        if (gameMode === 'local' && playerId === 'A') {
-            // 本地对战：A 方用自己昵称（若未设置则兜底"玩家 A"）
-            const name = myName || '玩家 A';
+        if (gameMode === 'local') {
+            // 本地对战：固定显示"玩家A/玩家B"，不使用个人昵称
+            const name = `玩家${playerId}`;
             return turn ? `${name}的回合` : name;
         }
 
-        return `玩家 ${playerId}`;
+        return `玩家${playerId}`;
     }
 ;
 

@@ -822,7 +822,10 @@ function handleQueryLeaderboard(ws, msg) {
     });
 }
 
-/** 若该连接是某房间的房主，移除其房间并通知对战方与观众（房主退出不判负，本局作废） */
+/** 若该连接是某房间的房主，移除其房间并通知对战方与观众。
+ *  注意：房主退出并非"本局作废"——对局判定由客户端上报：
+ *  房主端自行 _reportP2PForfeit(true)（房主判负），访客端收到 room_dissolved 后
+ *  _reportP2PForfeitOpponent()（判房主负、访客胜），服务端按 roomKey 去重，结果对称。 */
 function cleanupHost(ws) {
     for (const [code, room] of rooms) {
         if (room.hostWs === ws) {
