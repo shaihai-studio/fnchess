@@ -101,11 +101,13 @@ if (typeof UIController === 'undefined') {
         if (confirmBtn) confirmBtn.style.display = 'none';
         const clearBtn = document.getElementById('clear-btn');
         if (clearBtn) clearBtn.style.display = 'none';
-        // 观战：隐藏右下角圆形 确认/返回 按钮
+        // 观战：隐藏右下角圆形 确认/返回 按钮与 Summa 表情入口
         const confirmFab = document.getElementById('confirm-fab-btn');
         const exitFab = document.getElementById('exit-fab-btn');
+        const emojiFab = document.getElementById('emoji-fab-btn');
         if (confirmFab) confirmFab.style.display = 'none';
         if (exitFab) exitFab.style.display = 'none';
+        if (emojiFab) emojiFab.style.display = 'none';
         // 加入观战
         lobby.joinSpectate(this._spectatorCode);
         this._updateLobbyStatus('spectating', `正在连接房间 ${this._spectatorCode} 观战...`);

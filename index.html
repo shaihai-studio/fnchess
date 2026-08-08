@@ -94,7 +94,8 @@
             <div class="canvas-message" id="message-panel">
                 <div class="message" id="message"></div>
             </div>
-            <!-- 右下角：圆形 确认(✓) / 返回(←) 按钮 -->
+            <!-- 右下角：圆形 确认(✓) / 返回(←) 按钮；左侧为 Summa 表情入口（P2P 联机对局专用） -->
+            <button class="canvas-fab-btn emoji-fab" id="emoji-fab-btn" type="button" title="发送表情" style="display:none"></button>
             <button class="canvas-fab-btn confirm-fab" id="confirm-fab-btn" type="button" title="确认">✓</button>
             <button class="canvas-fab-btn exit-fab" id="exit-fab-btn" type="button" title="退出对局">←</button>
             <!-- 退出确认气泡框 -->
@@ -105,7 +106,23 @@
                     <button class="btn btn-small btn-cancel" id="cancel-exit-btn">取消</button>
                 </div>
             </div>
+            <!-- Summa 表情面板（P2P 联机对局专用，点击表情按钮时动态填充 9 种情绪立绘） -->
+            <div class="summa-emoji-panel" id="summa-emoji-panel" style="display:none"></div>
+            <!-- Summa 表情弹出浮层：收到对方表情 / 本地发出反馈（纯图片，无文字） -->
+            <div class="summa-emoji-pop" id="summa-emoji-pop" style="display:none">
+                <img id="summa-emoji-pop-img" alt="">
+            </div>
         </section>
+        
+        <!-- 测试模式函数面板：已绘制函数列表（桌面显示在 Canvas 左侧，手机显示在 Canvas 下方） -->
+        <aside class="test-function-panel" id="test-function-panel">
+            <div class="test-fp-header">
+                <span class="test-fp-title">已绘制函数</span>
+                <button type="button" class="test-fp-clear-all" id="test-fp-clear-all" title="清空全部函数">清空</button>
+            </div>
+            <div class="test-fp-list" id="test-fp-list"></div>
+            <div class="test-fp-empty" id="test-fp-empty">暂未绘制函数</div>
+        </aside>
         
         <!-- 旧确认/退出/清除/跳过按钮：已由右下角圆形按钮替代，DOM 保留仅供 JS 引用（恒隐藏，无视觉布局） -->
         <div id="action-buttons-card" style="display:none">

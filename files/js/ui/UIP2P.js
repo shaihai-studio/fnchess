@@ -344,6 +344,8 @@ if (typeof UIController === 'undefined') {
             this.showMessage(`${this._p2pOpponentProfile?.nickname || '对手'}请求再战，准备新对局...`);
             this.startP2PGame();
         };
+        // 对方发来 Summa 表情包：弹出展示（纯图片）
+        p2p.onSummaEmoji = (mood) => this._showSummaEmoji(mood, true);
     }
 ;
 
@@ -461,6 +463,10 @@ if (typeof UIController === 'undefined') {
         if (this.levelEditor) this.levelEditor.deactivate();
         this._markGameActive();
         this.isP2PMode = true;
+        // Summa 表情入口：仅 P2P 对局显示（右下角 确认/返回 按钮左侧）
+        this._ensureSummaEmojiUI();
+        const emojiFab = document.getElementById('emoji-fab-btn');
+        if (emojiFab) emojiFab.style.display = '';
         // 对局进行中暂停大厅列表自动刷新，省流量（连接本身保留）
         if (this._lobby) this._lobby.pauseRefresh();
         this.gameController.setP2PController(p2p);
@@ -820,6 +826,8 @@ if (typeof UIController === 'undefined') {
             }
         }
         this.isP2PMode = false;
+        // 清理 Summa 表情入口与残留浮层（按钮/面板/队列）
+        this._hideSummaEmojiUI();
         // 离开联机模式：关闭匹配大厅连接。
         // _closeLobby 在房主有活跃房间时只暂停列表刷新（WS 常驻，房间继续存活），
         // 无活跃房间时才真正断开（断开后服务器侧会自动清理本连接登记的房间）
@@ -838,6 +846,109 @@ if (typeof UIController === 'undefined') {
         }
     }
 ;
+
+// ---------- Summa 表情包互发（P2P 联机对局） ----------
+// 惰性构建表情面板（9 种 Summa 情绪立绘）并绑定表情按钮
+UIController.prototype._ensureSummaEmojiUI = function() {
+    const panel = document.getElementById('summa-emoji-panel');
+    const fab = document.getElementById('emoji-fab-btn');
+    if (!panel || panel.dataset.summaBuilt) return;
+    panel.dataset.summaBuilt = '1';
+    const moods = ['neutral', 'thinking', 'smug', 'happy', 'surprised', 'sad', 'angry', 'determined', 'exhausted'];
+    moods.forEach(mood => {
+        const cell = document.createElement('button');
+        cell.type = 'button';
+        cell.className = 'summa-emoji-item';
+        cell.title = mood;
+        const img = document.createElement('img');
+        img.src = `files/Summa形象处理/summa_image/${mood}.PNG`;
+        img.alt = mood;
+        img.draggable = false;
+        cell.appendChild(img);
+        cell.addEventListener('click', () => this._sendSummaEmoji(mood));
+        panel.appendChild(cell);
+    });
+    if (fab) fab.addEventListener('click', () => this._toggleSummaEmojiPanel());
+    // 点击面板外部区域自动关闭
+    document.addEventListener('click', (ev) => {
+        const p = document.getElementById('summa-emoji-panel');
+        if (!p || p.style.display === 'none') return;
+        if (!ev.target.closest('#summa-emoji-panel') && !ev.target.closest('#emoji-fab-btn')) {
+            p.style.display = 'none';
+        }
+    });
+};
+
+UIController.prototype._toggleSummaEmojiPanel = function(forceShow) {
+    const panel = document.getElementById('summa-emoji-panel');
+    if (!panel) return;
+    if (window.audioManager) window.audioManager.playClick();
+    const show = forceShow !== undefined ? forceShow : (panel.style.display === 'none');
+    panel.style.display = show ? 'grid' : 'none';
+};
+
+UIController.prototype._sendSummaEmoji = function(mood) {
+    const p2p = this.p2pController;
+    if (!p2p || !p2p.isConnected) return;
+    if (this._summaEmojiCooldown) return;
+    p2p.sendSummaEmoji(mood);
+    // 本地即时反馈（右侧小图）
+    this._showSummaEmoji(mood, false);
+    // 冷却 2s：按钮置灰防连点刷屏
+    this._summaEmojiCooldown = true;
+    const fab = document.getElementById('emoji-fab-btn');
+    if (fab) fab.classList.add('emoji-cooldown');
+    setTimeout(() => {
+        this._summaEmojiCooldown = false;
+        if (fab) fab.classList.remove('emoji-cooldown');
+    }, 2000);
+    this._toggleSummaEmojiPanel(false);
+};
+
+UIController.prototype._showSummaEmoji = function(mood, fromOpponent) {
+    if (!this._summaEmojiQueue) this._summaEmojiQueue = [];
+    this._summaEmojiQueue.push({ mood, fromOpponent });
+    this._playNextSummaEmoji();
+};
+
+// 队列化播放：收到对手表情（左侧大图）或本地发出反馈（右侧小图），逐个展示
+UIController.prototype._playNextSummaEmoji = function() {
+    if (this._summaEmojiPlaying) return;
+    if (!this._summaEmojiQueue || !this._summaEmojiQueue.length) return;
+    const item = this._summaEmojiQueue.shift();
+    this._summaEmojiPlaying = true;
+    const pop = document.getElementById('summa-emoji-pop');
+    const img = document.getElementById('summa-emoji-pop-img');
+    if (!pop || !img) { this._summaEmojiPlaying = false; return; }
+    const moods = ['neutral', 'thinking', 'smug', 'happy', 'surprised', 'sad', 'angry', 'determined', 'exhausted'];
+    const m = moods.indexOf(item.mood) !== -1 ? item.mood : 'neutral';
+    img.src = `files/Summa形象处理/summa_image/${m}.PNG`;
+    pop.classList.toggle('pop-left', !!item.fromOpponent);
+    pop.classList.toggle('pop-right', !item.fromOpponent);
+    pop.style.display = 'block';
+    // 重启动画：连续展示时强制重新触发 pop-in
+    img.style.animation = 'none';
+    void img.offsetWidth;
+    img.style.animation = '';
+    setTimeout(() => {
+        pop.style.display = 'none';
+        this._summaEmojiPlaying = false;
+        this._playNextSummaEmoji();
+    }, 2200);
+};
+
+// 退出对局/断线清理：隐藏表情入口并清空播放队列
+UIController.prototype._hideSummaEmojiUI = function() {
+    const fab = document.getElementById('emoji-fab-btn');
+    const panel = document.getElementById('summa-emoji-panel');
+    const pop = document.getElementById('summa-emoji-pop');
+    if (fab) { fab.style.display = 'none'; fab.classList.remove('emoji-cooldown'); }
+    if (panel) panel.style.display = 'none';
+    if (pop) pop.style.display = 'none';
+    this._summaEmojiQueue = [];
+    this._summaEmojiPlaying = false;
+    this._summaEmojiCooldown = false;
+};
 
 // _bindP2PDisconnectButtons
     UIController.prototype._bindP2PDisconnectButtons = function() {

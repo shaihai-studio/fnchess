@@ -384,7 +384,7 @@ if (typeof UIController === 'undefined') {
             this.updateHeaderPlayerNames();
             this.roundElement.textContent = data.currentRound;
             this.totalRoundsElement.textContent = data.totalRounds;
-            this.messageElement.textContent = '';
+            this.clearAllMessages();
             const badge = document.getElementById('campaign-level-badge');
             if (badge) badge.style.display = 'none';
             this.campaignDifficulty = null;
@@ -898,6 +898,11 @@ if (typeof UIController === 'undefined') {
             }
             finishGameOver();
         });
+
+        // 测试模式函数面板：函数新增/删除/清空时自动刷新列表
+        this.gameController.on('testModeFunctionAdded', () => this.renderTestFunctionPanel());
+        this.gameController.on('testModeFunctionRemoved', () => this.renderTestFunctionPanel());
+        this.gameController.on('testModeFunctionsCleared', () => this.renderTestFunctionPanel());
     }
 ;
 
@@ -1008,6 +1013,108 @@ if (typeof UIController === 'undefined') {
         
         // 初始化拖拽元素
         this.initDraggableElements();
+        
+        // 测试模式函数面板：清空按钮 + 列表删除按钮（事件委托）
+        const clearAllBtn = document.getElementById('test-fp-clear-all');
+        if (clearAllBtn) clearAllBtn.addEventListener('click', () => this._handleTestFunctionsClearAll());
+        const fpList = document.getElementById('test-fp-list');
+        if (fpList) {
+            fpList.addEventListener('click', (e) => {
+                const delBtn = e.target.closest('.test-fp-delete');
+                if (!delBtn) return;
+                const index = parseInt(delBtn.dataset.index, 10);
+                if (!isNaN(index)) this._handleTestFunctionDelete(index);
+            });
+        }
+    }
+;
+
+// renderTestFunctionPanel
+    UIController.prototype.renderTestFunctionPanel = function() {
+        const panel = document.getElementById('test-function-panel');
+        const listEl = document.getElementById('test-fp-list');
+        const emptyEl = document.getElementById('test-fp-empty');
+        const clearAllBtn = document.getElementById('test-fp-clear-all');
+        if (!panel || !listEl) return;
+
+        const functions = this.gameController.getTestModeFunctions();
+        listEl.innerHTML = '';
+
+        if (!functions || functions.length === 0) {
+            if (emptyEl) emptyEl.style.display = '';
+            if (clearAllBtn) clearAllBtn.disabled = true;
+            return;
+        }
+
+        if (emptyEl) emptyEl.style.display = 'none';
+        if (clearAllBtn) clearAllBtn.disabled = false;
+
+        functions.forEach((func, index) => {
+            const item = document.createElement('div');
+            item.className = 'test-fp-item';
+
+            const colorDot = document.createElement('span');
+            colorDot.className = 'test-fp-color';
+            colorDot.style.background = func.color || '#ffffff';
+            item.appendChild(colorDot);
+
+            const exprEl = document.createElement('span');
+            exprEl.className = 'test-fp-expr';
+            exprEl.title = func.expression;
+            // KaTeX 渲染表达式（非法表达式回退原文）
+            const exprHtml = this._renderTestFunctionExpr(func.expression);
+            exprEl.innerHTML = exprHtml;
+            item.appendChild(exprEl);
+
+            const delBtn = document.createElement('button');
+            delBtn.type = 'button';
+            delBtn.className = 'test-fp-delete';
+            delBtn.dataset.index = String(index);
+            delBtn.title = '删除此函数';
+            delBtn.textContent = '×';
+            item.appendChild(delBtn);
+
+            listEl.appendChild(item);
+        });
+    }
+;
+
+// _renderTestFunctionExpr
+    UIController.prototype._renderTestFunctionExpr = function(expression) {
+        if (window.MathLatex && typeof window.MathLatex.toLatex === 'function') {
+            try {
+                const latex = window.MathLatex.toLatex(expression);
+                if (window.katex && typeof window.katex.renderToString === 'function') {
+                    return window.katex.renderToString(latex, { throwOnError: false });
+                }
+                return latex;
+            } catch (e) {
+                // 解析失败，回退原文
+            }
+        }
+        // 安全转义后显示原文
+        return expression.replace(/[&<>"']/g, (c) => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[c]));
+    }
+;
+
+// _handleTestFunctionDelete
+    UIController.prototype._handleTestFunctionDelete = function(index) {
+        if (window.audioManager) window.audioManager.playClick();
+        this.gameController.removeTestModeFunction(index);
+        this.redrawTestModeFunctions();
+    }
+;
+
+// _handleTestFunctionsClearAll
+    UIController.prototype._handleTestFunctionsClearAll = function() {
+        if (window.audioManager) window.audioManager.playClick();
+        const functions = this.gameController.getTestModeFunctions();
+        if (!functions || functions.length === 0) return;
+        this.gameController.clearTestModeFunctions();
+        this.gridSystem.clearAll();
+        this.redrawTestModeFunctions();
     }
 ;
 
@@ -1148,7 +1255,12 @@ if (typeof UIController === 'undefined') {
         const me = this.p2pController.myPlayerId;            // 'A' | 'B'
         const curr = this.gameController.currentPlayer;      // 当前应操作的玩家
         const isMine = (phase === 'select_target' || phase === 'set_forbidden' || phase === 'set_locks' || phase === 'input_function') && curr === me;
-        console.log(`[UI][Turn] phase=${phase}, me=${me}, currentPlayer=${curr}, isMyTurn=${isMine}`);
+        // 仅在回合归属变化时输出，避免 P2P 下高频调用刷屏
+        const turnKey = `${phase}|${me}|${curr}`;
+        if (turnKey !== this._lastTurnLogKey) {
+            this._lastTurnLogKey = turnKey;
+            console.log(`[UI][Turn] phase=${phase}, me=${me}, currentPlayer=${curr}, isMyTurn=${isMine}`);
+        }
         return isMine;
     }
 ;
@@ -1793,52 +1905,117 @@ if (typeof UIController === 'undefined') {
 
 // showMessage
     UIController.prototype.showMessage = function(message, type = 'info') {
-        // 清除之前的定时器（含上一条消息的渐隐动画 interval，避免连续提示互相干扰，修复 #33）
+        // 手机端单条消息：先清除上一条的定时器/渐隐，避免连续提示互相干扰（修复 #33）
         if (this.messageTimeout) {
             clearTimeout(this.messageTimeout);
+            this.messageTimeout = null;
         }
-        if (this._fadeInterval) {
-            clearInterval(this._fadeInterval);
-            this._fadeInterval = null;
+        if (this.messageElement && this.messageElement._msgFade) {
+            clearInterval(this.messageElement._msgFade);
+            this.messageElement._msgFade = null;
         }
 
-        this.messageElement.textContent = message;
-        this.messageElement.style.opacity = '1';
-        
+        // 手机端（≤767px）：维持单条消息替换显示；电脑端 + pad：终端式堆叠，新消息在最下、旧消息上移，最多近 3 条
+        const isMobile = window.matchMedia ? window.matchMedia('(max-width: 767px)').matches : false;
+        let msgEl;
+        if (isMobile) {
+            // 若此前在桌面端已把 #message 从面板移除（堆叠用），先清空面板并放回，恢复单条模式
+            if (this.messagePanel && this.messageElement && !this.messageElement.parentNode) {
+                this.clearAllMessages();
+                this.messagePanel.appendChild(this.messageElement);
+            }
+            msgEl = this.messageElement;
+            msgEl.textContent = message;
+            msgEl.style.opacity = '1';
+        } else {
+            msgEl = document.createElement('div');
+            msgEl.className = 'message';
+            msgEl.textContent = message;
+            msgEl.style.opacity = '1';
+            if (this.messagePanel) {
+                // 首次消息时移除初始的空 #message 占位行，避免堆叠残留空行
+                if (this.messageElement && !this.messageElement.textContent && this.messagePanel.children.length <= 1) {
+                    this.messageElement.remove();
+                }
+                // 新消息追加在最后 → 出现在面板最下方（贴左下角），旧消息自然上移
+                this.messagePanel.appendChild(msgEl);
+            }
+            // 最多保留近 3 条（含当前），超出移除最旧的一条（并取消其待执行定时器）
+            if (this.messagePanel) {
+                while (this.messagePanel.children.length > 3) {
+                    const oldest = this.messagePanel.firstElementChild;
+                    if (oldest._msgTimer) clearTimeout(oldest._msgTimer);
+                    if (oldest._msgFade) clearInterval(oldest._msgFade);
+                    oldest.remove();
+                }
+            }
+        }
+
         // 显示消息容器并设置样式
         if (this.messagePanel) this.messagePanel.classList.add('visible');
-        this.messageElement.className = 'message';
-        
+        msgEl.className = 'message';
         if (type === 'error') {
-            this.messageElement.classList.add('error');
+            msgEl.classList.add('error');
         } else if (type === 'success') {
-            this.messageElement.classList.add('success');
+            msgEl.classList.add('success');
         }
-        
+
         // 错误/警告类消息停留更久（便于用户读完），普通信息 2 秒后渐隐
         const duration = (type === 'error' || type === 'warning') ? 5000 : 2000;
-        this.messageTimeout = setTimeout(() => {
-            this.fadeOutMessage();
+        const timer = setTimeout(() => {
+            this.fadeOutMessage(msgEl);
+            msgEl._msgTimer = null;
         }, duration);
+        msgEl._msgTimer = timer;
     }
 ;
 
 // fadeOutMessage
-    UIController.prototype.fadeOutMessage = function() {
+    UIController.prototype.fadeOutMessage = function(msgEl) {
+        const el = msgEl || this.messageElement;
+        if (!el || !el.parentNode) return;
         let opacity = 1;
-        this._fadeInterval = setInterval(() => {
+        const interval = setInterval(() => {
             opacity -= 0.05;
             if (opacity <= 0) {
-                clearInterval(this._fadeInterval);
-                this._fadeInterval = null;
-                this.messageElement.textContent = '';
-                this.messageElement.className = 'message';
-                this.messageElement.style.opacity = '1';
-                // 面板常驻显示（不随文字消失而隐藏），仅清空文字内容
+                clearInterval(interval);
+                if (el._msgFade) el._msgFade = null;
+                // 手机端单条消息：清空文字；电脑端堆叠：整行移除
+                if (el === this.messageElement) {
+                    el.textContent = '';
+                    el.className = 'message';
+                    el.style.opacity = '1';
+                } else {
+                    el.remove();
+                }
             } else {
-                this.messageElement.style.opacity = opacity.toString();
+                el.style.opacity = opacity.toString();
             }
         }, 50); // 每50ms减少0.05，总共1秒完成渐隐
+        el._msgFade = interval;
+    }
+;
+
+// clearAllMessages
+    UIController.prototype.clearAllMessages = function() {
+        if (this.messageTimeout) {
+            clearTimeout(this.messageTimeout);
+            this.messageTimeout = null;
+        }
+        if (this.messagePanel) {
+            Array.from(this.messagePanel.children).forEach(child => {
+                if (child._msgTimer) clearTimeout(child._msgTimer);
+                if (child._msgFade) clearInterval(child._msgFade);
+                if (child !== this.messageElement) child.remove();
+            });
+        }
+        if (this.messageElement) {
+            if (this.messageElement._msgTimer) { clearTimeout(this.messageElement._msgTimer); this.messageElement._msgTimer = null; }
+            if (this.messageElement._msgFade) { clearInterval(this.messageElement._msgFade); this.messageElement._msgFade = null; }
+            this.messageElement.textContent = '';
+            this.messageElement.className = 'message';
+            this.messageElement.style.opacity = '1';
+        }
     }
 ;
 

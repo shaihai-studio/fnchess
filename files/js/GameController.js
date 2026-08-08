@@ -50,6 +50,7 @@ class GameController {
         this.TARGET_TIMEOUT = 40;
         this.TARGET_TIMEOUT_RETRY = 20;
         this.targetRemaining = 40;
+        this.targetCountdownTotal = 40;
         this.targetConsecutiveTimeouts = 0;
         this.targetTimerInterval = null;
         this.forcedWinner = null;   // 判负强制的胜者（endGame 优先使用，之后复位）
@@ -770,6 +771,17 @@ class GameController {
     }
     
     /**
+     * 删除指定索引的测试模式函数
+     * @param {number} index - 函数在列表中的索引
+     */
+    removeTestModeFunction(index) {
+        if (!this.isTestMode()) return;
+        if (index < 0 || index >= this.testModeFunctions.length) return;
+        this.testModeFunctions.splice(index, 1);
+        this.emit('testModeFunctionRemoved', { index });
+    }
+    
+    /**
      * 清空测试模式函数
      */
     clearTestModeFunctions() {
@@ -1095,6 +1107,8 @@ class GameController {
     _startTargetCountdown(seconds) {
         this.stopTargetTimer();
         this.targetRemaining = (typeof seconds === 'number' && seconds > 0) ? seconds : this.TARGET_TIMEOUT;
+        // 记录本轮选格子倒计时总量，供 UI 饼图按阶段取正确的分母
+        this.targetCountdownTotal = this.targetRemaining;
         // P2P：只有当前操作玩家本地驱动倒计时，对手仅接收 timer_sync；
         // 被动方直接返回、不重置 remainingTime（保留 timer_sync 同步到的真实剩余时间，
         // 避免倒计时跳回初始值造成 UI 闪烁/误判）

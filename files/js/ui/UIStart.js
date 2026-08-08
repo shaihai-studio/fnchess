@@ -389,6 +389,10 @@ if (typeof UIController === 'undefined') {
         this.gameController.clearTestModeFunctions();
         this.gridSystem.clearAll();
         
+        // 隐藏测试模式函数面板
+        const testFunctionPanel = document.getElementById('test-function-panel');
+        if (testFunctionPanel) testFunctionPanel.classList.remove('visible');
+        
         // 恢复 header 样式
         if (this.header) this.header.classList.remove('test-mode');
                 
@@ -638,6 +642,13 @@ if (typeof UIController === 'undefined') {
         
         // 添加缩放按钮
         this.addZoomButtons();
+        
+        // 显示测试模式函数面板并刷新列表
+        const testFunctionPanel = document.getElementById('test-function-panel');
+        if (testFunctionPanel) {
+            testFunctionPanel.classList.add('visible');
+            this.renderTestFunctionPanel();
+        }
 
 
         

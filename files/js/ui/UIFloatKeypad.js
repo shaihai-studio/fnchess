@@ -545,7 +545,8 @@ if (typeof UIController === 'undefined') {
         const state = this.gameController.getGameState();
         const alreadyLocked = state.roundState.lockedElements || [];
         const spectating = !!this._isSpectating;
-        const blockInput = spectating || (this.isP2PMode && !this._isMyTurn());
+        const isAiTurn = this.gameController.gameMode === 'ai' && state.currentPlayer === 'B';
+        const blockInput = spectating || isAiTurn || (this.isP2PMode && !this._isMyTurn());
 
         const lockFuncDisplayNames = {
             'sin': 'sin', 'cos': 'cos', 'tan': 'tan',

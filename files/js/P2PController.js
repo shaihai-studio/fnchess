@@ -150,6 +150,8 @@ class P2PController {
         this.onTimeout      = null;  // (player) => void
         this.onRematch      = null;  // () => void
         this.onSyncRequest  = null;  // () => void
+        // 对方发来 Summa 表情包（轻量消息：无 ack、无 gen 校验，丢失无副作用）
+        this.onSummaEmoji   = null;  // (mood) => void
         // 对手身份（排行榜 ELO 上报用）：(payload) => void，payload={playerId, nickname}
         this.onPlayerInfo   = null;  // (payload) => void
         // 返回当前状态指纹 { version, round, player, phase }，未初始化返回 null（用于 sync_verify）
@@ -552,6 +554,11 @@ class P2PController {
                 if (this.onPlayerInfo) this.onPlayerInfo(data.payload || {});
                 break;
 
+            case 'summa_emoji':
+                // 对方发来 Summa 表情包：直接透传给 UI 展示（不校验 gen，无 ack）
+                if (this.onSummaEmoji) this.onSummaEmoji(data.mood || 'neutral');
+                break;
+
             case 'quit':
                 // 对方主动退出（主动点击退出/解散，非意外断线）：
                 // 置位标志并通知 UI 立即结算（本方不进入 60s 重连等待）；
@@ -782,6 +789,7 @@ class P2PController {
     sendTimerSync(remainingTime)     { this.send({ type: 'timer_sync', remainingTime, gen: this._gen }); }
     sendTimeout(player)              { this.send({ type: 'timeout', player, gen: this._gen }); }
     sendRematchRequest()             { this.send({ type: 'rematch_request' }); }
+    sendSummaEmoji(mood)             { this.send({ type: 'summa_emoji', mood }); }
     sendSyncRequest()                {
         console.log('[P2P] 发送 request_sync');
         const token = this._reqToken(++this._reqSyncSeq);

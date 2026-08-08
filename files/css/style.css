@@ -1189,14 +1189,20 @@ body::before {
     max-width: 45%;
     pointer-events: none;
 }
+/* 终端式消息堆叠：每行一条，新消息在最下、旧消息上移（JS 最多保留近 3 条） */
 .canvas-message .message {
     min-height: 0;
     padding: 0;
     border-radius: 0;
     background: none;
     border: none;
-    font-size: 14px;
+    font-size: 13px;
+    line-height: 1.45;
     text-align: left;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+}
+.canvas-message .message + .message {
+    margin-top: 3px;
 }
 /* 右下角：圆形 确认(✓) / 返回(←) 按钮 */
 .canvas-fab-btn {
@@ -1237,6 +1243,75 @@ body::before {
 }
 .canvas-fab-btn.confirm-fab:hover { background: rgba(34, 197, 94, 0.7); }
 .canvas-fab-btn.exit-fab:hover { background: rgba(239, 68, 68, 0.7); }
+/* Summa 表情入口按钮（右下角 确认/返回 按钮左侧，仅 P2P 联机对局显示） */
+.canvas-fab-btn.emoji-fab {
+    right: 142px;
+    background: rgba(20, 20, 40, 0.55) url('../Summa形象处理/summa_image/neutral.PNG') center / 62% no-repeat;
+}
+.canvas-fab-btn.emoji-fab:hover {
+    background: rgba(59, 130, 246, 0.5) url('../Summa形象处理/summa_image/neutral.PNG') center / 62% no-repeat;
+}
+.canvas-fab-btn.emoji-fab.emoji-cooldown {
+    opacity: 0.35;
+    pointer-events: none;
+}
+/* Summa 表情面板：右下角按钮上方弹出的 3×3 情绪立绘网格 */
+.summa-emoji-panel {
+    position: fixed;
+    right: 16px;
+    bottom: 78px;
+    z-index: 2000;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    padding: 8px;
+    background: rgba(15, 20, 35, 0.94);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 12px;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(6px);
+}
+.summa-emoji-item {
+    width: 56px;
+    height: 56px;
+    padding: 0;
+    border: none;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.08);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.summa-emoji-item img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    transition: transform 0.12s;
+}
+.summa-emoji-item:hover img { transform: scale(1.12); }
+.summa-emoji-item:active img { transform: scale(0.9); }
+/* Summa 表情弹出浮层：收到对方表情（左侧大图）/ 本地发出反馈（右侧小图），纯图片 */
+.summa-emoji-pop {
+    position: fixed;
+    bottom: 96px;
+    z-index: 2200;
+    pointer-events: none;
+}
+.summa-emoji-pop.pop-left { left: 18px; }
+.summa-emoji-pop.pop-right { right: 18px; }
+.summa-emoji-pop img {
+    width: 132px;
+    height: 132px;
+    object-fit: contain;
+    animation: summa-pop-in 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.45));
+}
+.summa-emoji-pop.pop-right img { width: 96px; height: 96px; }
+@keyframes summa-pop-in {
+    from { transform: scale(0.3) translateY(20px); opacity: 0; }
+    to   { transform: scale(1) translateY(0); opacity: 1; }
+}
 /* 饼图倒计时（坐标系面板左上角）：conic-gradient 扇形表示剩余时间占比，中心为数字 */
 .timer-pie {
     width: 58px;
@@ -3461,22 +3536,20 @@ body::before {
         flex-direction: column !important;
         padding: 70px 16px 16px;
         gap: 10px;
-        height: auto;
-        min-height: calc(100vh - 70px);
+        /* 改为确定高度，让 canvas-section 的 flex:1 能撑满，避免棋盘被压扁 */
+        height: calc(100dvh - 70px);
         min-height: calc(100dvh - 70px);
-        max-height: calc(100vh - 70px);
         max-height: calc(100dvh - 70px); /* 内容超高时自身滚动 */
         overflow-y: auto;
         -webkit-overflow-scrolling: touch;
     }
     
     .canvas-section {
-        flex: none;
+        flex: 1 1 0; /* 撑满竖屏剩余高度，替代原先写死的 38dvh（仅占 38% 屏高，棋盘偏小） */
         width: 100%;
-        height: 38vh;
-        height: 38dvh;
-        min-height: 260px;
-        max-height: 420px;
+        height: auto;
+        min-height: 0;
+        max-height: none;
         padding: 12px;
     }
     
@@ -3538,6 +3611,16 @@ body::before {
     
     .game-title {
         font-size: 16px;
+    }
+
+    /* 手机端消息提示字号调小，避免遮挡棋盘 */
+    .canvas-message {
+        max-width: 55%;
+    }
+    .canvas-message .message {
+        font-size: 12px;
+        line-height: 1.4;
+        text-shadow: 0 1px 1px rgba(0, 0, 0, 0.9);
     }
 
     #start-modal .modal-content {
@@ -3633,10 +3716,10 @@ body::before {
         flex-direction: column !important;
         padding: 65px 10px 16px;
         gap: 8px;
-        height: auto;
-        min-height: calc(100vh - 65px);
+        /* 改为确定高度：百分比高度的子项（canvas-section）才能正确解析、撑满，
+           否则 height:auto + max-height 时 canvas 会塌缩成极小（手机竖屏棋盘被挤压） */
+        height: calc(100dvh - 65px);
         min-height: calc(100dvh - 65px); /* 真机 Safari：dvh 不含状态栏/URL栏/标签栏 */
-        max-height: calc(100vh - 65px);
         max-height: calc(100dvh - 65px); /* 限制高度，内容超高时自身滚动（body 已 overflow:hidden） */
         overflow-y: auto;
         overflow-x: hidden;
@@ -3645,10 +3728,10 @@ body::before {
     
     /* Canvas 区域 - 撑满 main-container 剩余高度（移动端竖屏时坐标系横向撑满、纵向居中） */
     .canvas-section {
-        flex: 1 1 auto;
+        flex: 1 1 0; /* 在已确定高度的父容器内撑满剩余空间 */
         min-height: 0;
         width: 100%;
-        height: 100%;
+        height: auto;
         padding: 8px;
     }
     
@@ -3754,7 +3837,10 @@ body::before {
         max-width: 95vw;
         max-height: 90vh;
         max-height: 90dvh; /* 真机 Safari：dvh 不含浏览器 UI，弹窗不被推出屏幕 */
-        overflow-y: auto;
+        /* !important：shaihai-theme.css 全局设置 .modal-content { overflow: hidden }，
+           在 cascade 中后于 style.css 加载，相同特异性下胜出，会把弹窗内容截掉一半。
+           这里用 !important 强制恢复纵向滚动，确保联机对战等高弹窗在手机上能完整显示。 */
+        overflow-y: auto !important;
         -webkit-overflow-scrolling: touch;
         padding: 24px 18px;
         padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
@@ -3767,7 +3853,7 @@ body::before {
     #campaign-victory-modal .modal-content {
         max-height: 85vh;
         max-height: 85dvh;
-        overflow-y: auto;
+        overflow-y: auto !important;
         -webkit-overflow-scrolling: touch;
     }
     
@@ -3812,10 +3898,9 @@ body::before {
     }
     
     .canvas-section {
-        height: 35vh;
-        height: 35dvh;
-        min-height: 200px;
-        max-height: 320px;
+        /* 解除超小屏的高度卡死（原 height:35dvh + max-height:320px 会把画布压到 320px）。
+           改由 (max-width:767px) 块的 flex:1 1 0 撑满容器剩余高度，避免棋盘挤压。 */
+        max-height: none;
     }
     
     .panel-card {
@@ -5773,4 +5858,168 @@ body.float-keypad-mode #clear-btn { display: none !important; }
 #start-modal .main-back-btn:hover {
     border-color: rgba(124, 219, 157, 0.6);
     box-shadow: 0 0 12px rgba(124, 219, 157, 0.3);
+}
+
+/* ============================================================
+   测试模式函数面板（已绘制函数列表，类似 Desmos）
+   桌面/横屏：Canvas 左侧；手机/竖屏：Canvas 下方
+   ============================================================ */
+#test-function-panel {
+    display: none;
+    flex-direction: column;
+    box-sizing: border-box;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    background: rgba(15, 23, 42, 0.6);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+}
+#test-function-panel.visible {
+    display: flex;
+}
+.test-fp-header {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.test-fp-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: rgba(226, 232, 240, 0.95);
+    letter-spacing: 1px;
+}
+.test-fp-clear-all {
+    padding: 3px 12px;
+    font-size: 12px;
+    color: #f87171;
+    background: rgba(239, 68, 68, 0.12);
+    border: 1px solid rgba(239, 68, 68, 0.35);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.test-fp-clear-all:hover:not(:disabled) {
+    background: rgba(239, 68, 68, 0.25);
+    border-color: rgba(239, 68, 68, 0.6);
+}
+.test-fp-clear-all:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+.test-fp-list {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.test-fp-item {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+}
+.test-fp-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+.test-fp-color {
+    flex: 0 0 auto;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    box-shadow: 0 0 6px rgba(255, 255, 255, 0.4);
+}
+.test-fp-expr {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: rgba(226, 232, 240, 0.95);
+    font-size: 13px;
+}
+.test-fp-expr .katex { font-size: 1em; }
+.test-fp-delete {
+    flex: 0 0 auto;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+}
+.test-fp-delete:hover {
+    color: #f87171;
+    background: rgba(239, 68, 68, 0.15);
+}
+.test-fp-empty {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 12px;
+    color: rgba(148, 163, 184, 0.5);
+    font-size: 13px;
+    text-align: center;
+}
+
+/* 桌面 / 平板横屏（main-container 为 row）：面板靠左，固定宽度，等高 */
+@media (min-width: 768px) {
+    #test-function-panel.visible {
+        order: -1;
+        flex: 0 0 260px;
+        width: 260px;
+    }
+}
+
+/* 平板竖屏（main-container 为 column）：面板回到 Canvas 下方 */
+@media (min-width: 768px) and (max-width: 1023px) and (orientation: portrait) {
+    #test-function-panel.visible {
+        order: 0;
+        flex: 0 0 auto;
+        width: 100%;
+        max-height: 35vh;
+        margin-bottom: 8px;
+    }
+}
+
+/* 手机竖屏（main-container 为 column）：面板在 Canvas 下方 */
+@media (max-width: 767px) {
+    #test-function-panel.visible {
+        order: 0;
+        flex: 0 0 auto;
+        width: 100%;
+        max-height: 35vh;
+        margin-bottom: 8px;
+    }
+}
+
+/* 横屏小屏（max-height:800px landscape，main-container 为 row）：面板靠左，收窄 */
+@media (max-height: 800px) and (orientation: landscape) {
+    #test-function-panel.visible {
+        order: -1;
+        flex: 0 0 220px;
+        width: 220px;
+    }
 }

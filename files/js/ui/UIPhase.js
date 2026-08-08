@@ -330,7 +330,16 @@ if (typeof UIController === 'undefined') {
 
         // 饼图倒计时：填充占比 = 剩余 / 总时长（总时长 <= 0 时保持满饼）
         const pie = document.getElementById('timer-pie');
-        const total = this.gameController?.timeLimit;
+        // 选格子子阶段由 targetRemaining（40s / 超时重试 20s）驱动，饼图分母取该阶段总量，
+        // 否则与 input_function 阶段的 timeLimit（40~90s）分母错位，导致占比显示错误
+        const gc = this.gameController;
+        const phase = gc && gc.currentPhase;
+        let total;
+        if (phase === 'select_target' || phase === 'set_forbidden' || phase === 'set_locks') {
+            total = (gc && (gc.targetCountdownTotal || gc.TARGET_TIMEOUT)) || 40;
+        } else {
+            total = gc && gc.timeLimit;
+        }
         if (pie && total > 0) {
             const pct = Math.max(0, Math.min(1, remain / total)) * 100;
             const warn = remain <= 10;

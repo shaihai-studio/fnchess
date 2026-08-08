@@ -448,13 +448,21 @@ ${exportAll()}
         return null;
     };
     const addCellAt = (level, cell, type) => {
-        const existingType = removeCellAt(level, cell);
-        if (existingType === type) return;
-        if (existingType && existingType !== type) {
-            if (type === 'target') level.targetCells.push(cell); else level.forbiddenCells.push(cell);
-            return;
-        }
+        // 幂等：目标位已是同类型格 → 直接短路，不删不落（修复画笔来回涂 / 矩形覆盖 / 直线自交 / 选区移动丢格）
+        const arr = type === 'target' ? (level.targetCells || []) : (level.forbiddenCells || []);
+        if (arr.some(p => sameCell(p, cell))) return;
+        // 异类型占用：删旧补新（覆盖语义）
+        const other = type === 'target' ? (level.forbiddenCells || []) : (level.targetCells || []);
+        const otherIndex = other.findIndex(p => sameCell(p, cell));
+        if (otherIndex !== -1) other.splice(otherIndex, 1);
         if (type === 'target') level.targetCells.push(cell); else level.forbiddenCells.push(cell);
+    };
+    // 单点点击专用 toggle：同类型已存在 → 删除该格；异类型/空位 → 落格（保留「点同格取消」交互）
+    const toggleCellAt = (level, cell, type) => {
+        const existingType = removeCellAt(level, cell);
+        if (existingType !== type) {
+            if (type === 'target') level.targetCells.push(cell); else level.forbiddenCells.push(cell);
+        }
     };
     const addCellRange = (start, end, type) => {
         const lvl = currentLevel();
@@ -652,7 +660,8 @@ ${exportAll()}
             const dx = snap(p.x - ds.origin.x);
             const dy = snap(p.y - ds.origin.y);
             const lvl = currentLevel();
-            state.selection.cells.forEach(c => removeCellAt(lvl, { x: c.x, y: c.y }));
+            // remove 与 add 统一基于 ds.home（初始位置），避免连续拖动时新旧坐标错位导致丢格/残留
+            ds.home.forEach(c => removeCellAt(lvl, { x: c.x, y: c.y }));
             const newCells = ds.home.map(c => ({ x: snap(c.x + dx), y: snap(c.y + dy), type: c.type }));
             newCells.forEach(c => addCellAt(lvl, { x: c.x, y: c.y }, c.type));
             state.selection.cells = newCells;
@@ -728,7 +737,7 @@ ${exportAll()}
     els.gridCanvas.addEventListener('click', (e) => {
         if (state.selectEnabled || state.rectEnabled || state.lineEnabled || state.brushEnabled) return;
         const point = cellFromEvent(e);
-        addCellAt(currentLevel(), point, state.swapMouse ? 'forbidden' : 'target');
+        toggleCellAt(currentLevel(), point, state.swapMouse ? 'forbidden' : 'target');
         syncFormFromLevel();
         pushHistory();
     });
@@ -736,7 +745,7 @@ ${exportAll()}
         if (state.selectEnabled || state.rectEnabled || state.lineEnabled || state.brushEnabled) return;
         e.preventDefault();
         const point = cellFromEvent(e);
-        addCellAt(currentLevel(), point, state.swapMouse ? 'target' : 'forbidden');
+        toggleCellAt(currentLevel(), point, state.swapMouse ? 'target' : 'forbidden');
         syncFormFromLevel();
         pushHistory();
     });
