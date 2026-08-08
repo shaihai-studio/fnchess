@@ -1086,25 +1086,6 @@ body::before {
     cursor: grabbing;
 }
 
-/* 右侧控制面板（内容精简后固定 320px 即可，其余空间留给画布） */
-.control-panel {
-    flex: 0 0 320px;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    min-width: 300px;
-    /* 内容不高时不要显示滚动条；超高时面板内部滚动（而非压缩/裁切子元素），
-       保证开关与按钮始终可达 */
-    overflow-y: hidden;
-    overflow-x: hidden;
-    padding-right: 4px;
-    scrollbar-width: thin;
-    scrollbar-color: rgba(148, 163, 184, 0.65) rgba(15, 23, 42, 0.25);
-}
-.control-panel.is-scrollable {
-    overflow-y: auto;
-}
-
 .panel-card {
     background: rgba(15, 23, 42, 0.6);
     backdrop-filter: blur(10px);
@@ -1178,10 +1159,6 @@ body::before {
     font-size: 14px;
     color: #e5e7eb;
     line-height: 1.5;
-}
-/* 整块隐藏右侧/下方控制面板（已由右下角圆形按钮接管交互；测试模式也不再显示） */
-.control-panel {
-    display: none !important;
 }
 /* 竞速实时用时（坐标系面板左上角）：xx.xx s，默认隐藏，竞速模式显示；青色霓虹 */
 .canvas-race-timer {
@@ -2932,73 +2909,6 @@ body::before {
     color: #a78bfa;
 }
 
-/* 测试模式函数列表 */
-.function-list {
-    margin-top: 15px;
-    padding: 10px;
-    background: rgba(15, 23, 42, 0.5);
-    border-radius: 14px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    max-height: 200px;
-    overflow-y: auto;
-    animation: fadeIn 0.3s ease-out;
-}
-
-.function-list-title {
-    font-size: 12px;
-    color: #94a3b8;
-    margin-bottom: 8px;
-    text-align: center;
-}
-
-.function-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 8px 10px;
-    margin-bottom: 5px;
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 10px;
-    border-left: 3px solid;
-    transition: background 0.2s, opacity 0.3s ease-out;
-    animation: fadeIn 0.3s ease-out;
-}
-
-.function-item:hover {
-    background: rgba(255, 255, 255, 0.1);
-}
-
-.function-expr {
-    font-family: 'Courier New', monospace;
-    font-size: 13px;
-    color: #e2e8f0;
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.function-actions {
-    display: flex;
-    gap: 5px;
-}
-
-.function-actions button {
-    background: none;
-    border: none;
-    cursor: pointer;
-    padding: 2px 5px;
-    font-size: 14px;
-    opacity: 0.7;
-    transition: opacity 0.2s;
-    color: rgba(255, 255, 255, 0.8);
-}
-
-.function-actions button:hover {
-    opacity: 1;
-    color: #ffffff;
-}
-
 /* 渐显动画 */
 @keyframes fadeIn {
     from {
@@ -3491,11 +3401,6 @@ body::before {
     .canvas-section #game-canvas {
         border-radius: 14px;
     }
-
-    .control-panel {
-        flex: 0 0 320px;
-        min-width: 290px;
-    }
 }
 
 /* ── 桌面/平板布局：整块隐藏控制面板（普通与测试模式一致），
@@ -3508,9 +3413,6 @@ body::before {
         flex: 1 1 auto;
         min-height: 0;
         height: auto;
-    }
-    .control-panel {
-        display: none;
     }
 }
 
@@ -3532,14 +3434,6 @@ body::before {
         min-width: 0;
         height: auto;
         padding: 15px;
-    }
-    
-    .control-panel {
-        flex: 0 0 320px;
-        min-width: 280px;
-        max-width: 350px;
-        overflow-y: auto;
-        -webkit-overflow-scrolling: touch;
     }
     
     .header {
@@ -3583,15 +3477,6 @@ body::before {
         min-height: 260px;
         max-height: 420px;
         padding: 12px;
-    }
-    
-    .control-panel {
-        flex: 1;
-        min-width: unset;
-        max-width: unset;
-        width: 100%;
-        overflow-y: visible;
-        padding-bottom: 16px;
     }
     
     .game-title {
@@ -3640,22 +3525,7 @@ body::before {
         border-radius: 6px;
     }
 
-    /* 平板竖屏：底部按钮组固定贴底，避免被内容挤出屏幕 */
-    #action-buttons-card {
-        position: fixed;
-        left: 8px;
-        right: 8px;
-        bottom: 0;
-        z-index: 50;
-        border-radius: 14px 14px 0 0;
-        border: 1px solid rgba(255, 255, 255, 0.2);
-        box-shadow: 0 -4px 18px rgba(0, 0, 0, 0.5);
-        padding: 10px 14px;
-        margin: 0;
-    }
-    .control-panel {
-        padding-bottom: 80px !important; /* 留出固定底栏空间，避免遮挡内联元素末尾 */
-    }
+
 }
 
 /* 手机布局（竖屏优先） */
@@ -3772,8 +3642,7 @@ body::before {
         -webkit-overflow-scrolling: touch;
     }
     
-    /* Canvas 区域 - 撑满 main-container 剩余高度（control-panel 已全局隐藏，
-       移动端竖屏时坐标系横向撑满、纵向居中） */
+    /* Canvas 区域 - 撑满 main-container 剩余高度（移动端竖屏时坐标系横向撑满、纵向居中） */
     .canvas-section {
         flex: 1 1 auto;
         min-height: 0;
@@ -3782,18 +3651,6 @@ body::before {
         padding: 8px;
     }
     
-    /* 控制面板 */
-    .control-panel {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-        width: 100%;
-        min-width: unset;
-        max-width: unset;
-        padding-bottom: 16px;
-        overflow-y: visible;
-    }
     
     .panel-card {
         padding: 12px 14px;
@@ -3872,26 +3729,6 @@ body::before {
         padding: 3px 6px;
         font-size: 14px;
         border-radius: 6px;
-    }
-
-    /* 手机竖屏：底部按钮组固定贴底，避免被内容挤出屏幕 */
-    #action-buttons-card {
-        position: fixed;
-        left: 8px;
-        right: 8px;
-        bottom: 0;
-        z-index: 50;
-        border-radius: 14px 14px 0 0;
-        border: 1px solid rgba(255, 255, 255, 0.2);
-        box-shadow: 0 -4px 18px rgba(0, 0, 0, 0.5);
-        padding: 10px 14px;
-        /* 底部留出 Home 条安全区，防止按钮被真机 Home 指示条遮挡 */
-        padding-bottom: max(10px, env(safe-area-inset-bottom, 10px));
-        margin: 0;
-    }
-    .control-panel {
-        /* 留出固定底栏 + 安全区空间，避免遮挡内联元素末尾（元素按钮区） */
-        padding-bottom: calc(110px + env(safe-area-inset-bottom, 0px)) !important;
     }
 
     /* 元素按钮区：内容较多时在小区域内滚动，保证不被底栏挤出屏幕 */
@@ -4255,29 +4092,6 @@ body.device-mobile {
         height: 100%;
     }
 
-    /* 非测试模式：控制面板已全局隐藏，canvas-section 自动占满全部空间；
-       测试模式(body.layout-test-mode)下保留 55/45 双栏 */
-    body.layout-test-mode .canvas-section {
-        flex: 0 0 55%;
-        height: auto;
-        min-height: unset;
-        max-height: unset;
-    }
-
-    .control-panel {
-        max-height: calc(100vh - var(--landscape-bottom-bar-max) - var(--landscape-header-height));
-        max-height: calc(100dvh - var(--landscape-bottom-bar-max) - var(--landscape-header-height));
-        overflow-y: scroll;
-        overscroll-behavior: contain;
-        -webkit-overflow-scrolling: touch;
-        scrollbar-width: thin;
-        scrollbar-color: rgba(148, 163, 184, 0.55) rgba(15, 23, 42, 0.2);
-    }
-
-    body.layout-test-mode .control-panel {
-        flex: 0 0 45%;
-    }
-
     .elements-section {
         height: var(--landscape-bottom-bar-max);
         max-height: var(--landscape-bottom-bar-max);
@@ -4294,17 +4108,6 @@ body.device-mobile {
         padding: 70px 20px 0;
         height: calc(100vh - var(--landscape-bottom-bar-max) - 70px);
         height: calc(100dvh - var(--landscape-bottom-bar-max) - 70px);
-    }
-
-    /* 测试模式：62/38 双栏布局；非测试模式：canvas-section 撑满全部空间 */
-    body.layout-test-mode .control-panel {
-        max-height: calc(100vh - var(--landscape-bottom-bar-max) - 70px);
-        max-height: calc(100dvh - var(--landscape-bottom-bar-max) - 70px);
-        flex: 0 0 38%;
-    }
-
-    body.layout-test-mode .canvas-section {
-        flex: 0 0 62%;
     }
 }
 

@@ -107,18 +107,15 @@
             </div>
         </section>
         
-        <!-- 右侧控制面板（普通模式整块隐藏；测试模式保留，用于右侧显示已绘制函数） -->
-        <aside class="control-panel">
-            <!-- 旧确认/退出/清除/跳过按钮：已由右下角圆形按钮替代，DOM 保留仅供 JS 引用（CSS 恒隐藏） -->
-            <div class="panel-card" id="action-buttons-card" style="display:none">
-                <div class="button-group">
-                    <button class="btn btn-primary" id="confirm-btn" data-arrow>确认目标</button>
-                    <button class="btn btn-secondary" id="skip-btn">跳过本阶段</button>
-                    <button class="btn btn-secondary" id="clear-btn">清除</button>
-                    <button class="btn btn-exit" id="exit-btn">退出对局</button>
-                </div>
+        <!-- 旧确认/退出/清除/跳过按钮：已由右下角圆形按钮替代，DOM 保留仅供 JS 引用（恒隐藏，无视觉布局） -->
+        <div id="action-buttons-card" style="display:none">
+            <div class="button-group">
+                <button class="btn btn-primary" id="confirm-btn" data-arrow>确认目标</button>
+                <button class="btn btn-secondary" id="skip-btn">跳过本阶段</button>
+                <button class="btn btn-secondary" id="clear-btn">清除</button>
+                <button class="btn btn-exit" id="exit-btn">退出对局</button>
             </div>
-        </aside>
+        </div>
     </div>
     
     <!-- 底部元素拖拽区 -->

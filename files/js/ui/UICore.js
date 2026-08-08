@@ -278,10 +278,6 @@ if (typeof UIController === 'undefined') {
         this.bindBackgroundMusicControls();
         this.initBackgroundMusic();
 
-        // 控制面板：在内容不溢出时不显示滚动条，溢出时自动出现滚动条
-        // 修复 #45：原本 overflow-y: auto 在不超高时也会渲染出空滚动条（Windows 上尤其明显）
-        this.initControlPanelAutoScroll();
-
         // 退出函数棋（关闭页面/标签页/刷新）前：房主有活跃房间或联机对局进行中时弹浏览器确认提醒。
         // ① 房主有房间：退出后房间失效；② 对局进行中：退出判负并扣 ELO。
         // 确认后页面才真正关闭；关闭时服务器因 WS 断开会自动清理房间。
@@ -300,38 +296,6 @@ if (typeof UIController === 'undefined') {
         });
     }
 ;
-
-// initControlPanelAutoScroll
-    UIController.prototype.initControlPanelAutoScroll = function() {
-        const evaluateScroll = (el) => {
-            if (!el) return;
-            // 纵向溢出检测（>1px 容差，避免亚像素误差造成的装饰性滚动条）
-            const overY = el.scrollHeight - el.clientHeight;
-            el.classList.toggle('is-scrollable', overY > 1);
-            // 横向溢出检测（极长的无空格 token 才会触发，正常表达式不会）
-            const overX = el.scrollWidth - el.clientWidth;
-            el.classList.toggle('is-scrollable-x', overX > 1);
-        };
-        const bind = (el) => {
-            if (!el) return;
-            evaluateScroll(el);
-            if (typeof ResizeObserver !== 'undefined') {
-                new ResizeObserver(() => evaluateScroll(el)).observe(el);
-            } else if (typeof MutationObserver !== 'undefined') {
-                new MutationObserver(() => evaluateScroll(el))
-                    .observe(el, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
-            }
-        };
-        // 控制面板：内容不多时不显示滚动条，溢出时才出现
-        bind(document.querySelector('.control-panel'));
-        // 表达式显示区的滚动状态由 UIInput.updateExpressionScrollState() 在每次
-        // updateExpressionDisplay 时驱动（更精确，随内容变化即时刷新）；这里仅
-        // 在窗口缩放时兜底同步一次，避免类残留
-        window.addEventListener('resize', () => {
-            evaluateScroll(document.querySelector('.control-panel'));
-            if (this.updateExpressionScrollState) this.updateExpressionScrollState();
-        });
-    }
 
 // updateDifficultyHint
     UIController.prototype.updateDifficultyHint = function() {
@@ -421,8 +385,6 @@ if (typeof UIController === 'undefined') {
 // bindGameEvents
     UIController.prototype.bindGameEvents = function() {
         this.gameController.on('gameInit', (data) => {
-            // 标记是否为测试模式：测试模式需保留双栏布局（右侧显示已绘制函数）
-            document.body.classList.toggle('layout-test-mode', !!data.isTestMode);
             // 完全重置UI状态
             this.gridSystem.clearAll();
             this.gridSystem.functionHistory = [];
@@ -1845,113 +1807,7 @@ if (typeof UIController === 'undefined') {
     }
 ;
 
-// addFunctionListContainer
-    UIController.prototype.addFunctionListContainer = function() {
-        // 检查是否已存在
-        if (document.getElementById('function-list')) return;
-        
-        const container = document.createElement('div');
-        container.id = 'function-list';
-        container.className = 'function-list';
-        container.innerHTML = '<div class="function-list-title">已绘制函数（点击编辑或删除）</div>';
-        
-        // 插入到按钮区域之后
-        const buttonArea = this.confirmBtn.parentElement;
-        buttonArea.parentElement.insertBefore(container, buttonArea.nextSibling);
-    }
-;
 
-// updateFunctionList
-    UIController.prototype.updateFunctionList = function() {
-        const container = document.getElementById('function-list');
-        if (!container) return;
-        
-        const functions = this.gameController.getTestModeFunctions();
-        
-        // 清除旧的列表项（保留标题）
-        const title = container.querySelector('.function-list-title');
-        container.innerHTML = '';
-        container.appendChild(title);
-        
-        // 添加每个函数的条目
-        functions.forEach((func, index) => {
-            const item = document.createElement('div');
-            item.className = 'function-item';
-            item.style.borderLeftColor = func.color;
-            item.innerHTML = `
-                <span class="function-expr">${func.expression}</span>
-                <div class="function-actions">
-                    <button class="btn-edit" data-index="${index}" title="编辑">✎</button>
-                    <button class="btn-delete" data-index="${index}" title="删除">✕</button>
-                </div>
-            `;
-            
-            // 绑定编辑事件
-            item.querySelector('.btn-edit').addEventListener('click', () => {
-                this.editTestFunction(index);
-            });
-            
-            // 绑定删除事件
-            item.querySelector('.btn-delete').addEventListener('click', () => {
-                this.deleteTestFunction(index);
-            });
-            
-            container.appendChild(item);
-        });
-    }
-;
-
-// editTestFunction
-    UIController.prototype.editTestFunction = function(index) {
-        const functions = this.gameController.getTestModeFunctions();
-        const func = functions[index];
-        if (!func) return;
-        
-        // 使用智能分词加载函数表达式
-        this.expressionElements = this.tokenizeExpression(func.expression);
-        // 设置光标到末尾
-        this.cursorIndex = this.expressionElements.length;
-        this.updateExpressionDisplay();
-        
-        // 删除原函数（重新绘制时会添加新的）
-        this.deleteTestFunction(index);
-        
-        this.showMessage(`正在编辑: ${func.expression}`);
-    }
-;
-
-// deleteTestFunction
-    UIController.prototype.deleteTestFunction = function(index) {
-        const functions = this.gameController.getTestModeFunctions();
-        functions.splice(index, 1);
-        
-        // 重新绘制所有函数
-        this.redrawAllTestFunctions();
-        this.updateFunctionList();
-        
-        this.showMessage('函数已删除');
-    }
-;
-
-// addClearFunctionsButton
-    UIController.prototype.addClearFunctionsButton = function() {
-        // 检查是否已存在
-        if (document.getElementById('clear-functions-btn')) return;
-        
-        const btn = document.createElement('button');
-        btn.id = 'clear-functions-btn';
-        btn.className = 'btn btn-secondary';
-        btn.textContent = '清空所有函数';
-        btn.addEventListener('click', () => {
-            this.gameController.clearTestModeFunctions();
-            this.gridSystem.clearAll();
-            this.showMessage('已清空所有函数');
-        });
-        
-        // 插入到确认按钮之前
-        this.confirmBtn.parentElement.insertBefore(btn, this.confirmBtn);
-    }
-;
 
 // showMessage
     UIController.prototype.showMessage = function(message, type = 'info') {
