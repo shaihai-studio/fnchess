@@ -177,6 +177,10 @@ if (typeof UIController === 'undefined') {
                 this.elementsContainer.style.pointerEvents = 'none';
                 this.elementsContainer.style.opacity = '0.5';
             }
+            if (this.floatKeypadBody) {
+                this.floatKeypadBody.style.pointerEvents = 'none';
+                this.floatKeypadBody.style.opacity = '0.5';
+            }
             // 棋盘范围更新仍需进行（历史函数重新采样）
             const rangeChanged = this.gridSystem.updateRange(state.currentRound);
             if (rangeChanged) {
@@ -193,6 +197,10 @@ if (typeof UIController === 'undefined') {
             this.phaseHintElement.textContent = '构造函数并点击确认，函数将持续显示在画布上';
             this.confirmBtn.textContent = '绘制函数';
             this.initDraggableElements();
+            // 测试模式下也同步悬浮输入栏/圆形按钮的可见性与边界（与对战模式一致）
+            if (typeof this._applyFloatKeypadVisibility === 'function') {
+                this._applyFloatKeypadVisibility();
+            }
             return;
         }
         
@@ -254,6 +262,9 @@ if (typeof UIController === 'undefined') {
         this.phaseHintElement.textContent = hint;
         this.confirmBtn.textContent = confirmText;
 
+        // 悬浮计算器栏的「提交」按钮可用态与主确认按钮保持一致
+        if (this.floatKeypadSubmit) this.floatKeypadSubmit.disabled = this.confirmBtn.disabled;
+
         // 跳过本阶段按钮（P8）：仅 set_forbidden / set_locks 且轮到本地操作时显示；SELECT_TARGET 永不显示
         if (this.skipBtn) {
             const isHumanTurn = this.isP2PMode
@@ -268,6 +279,15 @@ if (typeof UIController === 'undefined') {
         if (this.elementsContainer) {
             this.elementsContainer.style.pointerEvents = blockInput ? 'none' : '';
             this.elementsContainer.style.opacity = blockInput ? '0.5' : '';
+        }
+        if (this.floatKeypadBody) {
+            this.floatKeypadBody.style.pointerEvents = blockInput ? 'none' : '';
+            this.floatKeypadBody.style.opacity = blockInput ? '0.5' : '';
+        }
+
+        // 悬浮计算器式输入栏：按阶段相关性显示/隐藏（input_function / set_locks 才显示）
+        if (typeof this._applyFloatKeypadVisibility === 'function') {
+            this._applyFloatKeypadVisibility();
         }
         
         // 更新棋盘范围

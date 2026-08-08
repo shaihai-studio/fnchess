@@ -76,7 +76,7 @@ class ExpressionAnalyzer {
     getPolynomialDegree(expression) {
         const cleanExpr = expression.toLowerCase().replace(/\s/g, '');
 
-        const nonPolyPattern = /(sin|cos|tan|arcsin|arccos|arctan|exp|ln|log|sqrt|abs)/;
+        const nonPolyPattern = /(sin|cos|tan|asin|acos|atan|exp|ln|log|sqrt|abs)/;
         if (nonPolyPattern.test(cleanExpr)) return -1;
         if (cleanExpr.includes('!')) return -1;
         if (cleanExpr.includes('(-1)^(1/2)') || cleanExpr.includes('(-1)^0.5') || cleanExpr.includes('i')) return -1;
@@ -254,7 +254,7 @@ class ExpressionAnalyzer {
     analyzeFunctionType(expression) {
         const cleanExpr = expression.replace(/\s+/g, '').replace(/[()（）]/g, '');
         let length = 0;
-        const tokenRegex = /(sin|cos|tan|arcsin|arccos|arctan|abs|exp|ln|log|sqrt|factorial)|(\d+(?:\.\d+)?)|(PI|π|e|i)|([+\-*/^!])|(x)/gi;
+        const tokenRegex = /(sin|cos|tan|asin|acos|atan|abs|exp|ln|log|sqrt|factorial)|(\d+(?:\.\d+)?)|(PI|π|e|i)|([+\-*/^!])|(x)/gi;
         while (tokenRegex.exec(cleanExpr) !== null) {
             length++;
         }

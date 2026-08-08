@@ -389,6 +389,9 @@ if (typeof UIController === 'undefined') {
 // handleStartSelectorKeys
     UIController.prototype.handleStartSelectorKeys = function(e) {
         if (!this.startModal || this.startModal.style.display === 'none') return false;
+        // 开始界面（标题页）没有选择器，方向键不响应（进入主界面才可用）
+        const mainPage = document.getElementById('main-page');
+        if (mainPage && mainPage.style.display === 'none') return false;
         const targetTag = e.target && e.target.tagName ? e.target.tagName.toLowerCase() : '';
         if (targetTag === 'input' || targetTag === 'textarea') return false;
         if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {

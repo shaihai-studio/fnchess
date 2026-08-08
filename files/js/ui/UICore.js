@@ -192,6 +192,18 @@ if (typeof UIController === 'undefined') {
         this.initStartSelectors();
         this.initEditor();
         this.initCampaignImport();
+        this.initFloatKeypad();
+        // 「开始游戏」按钮（开始界面）→「进入主界面」；主界面左上角「返回」→ 回开始界面
+        const startGoBtn = document.getElementById('start-go-btn');
+        if (startGoBtn) startGoBtn.addEventListener('click', () => {
+            if (window.audioManager) window.audioManager.playClick();
+            this.showMainPage();
+        });
+        const mainBackBtn = document.getElementById('main-back-btn');
+        if (mainBackBtn) mainBackBtn.addEventListener('click', () => {
+            if (window.audioManager) window.audioManager.playClick();
+            this.showStartPage();
+        });
         this.refreshStartSelectorDisplay();
         
         
@@ -533,11 +545,8 @@ if (typeof UIController === 'undefined') {
 
         // 统一的输入阶段准备：只做 UI 侧清理（模型清理由 GameController.prepareInputPhase() 负责）
         this.gameController.on('prepareInputPhase', (data) => {
-            // 「提交失败后保留解析式」开关——仅闯关/竞速模式生效
-            const isCampaignOrRace = this.gameController.gameMode === 'campaign' ||
-                                     this.gameController.gameMode === 'race';
-            const keepExpr = (data && data.clearExpression === false) ||
-                             (isCampaignOrRace && this.keepExprToggle && this.keepExprToggle.checked);
+            // 「保留解析式」已改为默认行为：提交失败后不自动清空表达式（原开关已删除）
+            const keepExpr = true;
             if (!keepExpr) {
                 this.clearExpression();
             }
@@ -871,10 +880,10 @@ if (typeof UIController === 'undefined') {
                 
                 // 2. 清空当前回合的目标格和禁区（但保留usedCells）
                 this.gridSystem.clearAll();
-                // 保留解析式开关——仅闯关/竞速模式生效，对战/P2P/AI 模式始终清空
-                const isCampaignOrRace = this.gameController.gameMode === 'campaign' ||
-                                         this.gameController.gameMode === 'race';
-                if (!(isCampaignOrRace && this.keepExprToggle && this.keepExprToggle.checked)) {
+                // 对战模式（local/ai/p2p）：每个回合结束后清空表达式，避免上一回合解析式残留到新回合
+                // （「提交失败后保留解析式」的默认保留行为仍作用于同一回合内的失败重试，不受影响）
+                const gm = this.gameController && this.gameController.gameMode;
+                if (gm === 'local' || gm === 'ai' || gm === 'p2p') {
                     this.clearExpression();
                 }
                 
@@ -1502,9 +1511,12 @@ if (typeof UIController === 'undefined') {
 
 // forceStopGame
     UIController.prototype.forceStopGame = function() {
-        // 1. 停止计时器
+        // 1. 停止计时器（阶段倒计时 + 选格子倒计时，两者相互独立，退出时必须都停）
         if (this.gameController && typeof this.gameController.stopTimer === 'function') {
             this.gameController.stopTimer();
+        }
+        if (this.gameController && typeof this.gameController.stopTargetTimer === 'function') {
+            this.gameController.stopTargetTimer();
         }
 
         // 2. 清空 AI 触发队列，防止退出后 AI 继续行动
@@ -1977,7 +1989,7 @@ if (typeof UIController === 'undefined') {
                 this.messageElement.textContent = '';
                 this.messageElement.className = 'message';
                 this.messageElement.style.opacity = '1';
-                if (this.messagePanel) this.messagePanel.classList.remove('visible');
+                // 面板常驻显示（不随文字消失而隐藏），仅清空文字内容
             } else {
                 this.messageElement.style.opacity = opacity.toString();
             }

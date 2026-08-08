@@ -599,10 +599,10 @@ class GameController {
         }
 
         // 如果固定锁定数量不足，从剩余元素中补充（不与已有元素冲突）
-        // 自定义关卡：未启用反三角函数时，从锁定候选池中剔除 arcsin/arccos/arctan（锁定上限随之收紧）
+        // 自定义关卡：未启用反三角函数时，从锁定候选池中剔除 asin/acos/atan（锁定上限随之收紧）
         const arcAvailable = !!(this.raceState && this.raceState.customConfig && this.raceState.customConfig.arcEnabled);
-        const _arcSet = new Set(['arcsin', 'arccos', 'arctan']);
-        const allElements = ['+','-','*','/','^','!','sin','cos','tan','arcsin','arccos','arctan','abs','sqrt','ln','log','exp','factorial','0','1','2','3','4','5','6','7','8','9','π','e','i'].filter(e => arcAvailable || !_arcSet.has(e));
+        const _arcSet = new Set(['asin', 'acos', 'atan']);
+        const allElements = ['+','-','*','/','^','!','sin','cos','tan','asin','acos','atan','abs','sqrt','ln','log','exp','factorial','0','1','2','3','4','5','6','7','8','9','π','e','i'].filter(e => arcAvailable || !_arcSet.has(e));
         const banned = new Set(['x', '(', ')']);
         let pool = allElements.filter(el => !banned.has(el) && !lockedElements.includes(el));
 
@@ -745,6 +745,12 @@ class GameController {
         this.usedCells = [];
         this.resetRoundState();
         this.setPhase(this.phases.SELECT_TARGET);
+        // ★ resetGame 仅用于退出对局/返回界面时重置状态，不应留下任何运行中的倒计时：
+        //   setPhase(SELECT_TARGET) 会触发 startTargetTimer() 启动「选格子/锁定」倒计时，
+        //   若不停掉，退出后倒计时仍继续走，最终触发超时扣分/消极比赛判负弹窗。
+        //   真正开局走 initGame()，那里会按需重新启动倒计时。
+        this.stopTimer();
+        this.stopTargetTimer();
         this.emit('gameReset');
     }
     

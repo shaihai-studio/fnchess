@@ -35,15 +35,19 @@ UIController.prototype.initEditor = function() {
         mode: 'target',
         precision: 4,
         anchorMode: 'corner',
-        boxSelectEnabled: false,
-        pathPaintEnabled: false,
+        rectEnabled: false,
+        lineEnabled: false,
+        brushEnabled: false,
+        selectEnabled: false,
+        selection: null,
         swapMouse: false,
+        referenceExpr: '',
         history: [],
         historyIndex: -1,
         dragState: null
     };
 
-    const els = Object.fromEntries(['id','difficulty','nextId','targetCells','forbiddenCells','lockedElements','exportBox','levelList','gridCanvas','status','btnBack','btnCloseLeft','btnCloseRight','btnShowLeft','btnShowRight','btnCopyOne','btnAdd','btnDelete','btnCopyExport','btnDownload','fileNameInput','precisionSelect','btnBoxSelect','btnPathPaint','btnSwapMouse','anchorModeSelect'].map(id => [id, document.getElementById(id)]));
+    const els = Object.fromEntries(['id','difficulty','nextId','targetCells','forbiddenCells','lockedElements','exportBox','levelList','gridCanvas','status','btnBack','btnCloseLeft','btnCloseRight','btnShowLeft','btnShowRight','btnCopyOne','btnAdd','btnDelete','btnCopyExport','btnDownload','fileNameInput','precisionSelect','btnRect','btnLine','btnBrush','btnSelect','btnSwapMouse','btnUndo','btnFx','fxPanel','fxInput','btnFxClear','anchorModeSelect','btnArrowUp','btnArrowDown','btnArrowLeft','btnArrowRight','btnTrash'].map(id => [id, document.getElementById(id)]));
     const ctx = els.gridCanvas.getContext('2d');
 
     const parseLines = (text) => text.split('\n').map(s => s.trim()).filter(Boolean);
@@ -53,11 +57,14 @@ UIController.prototype.initEditor = function() {
     const autoGrow = (el) => { if (!el || el.offsetParent === null) return; el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; };
     const snap = (n) => Number((Math.round(n * state.precision) / state.precision).toFixed(10));
     const cloneLevels = () => structuredClone(state.levels);
+    const canUndo = () => state.historyIndex > 0;
+    const updateUndoBtn = () => { if (els.btnUndo) els.btnUndo.disabled = !canUndo(); };
     const pushHistory = () => {
         const snapshot = cloneLevels();
         state.history = state.history.slice(0, state.historyIndex + 1);
         state.history.push(snapshot);
         state.historyIndex = state.history.length - 1;
+        updateUndoBtn();
     };
     const restoreHistory = (index) => {
         if (index < 0 || index >= state.history.length) return;
@@ -65,6 +72,13 @@ UIController.prototype.initEditor = function() {
         state.current = Math.min(state.current, state.levels.length - 1);
         state.historyIndex = index;
         syncFormFromLevel();
+        updateUndoBtn();
+    };
+    // 撤回：效果等同 Ctrl+Z
+    const doUndo = () => {
+        if (!canUndo()) { setStatus('已无更多可撤回步骤'); return; }
+        restoreHistory(state.historyIndex - 1);
+        setStatus('已撤回上一步操作');
     };
 
     function currentLevel() { return state.levels[state.current]; }
@@ -200,12 +214,51 @@ UIController.prototype.initEditor = function() {
         ctx.strokeRect(left, top, right - left, bottom - top);
     }
 
+    function drawSelectionHighlight(sel) {
+        if (!sel || !sel.cells.length) return;
+        const { cellSize, w, h } = gridMetrics();
+        ctx.save();
+        ctx.fillStyle = 'rgba(253,224,71,0.18)';
+        ctx.strokeStyle = '#fde047';
+        ctx.lineWidth = 2;
+        sel.cells.forEach((p) => {
+            const left = w / 2 + p.x * cellSize;
+            const top = h / 2 - (p.y + 1) * cellSize;
+            ctx.fillRect(left, top, cellSize, cellSize);
+            ctx.strokeRect(left + 1, top + 1, cellSize - 2, cellSize - 2);
+        });
+        ctx.restore();
+    }
+
+    // 直线实时预览：拖动过程中高亮将要落格的格点序列
+    function drawLinePreview(a, b) {
+        if (!a || !b) return;
+        const { cellSize, w, h } = gridMetrics();
+        const cells = linePathCells(a, b);
+        ctx.save();
+        ctx.fillStyle = 'rgba(34, 211, 238, 0.28)';
+        ctx.strokeStyle = 'rgba(34, 211, 238, 0.9)';
+        ctx.lineWidth = 1.5;
+        cells.forEach((p) => {
+            const left = w / 2 + p.x * cellSize;
+            const top = h / 2 - (p.y + 1) * cellSize;
+            ctx.fillRect(left + 0.5, top + 0.5, cellSize - 1, cellSize - 1);
+            ctx.strokeRect(left + 0.5, top + 0.5, cellSize - 1, cellSize - 1);
+        });
+        ctx.restore();
+    }
+
     function draw() {
         drawGrid();
         const lvl = currentLevel();
         (lvl.targetCells || []).forEach((p, i) => drawCellRect(p, 'rgba(34,197,94,0.5)', `T${i+1}`));
         (lvl.forbiddenCells || []).forEach((p, i) => drawCellRect(p, 'rgba(239,68,68,0.5)', `F${i+1}`));
-        drawSelectionRect(state.dragState?.selecting ? state.dragState : null);
+        const ds = state.dragState;
+        const showRect = ds && (ds.rectMode || (ds.selectMode && !ds.moveMode));
+        drawSelectionRect(showRect ? ds : null);
+        if (ds && ds.lineMode) drawLinePreview(ds.start, ds.end);
+        drawSelectionHighlight(state.selection);
+        drawReferenceCurve();
         ctx.fillStyle = '#facc15';
         ctx.font = '13px ui-monospace, monospace';
         (lvl.lockedElements || []).forEach((s, i) => ctx.fillText(`锁 ${i+1}: ${s}`, 16, 24 + i * 18));
@@ -244,22 +297,112 @@ UIController.prototype.initEditor = function() {
         state.anchorMode = els.anchorModeSelect.value;
         setStatus(state.anchorMode === 'center' ? '点击基准：中心' : '点击基准：左下角');
     };
-    els.btnBoxSelect.onclick = () => {
-        state.boxSelectEnabled = !state.boxSelectEnabled;
-        els.btnBoxSelect.classList.toggle('active', state.boxSelectEnabled);
-        setStatus(state.boxSelectEnabled ? '框选已开启' : '框选已关闭');
+    // 四个工具互斥：开启一个会关闭其余；关闭选中会清空选择集
+    const setTool = (tool) => {
+        state.rectEnabled = tool === 'rect';
+        state.lineEnabled = tool === 'line';
+        state.brushEnabled = tool === 'brush';
+        const sel = tool === 'select';
+        if (!sel) state.selection = null;
+        state.selectEnabled = sel;
+        els.btnRect.classList.toggle('active', state.rectEnabled);
+        els.btnLine.classList.toggle('active', state.lineEnabled);
+        els.btnBrush.classList.toggle('active', state.brushEnabled);
+        els.btnSelect.classList.toggle('active', sel);
+        if (sel) setStatus('框选（移动）已开启：拖动框住区域选中，随后可拖动或用方向键/实体键移动');
+        else if (tool === 'rect') setStatus('长方形已开启');
+        else if (tool === 'line') setStatus('直线已开启');
+        else if (tool === 'brush') setStatus('画笔已开启：按住左/右键拖动即绘目标格/禁止区');
+        else setStatus('已关闭所有绘制工具');
+        draw();
     };
-    els.btnPathPaint.onclick = () => {
-        state.pathPaintEnabled = !state.pathPaintEnabled;
-        els.btnPathPaint.classList.toggle('active', state.pathPaintEnabled);
-        setStatus(state.pathPaintEnabled ? '路径涂满已开启' : '路径涂满已关闭');
-    };
+    els.btnRect.onclick = () => setTool(state.rectEnabled ? null : 'rect');
+    els.btnLine.onclick = () => setTool(state.lineEnabled ? null : 'line');
+    els.btnBrush.onclick = () => setTool(state.brushEnabled ? null : 'brush');
+    els.btnSelect.onclick = () => setTool(state.selectEnabled ? null : 'select');
+    els.btnArrowUp.onclick = () => moveSelectionByKey('up');
+    els.btnArrowDown.onclick = () => moveSelectionByKey('down');
+    els.btnArrowLeft.onclick = () => moveSelectionByKey('left');
+    els.btnArrowRight.onclick = () => moveSelectionByKey('right');
+    els.btnTrash.onclick = () => deleteSelection();
     els.btnSwapMouse.onclick = () => {
         state.swapMouse = !state.swapMouse;
         els.btnSwapMouse.classList.toggle('active', state.swapMouse);
         els.btnSwapMouse.textContent = state.swapMouse ? '左键:禁止 右键:目标' : '左键:目标 右键:禁止';
         setStatus(state.swapMouse ? '已互换：左键禁止区 / 右键目标格' : '已恢复：左键目标格 / 右键禁止区');
     };
+    els.btnUndo.onclick = () => { doUndo(); };
+
+    // ---- 函数参考线（fx）：与函数棋相同的 geogebra-lite 引擎，纯辅助，不影响关卡数据 ----
+    const fxParser = new FunctionParser();
+    const refGrid = {
+        get canvas() { return { width: els.gridCanvas.clientWidth || 800, height: els.gridCanvas.clientHeight || 600 }; },
+        ctx,
+        range: 10,
+        getRange: () => ({ min: -10, max: 10 }),
+        mathToCanvas: (x, y) => worldToCanvas(x, y),
+        draw: () => {}
+    };
+    const refRenderer = new FunctionRenderer(refGrid);
+    const REF_COLOR = 'rgba(34, 211, 238, 0.85)';
+    // 采样结果缓存：表达式或画布尺寸变化时才重新采样（避免每次 draw 重算导致拖动卡顿）
+    let refCache = { expr: null, w: 0, h: 0, segments: null };
+    const drawReferenceCurve = () => {
+        const expr = state.referenceExpr;
+        if (!expr) return;
+        try {
+            fxParser.parse(expr); // 非法表达式不绘制
+            const w = els.gridCanvas.clientWidth || 800;
+            const h = els.gridCanvas.clientHeight || 600;
+            if (refCache.expr !== expr || refCache.w !== w || refCache.h !== h) {
+                refCache.expr = expr;
+                refCache.w = w;
+                refCache.h = h;
+                refCache.segments = refRenderer._sampleToSegments(expr, -10, 10);
+            }
+            ctx.save();
+            ctx.strokeStyle = REF_COLOR;
+            ctx.lineWidth = 2;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            for (const seg of refCache.segments) {
+                if (seg.length < 2) continue;
+                ctx.beginPath();
+                const p0 = worldToCanvas(seg[0].x, seg[0].y);
+                ctx.moveTo(p0.x, p0.y);
+                for (let i = 1; i < seg.length; i++) {
+                    const p = worldToCanvas(seg[i].x, seg[i].y);
+                    ctx.lineTo(p.x, p.y);
+                }
+                ctx.stroke();
+            }
+            ctx.restore();
+        } catch (e) { /* 输入框下已提示，这里静默 */ }
+    };
+    let fxTimer = null;
+    const applyFxNow = (expr) => {
+        state.referenceExpr = expr;
+        if (!expr) {
+            setStatus('已清除函数参考线');
+        } else {
+            try { fxParser.parse(expr); setStatus('参考线已更新（仅辅助设计，不影响关卡）'); }
+            catch (err) { setStatus(`表达式有误：${err.message}`); }
+        }
+        draw();
+    };
+    const fxDebounced = (expr) => { clearTimeout(fxTimer); fxTimer = setTimeout(() => applyFxNow(expr), 300); };
+    els.btnFx.onclick = () => {
+        const show = els.fxPanel.hidden;
+        els.fxPanel.hidden = !show;
+        els.btnFx.classList.toggle('active', show);
+        if (show) els.fxInput.focus();
+    };
+    els.fxInput.addEventListener('input', () => fxDebounced(els.fxInput.value.trim()));
+    els.fxInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); clearTimeout(fxTimer); applyFxNow(els.fxInput.value.trim()); }
+        if (e.key === 'Escape') { els.fxPanel.hidden = true; els.btnFx.classList.remove('active'); }
+    });
+    els.btnFxClear.onclick = () => { clearTimeout(fxTimer); els.fxInput.value = ''; applyFxNow(''); };
 
     els.id.oninput = els.difficulty.oninput = els.nextId.oninput = () => { commitFormToLevel(); };
     els.targetCells.oninput = els.forbiddenCells.oninput = els.lockedElements.oninput = () => { commitFormToLevel(); };
@@ -331,13 +474,14 @@ ${exportAll()}
             }
         }
     };
-    const addPathCells = (start, end, type) => {
-        const lvl = currentLevel();
+    // 直线：计算首尾两点间按精度吸附的格点序列（不修改关卡，供实时预览与落格共用）
+    const linePathCells = (start, end) => {
         const dx = end.x - start.x;
         const dy = end.y - start.y;
         const steps = Math.max(Math.abs(dx), Math.abs(dy)) * state.precision * 4;
         const count = Math.max(1, Math.ceil(steps));
         const visited = new Set();
+        const cells = [];
         for (let i = 0; i <= count; i++) {
             const t = count === 0 ? 0 : i / count;
             const x = snap(start.x + dx * t);
@@ -345,32 +489,59 @@ ${exportAll()}
             const key = `${x},${y}`;
             if (visited.has(key)) continue;
             visited.add(key);
-            addCellAt(lvl, { x, y }, type);
+            cells.push({ x, y });
+        }
+        return cells;
+    };
+    const addPathCells = (start, end, type) => {
+        const lvl = currentLevel();
+        linePathCells(start, end).forEach(c => addCellAt(lvl, c, type));
+    };
+    // 画笔：沿拖动轨迹逐段落格，落点按精度（1/2、1/3、1/4…）吸附，半格采样保证连续覆盖
+    const paintSegment = (a, b, type) => {
+        const lvl = currentLevel();
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const dist = Math.hypot(dx, dy);
+        const step = 0.5 / state.precision;
+        const count = Math.max(1, Math.ceil(dist / step));
+        for (let i = 0; i <= count; i++) {
+            const t = i / count;
+            addCellAt(lvl, { x: snap(a.x + dx * t), y: snap(a.y + dy * t) }, type);
         }
     };
     const startSelection = (e, type) => {
         const start = gridCellFromEvent(e);
+        const brush = state.brushEnabled;
         state.dragState = {
             type,
             start,
             end: start,
-            selecting: true,
+            rectMode: state.rectEnabled && !brush,
             moved: false,
-            pathMode: state.pathPaintEnabled,
+            lineMode: state.lineEnabled && !brush,
+            brushMode: brush,
             button: e.button,
             startX: e.clientX,
             startY: e.clientY,
             longPressTimer: null,
-            committed: false
+            committed: false,
+            lastBrush: cellFromEvent(e)
         };
-        if (!state.boxSelectEnabled && !state.pathPaintEnabled) {
+        if (brush) {
+            // 画笔：按下即落第一个格，整笔在 pointerup 时统一入一次历史
+            addCellAt(currentLevel(), state.dragState.lastBrush, type);
+            syncFormFromLevel();
+            draw();
+            return;
+        }
+        if (!state.rectEnabled && !state.lineEnabled) {
             addCellAt(currentLevel(), start, type);
             syncFormFromLevel();
             pushHistory();
             state.dragState.committed = true;
         }
         state.dragState.longPressTimer = window.setTimeout(() => {
-            if (state.dragState && state.boxSelectEnabled) state.dragState.selecting = true;
+            if (state.dragState && state.rectEnabled && !state.brushEnabled) state.dragState.rectMode = true;
         }, 180);
         draw();
     };
@@ -383,15 +554,19 @@ ${exportAll()}
             draw();
             return;
         }
-        if (s.pathMode && s.moved) {
+        if (s.brushMode) {
+            // 整笔已在 move 中逐格落点，这里统一入一次历史
+            syncFormFromLevel();
+            pushHistory();
+        } else if (s.lineMode && s.moved) {
             addPathCells(s.start, s.end, s.type);
             syncFormFromLevel();
             pushHistory();
-        } else if (s.selecting && s.moved && state.boxSelectEnabled) {
+        } else if (s.rectMode && s.moved && state.rectEnabled) {
             addCellRange(s.start, s.end, s.type);
             syncFormFromLevel();
             pushHistory();
-        } else if ((state.boxSelectEnabled || s.pathMode) && !s.moved) {
+        } else if ((state.rectEnabled || s.lineMode) && !s.moved) {
             addCellAt(currentLevel(), s.start, s.type);
             syncFormFromLevel();
             pushHistory();
@@ -401,37 +576,172 @@ ${exportAll()}
     };
 
     els.gridCanvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+    // ---- 新「框选」：框住区域选中，随后可拖动 / 方向键 / 实体键移动 ----
+    const canvasPoint = (e) => {
+        const rect = els.gridCanvas.getBoundingClientRect();
+        return canvasToWorld(e.clientX - rect.left, e.clientY - rect.top);
+    };
+    const getSelectionBounds = (sel) => {
+        const xs = sel.cells.map(c => c.x), ys = sel.cells.map(c => c.y);
+        return { minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys) };
+    };
+    const selectCellsInRect = (start, end) => {
+        const lvl = currentLevel();
+        const minX = Math.min(start.x, end.x), maxX = Math.max(start.x, end.x);
+        const minY = Math.min(start.y, end.y), maxY = Math.max(start.y, end.y);
+        const cells = [];
+        (lvl.targetCells || []).forEach(p => {
+            if (Math.floor(p.x) >= minX && Math.floor(p.x) <= maxX && Math.floor(p.y) >= minY && Math.floor(p.y) <= maxY)
+                cells.push({ x: p.x, y: p.y, type: 'target' });
+        });
+        (lvl.forbiddenCells || []).forEach(p => {
+            if (Math.floor(p.x) >= minX && Math.floor(p.x) <= maxX && Math.floor(p.y) >= minY && Math.floor(p.y) <= maxY)
+                cells.push({ x: p.x, y: p.y, type: 'forbidden' });
+        });
+        return cells;
+    };
+    const moveSelectionBy = (dx, dy) => {
+        const sel = state.selection;
+        if (!sel || !sel.cells.length) { setStatus('请先用「框选」框住区域选中格子，再移动'); return false; }
+        const lvl = currentLevel();
+        sel.cells.forEach(c => removeCellAt(lvl, { x: c.x, y: c.y }));
+        const newCells = sel.cells.map(c => ({ x: snap(c.x + dx), y: snap(c.y + dy), type: c.type }));
+        newCells.forEach(c => addCellAt(lvl, { x: c.x, y: c.y }, c.type));
+        sel.cells = newCells;
+        syncFormFromLevel();
+        draw();
+        return true;
+    };
+    const moveSelectionByKey = (dir) => {
+        if (!state.selection || !state.selection.cells.length) { setStatus('请先用「框选」框住区域选中格子，再移动'); return; }
+        const unit = 1 / state.precision;
+        const d = { up: [0, unit], down: [0, -unit], left: [-unit, 0], right: [unit, 0] }[dir];
+        if (!d) return;
+        const ok = moveSelectionBy(d[0], d[1]);
+        if (ok) { pushHistory(); setStatus(`已向${ {up:'上',down:'下',left:'左',right:'右'}[dir] }移动一个精度单位（1/${state.precision}）`); }
+    };
+    // 删除选中区域的所有格子（Delete/Backspace / 实体垃圾桶按钮），整批入一次历史
+    const deleteSelection = () => {
+        const sel = state.selection;
+        if (!sel || !sel.cells.length) { setStatus('请先用「框选」框住区域选中格子，再删除'); return false; }
+        const lvl = currentLevel();
+        const count = sel.cells.length;
+        sel.cells.forEach(c => removeCellAt(lvl, { x: c.x, y: c.y }));
+        state.selection = null;
+        syncFormFromLevel();
+        pushHistory();
+        setStatus(`已删除 ${count} 个格子`);
+        draw();
+        return true;
+    };
+    const handleSelectDown = (e) => {
+        if (e.button !== 0 && e.button !== 2) return;
+        e.preventDefault();
+        els.gridCanvas.setPointerCapture(e.pointerId);
+        const p = canvasPoint(e);
+        const sel = state.selection;
+        let inside = false;
+        if (sel && sel.cells.length) {
+            const b = getSelectionBounds(sel);
+            inside = (p.x >= b.minX - 1e-6 && p.x <= b.maxX + 1 + 1e-6 && p.y >= b.minY - 1e-6 && p.y <= b.maxY + 1 + 1e-6);
+        }
+        if (sel && sel.cells.length && inside) {
+            state.dragState = { selectMode: true, moveMode: true, home: structuredClone(sel.cells), origin: { x: p.x, y: p.y }, moved: false };
+        } else {
+            state.dragState = { selectMode: true, moveMode: false, start: gridCellFromEvent(e), end: gridCellFromEvent(e), moved: false, startX: e.clientX, startY: e.clientY };
+        }
+        draw();
+    };
+    const handleSelectMove = (e) => {
+        const ds = state.dragState;
+        if (ds.moveMode) {
+            const p = canvasPoint(e);
+            const dx = snap(p.x - ds.origin.x);
+            const dy = snap(p.y - ds.origin.y);
+            const lvl = currentLevel();
+            state.selection.cells.forEach(c => removeCellAt(lvl, { x: c.x, y: c.y }));
+            const newCells = ds.home.map(c => ({ x: snap(c.x + dx), y: snap(c.y + dy), type: c.type }));
+            newCells.forEach(c => addCellAt(lvl, { x: c.x, y: c.y }, c.type));
+            state.selection.cells = newCells;
+            ds.moved = true;
+            syncFormFromLevel();
+            draw();
+        } else {
+            const dx = Math.abs(e.clientX - ds.startX), dy = Math.abs(e.clientY - ds.startY);
+            if (dx > 4 || dy > 4) ds.moved = true;
+            ds.end = gridCellFromEvent(e);
+            draw();
+        }
+    };
+    const handleSelectUp = (e) => {
+        const ds = state.dragState;
+        if (!ds) return;
+        try { els.gridCanvas.releasePointerCapture(e.pointerId); } catch {}
+        if (ds.moveMode) {
+            if (ds.moved) { pushHistory(); setStatus('已移动选中区域'); }
+        } else {
+            if (ds.moved) {
+                const cells = selectCellsInRect(ds.start, ds.end);
+                if (cells.length) {
+                    state.selection = { cells };
+                    setStatus(`已选中 ${cells.length} 个格子，可拖动或用方向键/实体键移动（每次一个精度单位）`);
+                } else {
+                    state.selection = null;
+                    setStatus('框选区域内没有格子');
+                }
+            } else if (state.selection) {
+                state.selection = null;
+                setStatus('已取消选择');
+            }
+        }
+        state.dragState = null;
+        draw();
+    };
+
     els.gridCanvas.addEventListener('pointerdown', (e) => {
-        if (!state.boxSelectEnabled && !state.pathPaintEnabled) return;
+        if (state.selectEnabled) { handleSelectDown(e); return; }
+        if (!state.rectEnabled && !state.lineEnabled && !state.brushEnabled) return;
         if (e.button !== 0 && e.button !== 2) return;
         e.preventDefault();
         els.gridCanvas.setPointerCapture(e.pointerId);
         startSelection(e, typeForButton(e.button));
     });
     els.gridCanvas.addEventListener('pointermove', (e) => {
-        if (!state.dragState || (!state.boxSelectEnabled && !state.pathPaintEnabled)) return;
+        if (!state.dragState) return;
+        if (state.dragState.selectMode) { handleSelectMove(e); return; }
+        if (!state.rectEnabled && !state.lineEnabled && !state.brushEnabled) return;
         const dx = Math.abs(e.clientX - state.dragState.startX);
         const dy = Math.abs(e.clientY - state.dragState.startY);
         if (dx > 4 || dy > 4) state.dragState.moved = true;
+        if (state.dragState.brushMode) {
+            const cur = cellFromEvent(e);
+            paintSegment(state.dragState.lastBrush, cur, state.dragState.type);
+            state.dragState.lastBrush = cur;
+            syncFormFromLevel();
+            draw();
+            return;
+        }
         state.dragState.end = gridCellFromEvent(e);
         draw();
     });
     els.gridCanvas.addEventListener('pointerup', (e) => {
-        if (!state.boxSelectEnabled && !state.pathPaintEnabled) return;
+        if (state.dragState && state.dragState.selectMode) { handleSelectUp(e); return; }
+        if (!state.rectEnabled && !state.lineEnabled && !state.brushEnabled) return;
         if (state.dragState) {
             try { els.gridCanvas.releasePointerCapture(e.pointerId); } catch {}
             finishSelection();
         }
     });
     els.gridCanvas.addEventListener('click', (e) => {
-        if (state.boxSelectEnabled || state.pathPaintEnabled) return;
+        if (state.selectEnabled || state.rectEnabled || state.lineEnabled || state.brushEnabled) return;
         const point = cellFromEvent(e);
         addCellAt(currentLevel(), point, state.swapMouse ? 'forbidden' : 'target');
         syncFormFromLevel();
         pushHistory();
     });
     els.gridCanvas.addEventListener('contextmenu', (e) => {
-        if (state.boxSelectEnabled || state.pathPaintEnabled) return;
+        if (state.selectEnabled || state.rectEnabled || state.lineEnabled || state.brushEnabled) return;
         e.preventDefault();
         const point = cellFromEvent(e);
         addCellAt(currentLevel(), point, state.swapMouse ? 'target' : 'forbidden');
@@ -447,7 +757,32 @@ ${exportAll()}
     window.addEventListener('keydown', (e) => {
         if (editorView.style.display === 'none') return;
         if (e.ctrlKey && e.key.toLowerCase() === 's') { e.preventDefault(); exportAll(); }
-        if (e.ctrlKey && e.key.toLowerCase() === 'z') { e.preventDefault(); restoreHistory(state.historyIndex - 1); }
+        if (e.ctrlKey && e.key.toLowerCase() === 'z') { e.preventDefault(); doUndo(); }
+        // 在输入框/文本域/下拉框内时，移动与删除键交给输入控件（如 fx 表达式、JSON 文本域），不劫持
+        const t = e.target;
+        const editable = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
+        if (editable) return;
+        // 方向键：移动选中区域
+        if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+            if (state.selection && state.selection.cells.length) {
+                e.preventDefault();
+                moveSelectionByKey({ ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' }[e.key]);
+            }
+        }
+        // WASD：等同方向键移动（W上 A左 S下 D右），带修饰键时放行（如 Ctrl+W 关闭标签页）
+        if (!e.ctrlKey && !e.metaKey && !e.altKey && ['w', 'a', 's', 'd'].includes(e.key.toLowerCase())) {
+            if (state.selection && state.selection.cells.length) {
+                e.preventDefault();
+                moveSelectionByKey({ w: 'up', a: 'left', s: 'down', d: 'right' }[e.key.toLowerCase()]);
+            }
+        }
+        // Delete / Backspace：删除选中区域的所有格子
+        if (e.key === 'Delete' || e.key === 'Backspace') {
+            if (state.selection && state.selection.cells.length) {
+                e.preventDefault();
+                deleteSelection();
+            }
+        }
     });
 
     state.levels = structuredClone(sampleLevels);
@@ -487,6 +822,10 @@ UIController.prototype.openEditor = function() {
     if (!this.editorView) return;
     this.hideModal(this.startModal);
     this.editorView.style.display = 'flex';
+    // 编辑器打开时隐藏悬浮输入栏/圆形按钮
+    if (typeof this._applyFloatKeypadVisibility === 'function') this._applyFloatKeypadVisibility();
+    // 进入编辑器默认隐藏左右两侧面板（面板浮于坐标系之上，显隐不影响画布）
+    this.editorView.classList.add('left-hidden', 'right-hidden');
     // 等布局生效（display 变更 + 重排）后再测量画布，避免尺寸为 0
     requestAnimationFrame(() => {
         if (this._editorFit) this._editorFit();
@@ -502,5 +841,7 @@ UIController.prototype.openEditor = function() {
 UIController.prototype.closeEditor = function() {
     if (!this.editorView) return;
     this.editorView.style.display = 'none';
+    // 编辑器关闭后恢复悬浮输入栏可见性（回到主界面/开始界面，通常不可见，仅刷新状态）
+    if (typeof this._applyFloatKeypadVisibility === 'function') this._applyFloatKeypadVisibility();
     this.showModal(this.startModal);
 };

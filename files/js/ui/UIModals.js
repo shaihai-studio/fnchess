@@ -57,6 +57,12 @@ if (typeof UIController === 'undefined') {
         el.classList.remove('modal-exiting');
         el.style.display = display;
 
+        // 打开开始界面时：默认落到「主界面」（模式选择），方便快速开始下一局；
+        // splash 等真正的首次进入由调用方在 showModal 后显式调 showStartPage 切到「开始界面」。
+        if (el === this.startModal && typeof this.showMainPage === 'function') {
+            this.showMainPage();
+        }
+
         // 强制 reflow 确保动画从头播放
         void el.offsetWidth;
 
@@ -142,6 +148,26 @@ if (typeof UIController === 'undefined') {
     }
 ;
 
+// showStartPage — 「开始界面」（精简首页）：标题 + 开始游戏 + 关于我们
+    UIController.prototype.showStartPage = function() {
+        const page = document.getElementById('start-page');
+        const main = document.getElementById('main-page');
+        if (page) page.style.display = '';
+        if (main) main.style.display = 'none';
+    }
+;
+
+// showMainPage — 「主界面」（模式选择）：原开始界面的全部功能；返回主界面 = 回到这里
+    UIController.prototype.showMainPage = function() {
+        const page = document.getElementById('start-page');
+        const main = document.getElementById('main-page');
+        if (page) page.style.display = 'none';
+        if (main) main.style.display = '';
+        // 进入主界面时刷新选择器显示（难度/回合等文案）
+        if (typeof this.refreshStartSelectorDisplay === 'function') this.refreshStartSelectorDisplay();
+    }
+;
+
 // showSplash
     UIController.prototype.showSplash = function() {
         const splash = document.getElementById('splash-screen');
@@ -189,6 +215,8 @@ if (typeof UIController === 'undefined') {
         setTimeout(() => {
             splash.style.display = 'none';
             this.showModal(document.getElementById('start-modal'));
+            // splash → 「开始界面」（标题页），与 showModal 默认落「主界面」区分开
+            if (typeof this.showStartPage === 'function') this.showStartPage();
             if (window.audioManager) window.audioManager.startBgm();
         }, 900);
     }
