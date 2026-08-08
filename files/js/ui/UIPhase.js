@@ -196,6 +196,9 @@ if (typeof UIController === 'undefined') {
             this.currentPlayerElement.textContent = '测试模式';
             this.phaseHintElement.textContent = '构造函数并点击确认，函数将持续显示在画布上';
             this.confirmBtn.textContent = '绘制函数';
+            // 测试模式：提交按钮保持可用（与勾按钮同功能，不走 P2P 回合禁用）
+            this.confirmBtn.disabled = false;
+            if (this.floatKeypadSubmit) this.floatKeypadSubmit.disabled = false;
             this.initDraggableElements();
             // 测试模式下也同步悬浮输入栏/圆形按钮的可见性与边界（与对战模式一致）
             if (typeof this._applyFloatKeypadVisibility === 'function') {

@@ -16,7 +16,7 @@
 
 body {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    background: #050510;
+    background: #070d1a;
     color: #e5e7eb;
     min-height: 100vh;
     min-height: 100dvh;
@@ -28,19 +28,14 @@ body {
     position: relative;
 }
 
-/* ========== Valorant 风格动态渐变背景 ========== */
+/* ========== 统一深色背景（与坐标系/画布一致 #070d1a） ========== */
 body::before {
     content: '';
     position: fixed;
     inset: -50%;
     z-index: -1;
     pointer-events: none;
-    background:
-        radial-gradient(ellipse at 30% 40%, rgba(30, 64, 175, 0.13) 0%, transparent 65%),
-        radial-gradient(ellipse at 70% 60%, rgba(88, 28, 135, 0.10) 0%, transparent 65%),
-        radial-gradient(ellipse at 50% 50%, rgba(6, 182, 212, 0.05) 0%, transparent 55%),
-        radial-gradient(ellipse at 60% 30%, rgba(15, 23, 42, 0.4) 0%, transparent 70%);
-    animation: bgDrift 16s ease-in-out infinite alternate;
+    background: #070d1a;
 }
 
 @keyframes bgDrift {
@@ -222,8 +217,8 @@ body::before {
 /* 顶部信息栏 */
 .header {
     height: 60px;
-    background: rgba(15, 23, 42, 0.8);
-    backdrop-filter: blur(10px);
+    background: #070d1a;
+    backdrop-filter: none;
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -1062,26 +1057,21 @@ body::before {
     height: calc(100dvh - var(--bottom-bar-height)); /* 真机 Safari 用动态视口（不含浏览器 UI） */
 }
 
-/* 左侧 Canvas 区域（原表达式栏已删除，画布可占更大空间） */
+/* 左侧 Canvas 区域：撑满坐标系面板，画布居中，无边框/背景；
+   竖屏时横向撑满、纵向居中；横屏时画布纵向居中、横向留白对称 */
 .canvas-section {
     flex: 1 1 auto;
     min-width: 0;
+    min-height: 0;
     display: flex;
     justify-content: center;
     align-items: center;
-    background: rgba(15, 23, 42, 0.6);
-    border-radius: 18px;
-    padding: 20px;
+    padding: 0;
     position: relative;
-    border: 1px solid rgba(59, 130, 246, 0.12);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
 }
 
 #game-canvas {
     background: #070d1a;
-    border-radius: 16px;
-    box-shadow: 0 0 20px rgba(0, 0, 0, 0.3);
     max-width: 100%;
     max-height: 100%;
     touch-action: manipulation;
@@ -1189,25 +1179,28 @@ body::before {
     color: #e5e7eb;
     line-height: 1.5;
 }
-/* 非测试模式：整块隐藏下方控制面板（测试模式需右侧显示已绘制函数） */
-body:not(.layout-test-mode) .control-panel {
+/* 整块隐藏右侧/下方控制面板（已由右下角圆形按钮接管交互；测试模式也不再显示） */
+.control-panel {
     display: none !important;
 }
-/* 竞速实时用时（坐标系面板左上角）：xx.xx s，默认隐藏，竞速模式显示 */
+/* 竞速实时用时（坐标系面板左上角）：xx.xx s，默认隐藏，竞速模式显示；青色霓虹 */
 .canvas-race-timer {
     position: absolute;
     top: 16px;
-    left: 78px;
+    left: 16px;
     z-index: 5;
     display: none;
-    padding: 5px 12px;
-    border-radius: 10px;
-    background: rgba(15, 23, 42, 0.6);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    font-size: 18px;
-    font-weight: bold;
-    color: #fbbf24;
+    padding: 6px 18px;
+    border-radius: 14px;
+    background: rgba(8, 25, 40, 0.55);
+    border: 1px solid rgba(34, 211, 238, 0.55);
+    font-size: 36px;
+    font-weight: 800;
+    color: #22d3ee;
     font-family: 'Courier New', monospace;
+    letter-spacing: 2px;
+    text-shadow: 0 0 8px rgba(34, 211, 238, 0.8), 0 0 20px rgba(34, 211, 238, 0.4);
+    box-shadow: 0 0 14px rgba(34, 211, 238, 0.35), inset 0 0 10px rgba(34, 211, 238, 0.12);
     pointer-events: none;
 }
 /* 消息提示（坐标系面板左下角，无外框） */
@@ -1256,12 +1249,12 @@ body:not(.layout-test-mode) .control-panel {
 }
 .canvas-fab-btn:active { transform: scale(0.92); }
 .canvas-fab-btn.confirm-fab {
-    right: 14px;
+    right: 78px;
     background: rgba(34, 197, 94, 0.55);
     color: #fff;
 }
 .canvas-fab-btn.exit-fab {
-    right: 78px;
+    right: 14px;
     background: rgba(239, 68, 68, 0.5);
     color: #fff;
 }
@@ -3480,37 +3473,43 @@ body:not(.layout-test-mode) .control-panel {
         gap: 14px;
         height: calc(100vh - var(--bottom-bar-height));
         height: calc(100dvh - var(--bottom-bar-height));
+        min-height: calc(100vh - var(--bottom-bar-height));
+        min-height: calc(100dvh - var(--bottom-bar-height));
+        box-sizing: border-box;
     }
-    
+
     .canvas-section {
         flex: 1 1 auto;
         min-width: 0;
-        height: auto;
+        min-height: 0;
+        /* 显式 100% 高度：撑满 main-container 内容区（高度由父容器减去 padding 决定），
+           canvas 元素取 min(宽, 高) 作为正方形边长并居中显示。 */
+        height: 100%;
         padding: 12px;
     }
-    
+
     .canvas-section #game-canvas {
         border-radius: 14px;
     }
-    
+
     .control-panel {
         flex: 0 0 320px;
         min-width: 290px;
     }
 }
 
-/* ── 非测试模式的桌面/平板布局：整块隐藏下方控制面板，
-      坐标系面板撑满全部空间、画布居中；测试模式(body.layout-test-mode)保留双栏 ── */
+/* ── 桌面/平板布局：整块隐藏控制面板（普通与测试模式一致），
+      坐标系面板撑满全部空间、画布居中 ── */
 @media (min-width: 768px) {
-    body:not(.layout-test-mode) .main-container {
+    .main-container {
         flex-direction: column !important;
     }
-    body:not(.layout-test-mode) .canvas-section {
+    .canvas-section {
         flex: 1 1 auto;
         min-height: 0;
         height: auto;
     }
-    body:not(.layout-test-mode) .control-panel {
+    .control-panel {
         display: none;
     }
 }
@@ -3773,14 +3772,13 @@ body:not(.layout-test-mode) .control-panel {
         -webkit-overflow-scrolling: touch;
     }
     
-    /* Canvas 区域 - 占上方空间 */
+    /* Canvas 区域 - 撑满 main-container 剩余高度（control-panel 已全局隐藏，
+       移动端竖屏时坐标系横向撑满、纵向居中） */
     .canvas-section {
-        flex: none;
+        flex: 1 1 auto;
+        min-height: 0;
         width: 100%;
-        height: 40vh;
-        height: 40dvh;
-        min-height: 230px;
-        max-height: 350px;
+        height: 100%;
         padding: 8px;
     }
     
@@ -4249,16 +4247,24 @@ body.device-mobile {
         scrollbar-width: thin;
         scrollbar-color: rgba(148, 163, 184, 0.55) rgba(15, 23, 42, 0.2);
     }
-    
+
     .canvas-section {
+        flex: 1 1 auto;
+        min-width: 0;
+        min-height: 0;
+        height: 100%;
+    }
+
+    /* 非测试模式：控制面板已全局隐藏，canvas-section 自动占满全部空间；
+       测试模式(body.layout-test-mode)下保留 55/45 双栏 */
+    body.layout-test-mode .canvas-section {
         flex: 0 0 55%;
         height: auto;
         min-height: unset;
         max-height: unset;
     }
-    
+
     .control-panel {
-        flex: 0 0 45%;
         max-height: calc(100vh - var(--landscape-bottom-bar-max) - var(--landscape-header-height));
         max-height: calc(100dvh - var(--landscape-bottom-bar-max) - var(--landscape-header-height));
         overflow-y: scroll;
@@ -4266,6 +4272,10 @@ body.device-mobile {
         -webkit-overflow-scrolling: touch;
         scrollbar-width: thin;
         scrollbar-color: rgba(148, 163, 184, 0.55) rgba(15, 23, 42, 0.2);
+    }
+
+    body.layout-test-mode .control-panel {
+        flex: 0 0 45%;
     }
 
     .elements-section {
@@ -4285,14 +4295,15 @@ body.device-mobile {
         height: calc(100vh - var(--landscape-bottom-bar-max) - 70px);
         height: calc(100dvh - var(--landscape-bottom-bar-max) - 70px);
     }
-    
-    .control-panel {
+
+    /* 测试模式：62/38 双栏布局；非测试模式：canvas-section 撑满全部空间 */
+    body.layout-test-mode .control-panel {
         max-height: calc(100vh - var(--landscape-bottom-bar-max) - 70px);
         max-height: calc(100dvh - var(--landscape-bottom-bar-max) - 70px);
         flex: 0 0 38%;
     }
-    
-    .canvas-section {
+
+    body.layout-test-mode .canvas-section {
         flex: 0 0 62%;
     }
 }

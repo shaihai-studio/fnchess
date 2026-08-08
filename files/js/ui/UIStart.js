@@ -432,6 +432,8 @@ if (typeof UIController === 'undefined') {
         
         // 恢复 header 样式
         if (this.header) this.header.classList.remove('test-mode');
+        // 移除测试模式布局标记（恢复下方面板隐藏）
+        document.body.classList.remove('layout-test-mode');
                 
         // 移除 Canvas 容器的测试模式类
         const canvasSection = document.querySelector('.canvas-section');
@@ -641,6 +643,8 @@ if (typeof UIController === 'undefined') {
 
 // initTestModeUI
     UIController.prototype.initTestModeUI = function() {
+        // 标记测试模式布局（保留右侧面板显示已绘制函数）
+        document.body.classList.add('layout-test-mode');
         // 显示消息面板
         if (this.messagePanel) this.messagePanel.classList.add('visible');
         
@@ -681,8 +685,9 @@ if (typeof UIController === 'undefined') {
         // 修改提示
         this.showMessage('测试模式：自由构造函数，点击函数表达式可编辑或删除');
         
-        // 添加函数列表容器
+        // 添加函数列表容器并立即渲染（右侧面板已整体隐藏，保留 DOM 供逻辑引用）
         this.addFunctionListContainer();
+        this.updateFunctionList();
         
         // 添加缩放按钮
         this.addZoomButtons();

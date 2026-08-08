@@ -132,8 +132,7 @@ if (typeof UIController === 'undefined') {
         // —— 提交函数（与主确认按钮一致的语义：当前阶段确认） ——
         if (this.floatKeypadSubmit) {
             this.floatKeypadSubmit.addEventListener('click', () => {
-                if (window.audioManager) window.audioManager.playClick();
-                this.handleConfirm();
+                this.handleConfirm(); // 音效在 handleConfirm 内播放一次，避免重复
             });
             const refreshSubmit = () => {
                 const cb = this.confirmBtn;
@@ -292,8 +291,14 @@ if (typeof UIController === 'undefined') {
         const vw = window.innerWidth, vh = window.innerHeight;
         let left = parseFloat(el.style.left);
         let top = parseFloat(el.style.top);
-        if (Number.isNaN(left)) left = centerIfUnpositioned ? (vw - el.offsetWidth) / 2 : vw - el.offsetWidth - 16;
-        if (Number.isNaN(top)) top = centerIfUnpositioned ? (vh - el.offsetHeight) / 2 : vh - el.offsetHeight - 16;
+        if (Number.isNaN(left)) {
+            // 输入栏默认位置按屏幕方向自适应：横屏偏左、竖屏水平居中
+            left = centerIfUnpositioned ? (vw > vh ? margin : (vw - el.offsetWidth) / 2) : vw - el.offsetWidth - 16;
+        }
+        if (Number.isNaN(top)) {
+            // 横屏垂直居中、竖屏偏下（贴近底边留出安全间距）
+            top = centerIfUnpositioned ? (vw > vh ? (vh - el.offsetHeight) / 2 : vh - el.offsetHeight - margin) : vh - el.offsetHeight - 16;
+        }
         left = Math.max(margin, Math.min(left, vw - margin - el.offsetWidth));
         top = Math.max(margin, Math.min(top, vh - margin - el.offsetHeight));
         el.style.left = left + 'px';
