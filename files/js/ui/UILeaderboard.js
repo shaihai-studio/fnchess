@@ -23,7 +23,7 @@ if (typeof UIController === 'undefined') {
 
         const openBtn = document.getElementById('leaderboard-open-btn');
         if (openBtn) openBtn.addEventListener('click', () => {
-            if (window.audioManager) window.audioManager.playClick();
+            // 音效在 openLeaderboard 内播放一次，避免重复
             this.openLeaderboard();
         });
 

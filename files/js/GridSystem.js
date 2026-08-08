@@ -50,6 +50,11 @@ class GridSystem {
         
         // 绑定 resize 事件
         window.addEventListener('resize', () => this.debounceResize());
+        // 监听画布容器尺寸变化（布局响应式/媒体查询变化时无需依赖 window resize）
+        if (typeof ResizeObserver !== 'undefined' && this.canvas?.parentElement) {
+            this.containerResizeObserver = new ResizeObserver(() => this.debounceResize());
+            this.containerResizeObserver.observe(this.canvas.parentElement);
+        }
         this.resize();
     }
     
@@ -107,18 +112,33 @@ class GridSystem {
     
     /**
      * 调整 Canvas 大小
+     * 取 canvas-section 容器可用宽高的最小值作为正方形边长，
+     * 使坐标系 canvas 撑满容器（保持 1:1 比例，水平/垂直居中）。
      */
     resize() {
         const container = this.canvas.parentElement;
-        const size = Math.min(container.clientWidth, container.clientHeight);
-        
+        if (!container) return;
+
+        // 使用 clientWidth/clientHeight 已是减去 padding 后的内容区，
+        // 进一步减去 canvas-section 的 padding 边界，避免出现滚动条
+        const cw = container.clientWidth;
+        const ch = container.clientHeight;
+        if (cw <= 0 || ch <= 0) return;
+
+        // 取最小边作为正方形边长，确保 1:1 不形变；长边方向上的剩余空间由 flex 居中保留留白
+        const size = Math.max(1, Math.min(cw, ch));
+
         // 设置 Canvas 实际像素大小（保持 1:1 正方形）
         this.canvas.width = size;
         this.canvas.height = size;
-        
+
+        // 显式同步 canvas 元素的 CSS 宽高，避免某些布局下元素被 max-width/max-height 收缩成 0
+        this.canvas.style.width = size + 'px';
+        this.canvas.style.height = size + 'px';
+
         // 计算每个格子的像素大小
         this.cellSize = size / this.gridSize;
-        
+
         this.draw();
     }
     

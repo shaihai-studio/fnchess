@@ -204,7 +204,7 @@ if (typeof UIController === 'undefined') {
         if (document.getElementById('campaign-import-text-modal')) return;
         const backdrop = document.createElement('div');
         backdrop.id = 'campaign-import-text-modal';
-        backdrop.style.cssText = 'position:fixed;inset:0;z-index:9999;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.55);backdrop-filter:blur(4px);';
+        backdrop.style.cssText = 'position:fixed;inset:0;z-index:30000;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.55);backdrop-filter:blur(4px);';
         backdrop.innerHTML = `
             <div style="width:min(580px,92vw);max-height:86vh;overflow:auto;background:rgba(20,22,28,.97);border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:18px 20px;box-shadow:0 20px 60px rgba(0,0,0,.5);">
                 <h3 style="margin:0 0 4px;color:#fff;font-size:18px;">粘贴关卡文本</h3>

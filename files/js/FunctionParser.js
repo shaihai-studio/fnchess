@@ -10,7 +10,7 @@ class FunctionParser {
     constructor() {
         // 支持的运算符和函数
         this.operators = ['+', '-', '*', '/', '^'];
-        this.functions = ['sin', 'cos', 'tan', 'arcsin', 'arccos', 'arctan', 'abs', 'ln', 'sqrt'];
+        this.functions = ['sin', 'cos', 'tan', 'asin', 'acos', 'atan', 'abs', 'ln', 'sqrt'];
         // 复数常量（与 geogebra-lite 一致）
         this.constants = { pi: { re: Math.PI, im: 0 }, e: { re: Math.E, im: 0 }, i: { re: 0, im: 1 } };
 
@@ -23,7 +23,7 @@ class FunctionParser {
             numbers: ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'π', 'e', 'i'],
             basicOperators: ['+', '-', '*', '/'],
             operators: ['.', '^', '!', '(', ')'],
-            functions: ['sin', 'cos', 'tan', 'arcsin', 'arccos', 'arctan', 'abs', 'ln', 'sqrt']
+            functions: ['sin', 'cos', 'tan', 'asin', 'acos', 'atan', 'abs', 'ln', 'sqrt']
         };
 
         // 初始化函数复杂度分析器
@@ -298,9 +298,9 @@ class FunctionParser {
                     case 'sin': return this.cSin(v);
                     case 'cos': return this.cCos(v);
                     case 'tan': return this.cTan(v);
-                    case 'arcsin': return this.cAsin(v);
-                    case 'arccos': return this.cAcos(v);
-                    case 'arctan': return this.cAtan(v);
+                    case 'asin': return this.cAsin(v);
+                    case 'acos': return this.cAcos(v);
+                    case 'atan': return this.cAtan(v);
                     case 'abs': return this.cAbs(v);
                     case 'ln': return this.cLn(v);
                     case 'sqrt': {
@@ -433,7 +433,7 @@ class FunctionParser {
     analyzeFunctionType(expression) {
         const cleanExpr = expression.replace(/\s+/g, '').replace(/[()（）]/g, '');
         let length = 0;
-        const tokenRegex = /(sin|cos|tan|arcsin|arccos|arctan|abs|exp|ln|log|sqrt|factorial)|(\d+(?:\.\d+)?)|(PI|π|e|i)|([+\-*/^!])|(x)/gi;
+        const tokenRegex = /(sin|cos|tan|asin|acos|atan|abs|exp|ln|log|sqrt|factorial)|(\d+(?:\.\d+)?)|(PI|π|e|i)|([+\-*/^!])|(x)/gi;
         while (tokenRegex.exec(cleanExpr) !== null) {
             length++;
         }
@@ -454,7 +454,7 @@ class FunctionParser {
     getPolynomialDegree(expression) {
         const cleanExpr = expression.toLowerCase().replace(/\s/g, '');
 
-        const nonPolyPattern = /(sin|cos|tan|arcsin|arccos|arctan|exp|ln|log|sqrt|abs)/;
+        const nonPolyPattern = /(sin|cos|tan|asin|acos|atan|exp|ln|log|sqrt|abs)/;
         if (nonPolyPattern.test(cleanExpr)) return -1;
         if (cleanExpr.includes('!')) return -1;
         if (cleanExpr.includes('(-1)^(1/2)') || cleanExpr.includes('(-1)^0.5') || cleanExpr.includes('i')) return -1;

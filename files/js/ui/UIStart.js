@@ -348,6 +348,9 @@ if (typeof UIController === 'undefined') {
 // handleStartSelectorKeys
     UIController.prototype.handleStartSelectorKeys = function(e) {
         if (!this.startModal || this.startModal.style.display === 'none') return false;
+        // 开始界面（标题页）没有选择器，方向键不响应（进入主界面才可用）
+        const mainPage = document.getElementById('main-page');
+        if (mainPage && mainPage.style.display === 'none') return false;
         const targetTag = e.target && e.target.tagName ? e.target.tagName.toLowerCase() : '';
         if (targetTag === 'input' || targetTag === 'textarea') return false;
         if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
@@ -415,10 +418,6 @@ if (typeof UIController === 'undefined') {
         });
         const roundDisplay = document.getElementById('round-display');
         if (roundDisplay) roundDisplay.style.display = '';
-        
-        // 移除函数列表
-        const functionList = document.getElementById('function-list');
-        if (functionList) functionList.remove();
         
         // 移除缩放按钮
         const zoomControls = document.getElementById('zoom-controls');
@@ -636,9 +635,6 @@ if (typeof UIController === 'undefined') {
         
         // 修改提示
         this.showMessage('测试模式：自由构造函数，点击函数表达式可编辑或删除');
-        
-        // 添加函数列表容器
-        this.addFunctionListContainer();
         
         // 添加缩放按钮
         this.addZoomButtons();

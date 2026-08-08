@@ -96,9 +96,9 @@ window.MathLatex = (function () {
                     case 'sin': return '\\sin\\left(' + arg + '\\right)';
                     case 'cos': return '\\cos\\left(' + arg + '\\right)';
                     case 'tan': return '\\tan\\left(' + arg + '\\right)';
-                    case 'arcsin': return '\\arcsin\\left(' + arg + '\\right)';
-                    case 'arccos': return '\\arccos\\left(' + arg + '\\right)';
-                    case 'arctan': return '\\arctan\\left(' + arg + '\\right)';
+                    case 'asin': return '\\operatorname{asin}\\left(' + arg + '\\right)';
+                    case 'acos': return '\\operatorname{acos}\\left(' + arg + '\\right)';
+                    case 'atan': return '\\operatorname{atan}\\left(' + arg + '\\right)';
                     case 'ln': return '\\ln\\left(' + arg + '\\right)';
                     case 'log': return '\\log\\left(' + arg + '\\right)';
                     case 'exp': return 'e^{' + arg + '}';
@@ -232,7 +232,7 @@ window.MathLatex = (function () {
 
     const FUNC_MAP = {
         sin: '\\sin', cos: '\\cos', tan: '\\tan',
-        arcsin: '\\arcsin', arccos: '\\arccos', arctan: '\\arctan',
+        asin: '\\operatorname{asin}', acos: '\\operatorname{acos}', atan: '\\operatorname{atan}',
         ln: '\\ln', log: '\\log', exp: '\\exp',
         sqrt: '\\sqrt', abs: '\\operatorname{abs}'
     };

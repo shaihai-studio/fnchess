@@ -287,9 +287,9 @@
   transform: translateY(-50%);
   z-index: 30;
   display: none;
-  width: 22px; height: 48px;
+  width: 36px; height: 36px;
   padding: 0;
-  border-radius: 8px;
+  border-radius: 50%;
   font-size: 18px;
   line-height: 1;
   background: rgba(15,23,42,0.92);
@@ -300,11 +300,17 @@
   align-items: center;
   justify-content: center;
 }
-#editor-view .panel-open:hover { background: var(--accent-2); color: #fff; }
+/* 悬浮仅轻微上移（1px），且保留垂直居中 transform：用 button.panel-open:hover 与全局
+   #editor-view button:hover:not(:disabled) 同特异性（1,2,1）且位于其后，确保覆盖成功，
+   避免箭头按钮从居中位置被 translateY(-3px) 顶到 50% 线附近造成大幅跳动 */
+#editor-view button.panel-open:hover {
+  background: var(--accent-2);
+  color: #fff;
+  transform: translateY(calc(-50% - 1px)) !important;
+}
 #editor-view .panel-open-left { left: 8px; }
 #editor-view .panel-open-right { right: 8px; }
-#editor-view .panel-open-left::before { content: '\203A'; }  /* › 显示左侧面板 */
-#editor-view .panel-open-right::before { content: '\2039'; } /* ‹ 显示右侧面板 */
+#editor-view .panel-open svg { position: relative; z-index: 3; display: block; pointer-events: none; }
 #editor-view.left-hidden .panel-open-left { display: flex; }
 #editor-view.right-hidden .panel-open-right { display: flex; }
 
@@ -335,6 +341,140 @@
   background-color: rgba(15, 23, 42, 0.78);
   border-color: rgba(255, 255, 255, 0.18);
 }
+/* 撤回按钮：位于「切换左键目标/禁止」按钮下方的圆形箭头按钮 */
+#editor-view .editor-undo,
+#editor-view .editor-fx {
+  position: absolute;
+  right: 8px;
+  z-index: 6;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(15, 23, 42, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #e5e7eb;
+  cursor: pointer;
+}
+#editor-view .editor-undo { top: 46px; }
+/* fx 参考线按钮：位于撤回按钮下方 */
+#editor-view .editor-fx {
+  top: 88px;
+  font-size: 13px;
+  font-weight: 600;
+  font-style: italic;
+}
+#editor-view .editor-fx:hover { border-color: rgba(34, 211, 238, 0.6); box-shadow: 0 0 12px rgba(34, 211, 238, 0.3); }
+#editor-view .editor-fx.active {
+  background-color: rgba(34, 211, 238, 0.16);
+  border-color: rgba(34, 211, 238, 0.55);
+  color: #cffafe;
+}
+#editor-view .editor-undo svg { position: relative; z-index: 3; display: block; }
+#editor-view .editor-undo:hover:not(:disabled) {
+  border-color: rgba(124, 219, 157, 0.6);
+  box-shadow: 0 0 12px rgba(124, 219, 157, 0.3);
+}
+
+/* fx 函数参考线输入面板（画布左上角浮层，仅辅助设计） */
+#editor-view .fx-panel {
+  position: absolute;
+  top: 8px;
+  left: 10px;
+  z-index: 6;
+  width: 280px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(34, 211, 238, 0.35);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+}
+#editor-view .fx-panel input {
+  width: 100%;
+  padding: 6px 8px;
+  font-size: 12px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  outline: none;
+}
+#editor-view .fx-panel input:focus { border-color: rgba(34, 211, 238, 0.6); }
+#editor-view .fx-meta { display: flex; align-items: center; justify-content: space-between; margin-top: 6px; gap: 6px; }
+#editor-view .fx-hint { color: var(--muted); font-size: 10px; }
+#editor-view .fx-clear {
+  padding: 2px 8px;
+  font-size: 10px;
+  border-radius: 999px;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  color: #fecaca;
+  cursor: pointer;
+}
+#editor-view .fx-clear:hover { background: rgba(239, 68, 68, 0.25); }
+
+/* 精度选择旁的小灰字提示 */
+#editor-view .hint { display: block; margin-top: 4px; color: var(--muted); font-size: 10px; line-height: 1.4; }
+
+/* 实体方向键（D-pad）：画布左下角的十字方向键，作用等同键盘方向键 */
+#editor-view .dpad {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  z-index: 6;
+  display: grid;
+  grid-template-columns: repeat(3, 30px);
+  grid-template-rows: repeat(3, 30px);
+  gap: 3px;
+}
+#editor-view .dpad-btn {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(15, 23, 42, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #e5e7eb;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+}
+#editor-view .dpad-btn:hover { border-color: rgba(124, 219, 157, 0.6); box-shadow: 0 0 10px rgba(124, 219, 157, 0.3); }
+#editor-view .dpad-btn:active { background-color: rgba(34, 197, 94, 0.25); }
+#editor-view .dpad-btn#btnArrowUp { grid-column: 2; grid-row: 1; }
+#editor-view .dpad-btn#btnArrowLeft { grid-column: 1; grid-row: 2; }
+#editor-view .dpad-btn#btnArrowDown { grid-column: 2; grid-row: 3; }
+#editor-view .dpad-btn#btnArrowRight { grid-column: 3; grid-row: 2; }
+
+/* 实体垃圾桶按钮：位于 D-pad 上方，删除选中区域的所有格子（等同 Delete/Backspace） */
+#editor-view .editor-trash {
+  position: absolute;
+  left: 10px;
+  bottom: 112px;
+  z-index: 6;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(15, 23, 42, 0.78);
+  border: 1px solid rgba(239, 68, 68, 0.45);
+  color: #fca5a5;
+  cursor: pointer;
+}
+#editor-view .editor-trash:hover { border-color: rgba(239, 68, 68, 0.8); box-shadow: 0 0 12px rgba(239, 68, 68, 0.35); }
+#editor-view .editor-trash:active { background-color: rgba(239, 68, 68, 0.25); }
+#editor-view .editor-trash svg { position: relative; z-index: 3; display: block; }
+#editor-view .editor-undo:disabled { opacity: 0.4; cursor: not-allowed; }
 #editor-view canvas { width: 100%; height: 100%; display:block; }
 #editor-view .legend {
   display:flex; flex-wrap: wrap; gap: 6px; color: var(--muted); font-size: 10px; flex-shrink: 0;

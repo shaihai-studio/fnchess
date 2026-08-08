@@ -878,7 +878,7 @@ if (typeof UIController === 'undefined') {
 // ─── 反三角函数解锁机制 ─────────────────────────────────────────
 
 // 反三角函数元素集合（解锁后可在普通及以上难度/对战中使用）
-    UIController.prototype.inverseTrigElements = ['arcsin', 'arccos', 'arctan'];
+    UIController.prototype.inverseTrigElements = ['asin', 'acos', 'atan'];
 
 // isInverseTrigUnlocked — 是否解锁：分数关全部通关（1/2~1/20，即 fracCleared >= 20）
     UIController.prototype.isInverseTrigUnlocked = function() {
@@ -948,7 +948,7 @@ if (typeof UIController === 'undefined') {
         const progress = Math.min(100, Math.round((fracCleared / 20) * 100));
         this.showInverseTrigModal(
             '反三角函数未解锁',
-            'arcsin / arccos / arctan 需要通关<b>全部分数关</b>（1/2 ~ 1/20）后解锁。<br><br>'
+            'asin / acos / atan 需要通关<b>全部分数关</b>（1/2 ~ 1/20）后解锁。<br><br>'
             + `当前分数关进度：${fracCleared} / 19（${progress}%）`
         );
     }
@@ -958,7 +958,7 @@ if (typeof UIController === 'undefined') {
         this.showInverseTrigModal(
             '🎉 反三角函数已解锁',
             '恭喜你通关了全部分数关！<br><br>'
-            + 'arcsin / arccos / arctan 现已在<b>普通及以上难度</b>与<b>对战模式</b>中解锁。<br>'
+            + 'asin / acos / atan 现已在<b>普通及以上难度</b>与<b>对战模式</b>中解锁。<br>'
             + '可前往开始界面选择是否在面板中使用。'
         );
     }

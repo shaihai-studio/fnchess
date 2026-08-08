@@ -210,9 +210,19 @@ if (typeof UIController === 'undefined') {
     UIController.prototype.initDraggableElements = function() {
         const phase = this.gameController.currentPhase;
         
-        // 在锁定阶段使用特殊的锁定元素视图
+        // 在锁定阶段使用锁定元素视图：悬浮栏用与输入栏一致的新样式渲染
         if (phase === 'set_locks') {
-            this.initLockElementsView();
+            if (this.floatKeypadBody) {
+                this.renderFloatKeypad();
+            } else {
+                this.initLockElementsView();
+            }
+            return;
+        }
+        
+        // 悬浮计算器式输入栏是唯一输入栏：直接渲染到悬浮栏（原底部元素栏已删除）
+        if (this.floatKeypadBody) {
+            this.renderFloatKeypad();
             return;
         }
         
@@ -227,9 +237,9 @@ if (typeof UIController === 'undefined') {
             'sin': 'sin',
             'cos': 'cos',
             'tan': 'tan',
-            'arcsin': 'arcsin',
-            'arccos': 'arccos',
-            'arctan': 'arctan',
+            'asin': 'asin',
+            'acos': 'acos',
+            'atan': 'atan',
             'abs': 'abs',
             'exp': 'exp',
             'ln': 'ln',
@@ -326,8 +336,13 @@ if (typeof UIController === 'undefined') {
 
 // initLockElementsView
     UIController.prototype.initLockElementsView = function() {
-        // 移动端/平板竖屏：使用内联面板
-        if (this.isMobileElementLayout() && this.inlineElementsTabs && this.inlineElementsBody) {
+        // 悬浮计算器式输入栏是唯一输入栏：渲染到悬浮栏（原底部元素栏已删除）
+        const useFloat = !!this.floatKeypadBody;
+        if (useFloat) {
+            this.elementsContainer.style.display = 'none';
+            if (this.inlineElementsCard) this.inlineElementsCard.style.display = 'none';
+        } else if (this.isMobileElementLayout() && this.inlineElementsTabs && this.inlineElementsBody) {
+            // 移动端/平板竖屏：使用内联面板
             this.elementsContainer.style.display = 'none';
             this.inlineElementsCard.style.display = 'block';
 
@@ -439,8 +454,11 @@ if (typeof UIController === 'undefined') {
         }
         
         title.appendChild(itemsDiv);
-        // 移动端渲染到内联面板，桌面端渲染到底部元素栏
-        if (this.isMobileElementLayout() && this.inlineElementsBody) {
+        // 悬浮计算器栏 / 移动端内联面板 / 桌面底部元素栏：按当前模式渲染
+        if (useFloat) {
+            this.floatKeypadBody.innerHTML = '';
+            this.floatKeypadBody.appendChild(title);
+        } else if (this.isMobileElementLayout() && this.inlineElementsBody) {
             this.inlineElementsBody.innerHTML = '';
             this.inlineElementsBody.appendChild(title);
         } else {
@@ -490,8 +508,12 @@ if (typeof UIController === 'undefined') {
             }
         }
         
-        // 更新标签
-        this.initLockElementsView();
+        // 更新标签：悬浮栏用与输入栏一致的新样式重绘（原 initLockElementsView 是旧样式）
+        if (this.floatKeypadBody) {
+            this.renderFloatKeypad();
+        } else {
+            this.initLockElementsView();
+        }
 
         // 锁定状态变化后同步给对手（解锁分支不经 GameController，需手动同步）；
         // 绕过节流，保证每次点击锁定/解锁都立即同步
@@ -551,12 +573,15 @@ if (typeof UIController === 'undefined') {
             'ln': 'ln', 'log': 'log'
         };
         
-        // 更新按钮状态（桌面端 + 移动端内联面板）
+        // 更新按钮状态（桌面端 + 移动端内联面板 + 悬浮计算器栏）
         const buttons = this.elementsContainer.querySelectorAll('.element-btn');
         const inlineButtons = this.inlineElementsBody ? this.inlineElementsBody.querySelectorAll('.element-btn') : [];
-        const allButtons = [...buttons, ...inlineButtons];
+        const floatButtons = this.floatKeypadBody ? this.floatKeypadBody.querySelectorAll('.element-btn') : [];
+        const allButtons = [...buttons, ...inlineButtons, ...floatButtons];
         allButtons.forEach(btn => {
             const value = btn.dataset.value;
+            // ⌫/C 等操作键没有 data-value，不参与锁定状态
+            if (value === undefined) return;
 
             // 反三角函数未解锁：始终保持锁定态（可点击弹解锁提示），不被本轮锁定状态覆盖
             const isInverseTrig = Array.isArray(this.inverseTrigElements) && this.inverseTrigElements.includes(value);
@@ -624,7 +649,7 @@ if (typeof UIController === 'undefined') {
         }
         
         // 函数类元素自动添加括号
-        const functionElements = ['sin', 'cos', 'tan', 'arcsin', 'arccos', 'arctan', 'abs', 'exp', 'ln', 'log', 'sqrt'];
+        const functionElements = ['sin', 'cos', 'tan', 'asin', 'acos', 'atan', 'abs', 'exp', 'ln', 'log', 'sqrt'];
         if (functionElements.includes(element)) {
             // 插入函数名和括号：[sin, (, )]
             this.expressionElements.splice(this.cursorIndex, 0, element, '(', ')');
@@ -671,6 +696,7 @@ if (typeof UIController === 'undefined') {
             this.expressionDisplay.appendChild(cursorSpan);
             this.cursorIndex = 0;
             this._renderMathPreview();
+            if (typeof this._syncFloatKeypadDisplay === 'function') this._syncFloatKeypadDisplay();
             return;
         }
         
@@ -721,6 +747,9 @@ if (typeof UIController === 'undefined') {
         // 渲染 KaTeX 数学预览（表达式实时美化，解析失败回退纯文本）
         this._renderMathPreview();
 
+        // 悬浮计算器栏的表达式显示保持同步
+        if (typeof this._syncFloatKeypadDisplay === 'function') this._syncFloatKeypadDisplay();
+
         // P2P：本地输入时防抖同步，避免高频发送 state_sync 导致乱序覆盖。
         // 关键限制：仅在 INPUT_FUNCTION 阶段同步。提交后 currentPhase 进入 EVALUATE，
         // 此时若仍推表达式快照，会覆盖对端刚收到的 EVALUATE 状态 → currentPhase 回退
@@ -754,28 +783,75 @@ if (typeof UIController === 'undefined') {
         if (!this.mathPreview) return;
 
         const expr = this.expressionElements.join('');
-        // 空表达式 / 引擎未就绪：显示引导提示（预览区域常驻可见）
+        // 空表达式 / 引擎未就绪：显示引导提示（预览区域常驻可见），隐藏缩放按钮
         if (!expr || typeof window.katex === 'undefined' || !window.MathLatex) {
             this.mathPreview.innerHTML = '';
             const hint = document.createElement('span');
             hint.className = 'math-preview-empty';
             hint.textContent = '构建表达式后在此实时预览数学公式';
             this.mathPreview.appendChild(hint);
+            this._setMathPreviewZoomVisible(false);
             return;
         }
 
         const latex = window.MathLatex.toLatex(expr);
         this.mathPreview.innerHTML = '';
         if (latex === null) {
-            // 表达式不完整/非法：显示原文，提示暂不可渲染
+            // 表达式不完整/非法：显示原文，提示暂不可渲染，隐藏缩放按钮
             const raw = document.createElement('span');
             raw.className = 'math-preview-raw';
             raw.textContent = expr;
             this.mathPreview.appendChild(raw);
+            this._setMathPreviewZoomVisible(false);
             return;
         }
 
         window.katex.render(latex, this.mathPreview, { throwOnError: false });
+        // 有公式时显示缩放按钮
+        this._setMathPreviewZoomVisible(true);
+        // 自适应字号：表达式超出预览容器宽度时，随内容加长缩小字号（最多缩小 2 倍 = ×0.5），
+        // 达到下限后不再缩小，由 .float-keypad-math 的 overflow-x:auto 显示滑动条
+        this._fitMathPreviewFont();
+    }
+;
+
+// _setMathPreviewZoomVisible — 切换数学预览缩放按钮的显示状态
+    UIController.prototype._setMathPreviewZoomVisible = function(visible) {
+        if (!this.floatKeypadMathZoom) {
+            this.floatKeypadMathZoom = document.getElementById('float-keypad-math-zoom');
+        }
+        if (this.floatKeypadMathZoom) this.floatKeypadMathZoom.hidden = !visible;
+    }
+;
+
+// _fitMathPreviewFont — 根据 KaTeX 内容宽度动态缩小预览字号（最多 ÷2）
+    UIController.prototype._fitMathPreviewFont = function() {
+        const katexEl = this.mathPreview.querySelector('.katex');
+        if (!katexEl) return;
+        const wrap = this.mathPreview.parentElement; // .float-keypad-math
+        if (!wrap) return;
+        const cs = getComputedStyle(wrap);
+        const avail = wrap.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0);
+        if (avail <= 0) return;
+        // 基准字号：16px × 当前缩放（与 CSS .float-keypad-math .katex 一致）
+        let kpScale = 1;
+        if (this.floatKeypad) {
+            const kpv = parseFloat(getComputedStyle(this.floatKeypad).getPropertyValue('--kp-w-scale'));
+            if (!Number.isNaN(kpv)) kpScale = kpv;
+        }
+        const base = 16 * kpScale;
+        // 用户手动缩放倍数（默认 1）：缩放按钮调节，叠加在自动适配之上
+        const zoom = (this._mathPreviewZoom != null) ? this._mathPreviewZoom : 1;
+        let shrink = 1;
+        let content = katexEl.scrollWidth;
+        if (content > avail && content > 0) shrink = Math.max(0.5, avail / content);
+        katexEl.style.fontSize = (base * shrink * zoom) + 'px';
+        // 字号变化后宽度会变化，迭代一次更精确
+        content = katexEl.scrollWidth;
+        if (content > avail && shrink > 0.5) {
+            shrink = Math.max(0.5, avail / content);
+            katexEl.style.fontSize = (base * shrink * zoom) + 'px';
+        }
     }
 ;
 
@@ -811,8 +887,12 @@ if (typeof UIController === 'undefined') {
             return;
         }
         
-        // 如果点击的是空白区域，则将光标移动到点击位置
-        const rect = this.expressionDisplay.getBoundingClientRect();
+        // 点击的是空白区域：将光标移动到点击位置。
+        // 容器取事件绑定的元素（悬浮栏顶部显示区或原表达式显示区），
+        // 原 expression-display 已被 CSS 隐藏后仍保留 DOM 供渲染与定位。
+        const container = e.currentTarget || this.expressionDisplay;
+        if (!container) return;
+        const rect = container.getBoundingClientRect();
         const clickX = e.clientX - rect.left;
         const clickY = e.clientY; // 使用绝对Y坐标来匹配元素
         
@@ -820,8 +900,8 @@ if (typeof UIController === 'undefined') {
         const lineGroups = new Map(); // key: 行的Y坐标, value: [{elementIndex, left, right, center}]
         const elementIndices = []; // 记录每个子元素对应的 expressionElements 索引
         
-        for (let i = 0; i < this.expressionDisplay.children.length; i++) {
-            const child = this.expressionDisplay.children[i];
+        for (let i = 0; i < container.children.length; i++) {
+            const child = container.children[i];
             
             // 跳过 cursor 元素
             if (child.classList.contains('cursor')) continue;
@@ -854,7 +934,6 @@ if (typeof UIController === 'undefined') {
             this.updateExpressionDisplay();
             return;
         }
-        
         // 找出点击位置所在的行（按Y坐标匹配）
         let targetLine = null;
         let minYDiff = Infinity;
@@ -910,13 +989,16 @@ if (typeof UIController === 'undefined') {
         const phase = this.gameController.currentPhase;
         if (phase !== 'input_function') return;
         if (this.expressionElements.length === 0) return;
-        
-        const rect = this.expressionDisplay.getBoundingClientRect();
+
+        // 容器优先取悬浮栏顶部显示区（可见），否则回退原 expression-display（隐藏时几何无效）
+        const container = (this.floatKeypadDisplay && !this.floatKeypadDisplay.hidden) ? this.floatKeypadDisplay : this.expressionDisplay;
+        if (!container) return;
+        const rect = container.getBoundingClientRect();
         
         // 收集所有元素的位置信息
         const allItems = [];
-        for (let i = 0; i < this.expressionDisplay.children.length; i++) {
-            const child = this.expressionDisplay.children[i];
+        for (let i = 0; i < container.children.length; i++) {
+            const child = container.children[i];
             if (child.classList.contains('cursor')) continue;
             if (child.dataset.index === undefined) continue;
             
@@ -936,8 +1018,8 @@ if (typeof UIController === 'undefined') {
         let cursorY = null;
         let cursorX = null;
         
-        for (let i = 0; i < this.expressionDisplay.children.length; i++) {
-            const child = this.expressionDisplay.children[i];
+        for (let i = 0; i < container.children.length; i++) {
+            const child = container.children[i];
             if (child.classList.contains('cursor')) {
                 const childRect = child.getBoundingClientRect();
                 cursorY = Math.round(childRect.top);
@@ -1032,19 +1114,29 @@ if (typeof UIController === 'undefined') {
             if (!this.startModal || this.startModal.style.display === 'none') return;
             const targetTag = e.target && e.target.tagName ? e.target.tagName.toLowerCase() : '';
             if (['input', 'textarea', 'select'].includes(targetTag)) return;
-            // ESC：关闭开始弹窗，返回启动封面（修复 #11）
+            const mainPage = document.getElementById('main-page');
+            const mainVisible = !!(mainPage && mainPage.style.display !== 'none');
+            // ESC：主界面 → 返回开始界面；开始界面 → 关闭开始弹窗返回启动封面（修复 #11）
             if (e.key === 'Escape') {
                 // 若有更上层弹窗打开（如音乐设置/战报等），先让上层处理，避免误关开始弹窗
                 if (this._modalStackTopVisible() !== this.startModal) return;
                 e.preventDefault();
-                this.hideStartModal();
-                this.showSplash();
+                if (mainVisible) {
+                    this.showStartPage();
+                } else {
+                    this.hideStartModal();
+                    this.showSplash();
+                }
                 return;
             }
-            // 回车：开始游戏
-            if (e.key === 'Enter') {
+            // 空格/回车：开始界面 → 进入主界面；主界面回车 → 开始游戏
+            if (e.key === 'Enter' || e.key === ' ' || e.code === 'Space') {
                 e.preventDefault();
-                this.handleStart();
+                if (mainVisible) {
+                    if (e.key === 'Enter') this.handleStart();
+                } else {
+                    this.showMainPage();
+                }
             }
         });
         // 点击遮罩（弹窗外部空白处）关闭并返回启动封面（修复 #11）
@@ -1063,7 +1155,7 @@ if (typeof UIController === 'undefined') {
         if (!expression) return 0;
         const cleanExpr = expression.replace(/\s+/g, '').replace(/[()（）]/g, '');
         let length = 0;
-        const tokenRegex = /(sin|cos|tan|arcsin|arccos|arctan|abs|exp|ln|log|sqrt|factorial)|(\d+(?:\.\d+)?)|(PI|π|e|i)|([+\-*/^!])|(x)/gi;
+        const tokenRegex = /(sin|cos|tan|asin|acos|atan|abs|exp|ln|log|sqrt|factorial)|(\d+(?:\.\d+)?)|(PI|π|e|i)|([+\-*/^!])|(x)/gi;
         let match;
         while ((match = tokenRegex.exec(cleanExpr)) !== null) {
             length++;
@@ -1082,7 +1174,7 @@ if (typeof UIController === 'undefined') {
         const len = expr.length;
         
         // 多字母函数名列表
-        const multiCharFuncs = ['sin', 'cos', 'tan', 'arcsin', 'arccos', 'arctan', 'abs', 'exp', 'ln', 'log', 'sqrt'];
+        const multiCharFuncs = ['sin', 'cos', 'tan', 'asin', 'acos', 'atan', 'abs', 'exp', 'ln', 'log', 'sqrt'];
         
         while (i < len) {
             let matched = false;

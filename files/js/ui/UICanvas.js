@@ -369,9 +369,6 @@ if (typeof UIController === 'undefined') {
                 // 清空当前表达式
                 this.clearExpression();
 
-                // 更新函数列表
-                this.updateFunctionList();
-
                 // 重新绘制所有测试模式函数，避免新函数绘制时把旧函数覆盖掉
                 await this.redrawTestModeFunctions();
 

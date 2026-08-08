@@ -73,83 +73,30 @@
     
     <!-- 主容器 -->
     <div class="main-container">
-        <!-- 左侧 Canvas 区域 -->
+        <!-- 左侧 Canvas 区域（坐标系面板） -->
         <section class="canvas-section">
             <canvas id="game-canvas"></canvas>
-        </section>
-        
-        <!-- 右侧控制面板 -->
-        <aside class="control-panel">
-            <!-- 状态气泡：剩余时间 | 当前玩家 | 当前阶段 -->
-            <div class="panel-card status-bubble">
-                <div class="status-bubble-inner">
-                    <div class="bubble-item timer-display">
-                        <h3>剩余时间</h3>
-                        <div class="timer-value" id="timer">40</div>
-                    </div>
-                    <div class="bubble-divider"></div>
-                    <div class="bubble-item player-display">
-                        <h3>当前玩家</h3>
-                        <div class="player-value" id="current-player">玩家 B</div>
-                    </div>
-                    <div class="bubble-divider"></div>
-                    <div class="bubble-item phase-display">
-                        <h3>当前阶段</h3>
-                        <div class="phase-hint-text" id="phase-hint">请点击棋盘选择目标网格</div>
-                    </div>
-                </div>
+            <!-- 左上角：饼图倒计时 -->
+            <div class="timer-pie canvas-corner-tl" id="timer-pie">
+                <div class="timer-pie-value" id="timer">40</div>
             </div>
-            
-            <!-- 竞速实时用时 -->
-            <div class="panel-card race-live-panel" id="race-live-panel" style="display:none;">
-                <h3>CURRENT LAP TIME</h3>
-                <div class="race-live-time-card">
-                    <div class="race-live-time-label">TIMING</div>
-                    <div class="race-live-time-value" id="race-live-time-value">0.00s</div>
-                    <div class="race-live-time-bars" aria-hidden="true"><span></span><span></span><span></span></div>
-                    <div class="race-live-time-meta">
-                        <span class="race-live-meta-chip">Fnchess</span>
-                        <span class="race-live-meta-chip accent">F1</span>
-                        <span class="race-live-meta-chip">PIT</span>
-                    </div>
-                </div>
+            <!-- 左上角：竞速实时用时（仅竞速模式显示） -->
+            <div class="canvas-race-timer" id="race-live-time-value">0.00s</div>
+            <!-- 右上角：当前玩家 -->
+            <div class="canvas-corner-tr">
+                <div class="player-value" id="current-player">玩家 B</div>
             </div>
-
-            <!-- 表达式构建区 -->
-            <div class="panel-card expr-panel">
-                <h3>函数表达式</h3>
-                <div class="expression-display" id="expression-display">
-                    <span class="placeholder">点击元素构建表达式...</span>
-                </div>
-                <!-- KaTeX 数学预览（常驻显示，空态显示引导提示） -->
-                <div class="math-preview-wrap">
-                    <span class="math-preview-label">数学预览</span>
-                    <div class="math-preview" id="math-preview">
-                        <span class="math-preview-empty">构建表达式后在此实时预览数学公式</span>
-                    </div>
-                </div>
-                <label class="keep-expr-toggle" id="keep-expr-toggle-wrap">
-                    <input type="checkbox" id="keep-expr-toggle">
-                    <span>提交失败后保留解析式（不自动清空）</span>
-                </label>
+            <!-- 底部：当前阶段 -->
+            <div class="canvas-corner-bc">
+                <div class="phase-hint-text" id="phase-hint">请点击棋盘选择目标网格</div>
             </div>
-
-            <!-- 移动端内联元素拖拽区（仅平板竖屏/手机显示，替代固定底栏） -->
-            <div class="panel-card inline-elements-card" id="inline-elements-card">
-                <div class="inline-elements-tabs" id="inline-elements-tabs"></div>
-                <div class="inline-elements-body" id="inline-elements-body"></div>
+            <!-- 左下角：消息提示（无外框） -->
+            <div class="canvas-message" id="message-panel">
+                <div class="message" id="message"></div>
             </div>
-
-            <!-- 按钮组（竖屏下固定底栏，避免溢出屏幕） -->
-            <div class="panel-card" id="action-buttons-card">
-                <div class="button-group">
-                    <button class="btn btn-primary" id="confirm-btn" data-arrow>确认目标</button>
-                    <button class="btn btn-secondary" id="skip-btn" style="display:none">跳过本阶段</button>
-                    <button class="btn btn-secondary" id="clear-btn">清除</button>
-                    <button class="btn btn-exit" id="exit-btn">退出对局</button>
-                </div>
-            </div>
-            
+            <!-- 右下角：圆形 确认(✓) / 返回(←) 按钮 -->
+            <button class="canvas-fab-btn confirm-fab" id="confirm-fab-btn" type="button" title="确认">✓</button>
+            <button class="canvas-fab-btn exit-fab" id="exit-fab-btn" type="button" title="退出对局">←</button>
             <!-- 退出确认气泡框 -->
             <div class="exit-confirm-popover" id="exit-confirm-popover">
                 <p>确定要退出当前对局吗？</p>
@@ -158,111 +105,159 @@
                     <button class="btn btn-small btn-cancel" id="cancel-exit-btn">取消</button>
                 </div>
             </div>
-            
-            <!-- 消息提示 -->
-            <div class="panel-card message-panel" id="message-panel">
-                <div class="message" id="message"></div>
+        </section>
+        
+        <!-- 旧确认/退出/清除/跳过按钮：已由右下角圆形按钮替代，DOM 保留仅供 JS 引用（恒隐藏，无视觉布局） -->
+        <div id="action-buttons-card" style="display:none">
+            <div class="button-group">
+                <button class="btn btn-primary" id="confirm-btn" data-arrow>确认目标</button>
+                <button class="btn btn-secondary" id="skip-btn">跳过本阶段</button>
+                <button class="btn btn-secondary" id="clear-btn">清除</button>
+                <button class="btn btn-exit" id="exit-btn">退出对局</button>
             </div>
-        </aside>
+        </div>
     </div>
     
     <!-- 底部元素拖拽区 -->
     <section class="elements-section" id="elements-container">
         <!-- 动态生成 -->
     </section>
-    
+
+    <!-- 悬浮计算器式输入栏（唯一的输入栏：原底部元素栏 / 内联面板 / 表达式栏已删除） -->
+    <div class="float-keypad" id="float-keypad" hidden>
+      <!-- 隐藏渲染源：JS 向此元素渲染表达式序列，再由 #float-keypad-display 镜像（视觉隐藏） -->
+      <div class="expression-display" id="expression-display" style="display:none"><span class="placeholder">点击元素构建表达式...</span></div>
+      <div class="float-keypad-header" id="float-keypad-header" title="按住拖动可移动位置">
+        <span class="float-keypad-title">表达式输入<small class="float-keypad-drag-hint">可拖动</small></span>
+        <div class="float-keypad-actions">
+          <button class="float-keypad-mode-btn" id="float-keypad-mode" type="button" title="切换背景模式：透明 / 遮光 / 模糊">遮光</button>
+          <button class="float-keypad-btn" id="float-keypad-collapse" type="button" title="收起为圆形按钮">×</button>
+        </div>
+      </div>
+      <div class="float-keypad-display" id="float-keypad-display"></div>
+      <!-- KaTeX 数学预览（位于表达式下方，常驻显示） -->
+      <div class="float-keypad-math" id="float-keypad-math">
+        <button class="float-keypad-math-zoom" id="float-keypad-math-zoom" type="button" title="缩放数学预览" hidden>100%</button>
+        <div class="math-preview" id="math-preview"><span class="math-preview-empty">构建表达式后在此实时预览数学公式</span></div>
+      </div>
+      <div class="float-keypad-body" id="float-keypad-body"></div>
+      <!-- 底部操作栏：左侧 ◀ ▶ 移动光标；中间 fx 展开函数面板；右侧 提交（占 3 个常规按钮宽） -->
+      <div class="float-keypad-footer">
+        <div class="float-keypad-nav">
+          <button class="float-keypad-nav-btn" id="float-keypad-left" type="button" title="光标左移">◀</button>
+          <button class="float-keypad-nav-btn" id="float-keypad-right" type="button" title="光标右移">▶</button>
+        </div>
+        <button class="float-keypad-fx-btn" id="float-keypad-fx" type="button" title="展开/收起函数面板">fx</button>
+        <button class="float-keypad-submit" id="float-keypad-submit" type="button" title="提交函数（Enter）">提交</button>
+      </div>
+    </div>
+    <!-- 收起后的圆形按钮：点击展开输入栏，可拖动 -->
+    <button class="float-keypad-fab" id="float-keypad-fab" type="button" title="展开输入栏" hidden>⌨</button>
+
     <!-- 开始界面模态框 -->
     <div class="modal" id="start-modal" style="display:none;">
         <div class="modal-content">
-            <div class="start-settings-layout">
-                <!-- 左侧：标题图片 + 难度/回合选择 -->
-                <div class="start-left-column">
-                    <img class="start-modal-title-image" src="files/images/MainTitle.png" alt="函数棋">
-                    
-                    <div class="start-selectors-left">
-                        <div class="selector-row difficulty-select">
-                            <div class="stepper-selector" id="difficulty-stepper">
-                                <button type="button" class="stepper-arrow" id="difficulty-prev" aria-label="上一个难度">←</button>
-                                <div class="stepper-value" id="difficulty-value">简单 - 1个目标格</div>
-                                <button type="button" class="stepper-arrow" id="difficulty-next" aria-label="下一个难度">→</button>
-                            </div>
-                            <small id="difficulty-hint" style="display:none; margin-top: 5px; opacity: 0.7;"></small>
-                        </div>
-                        
-                        <div class="selector-row round-select">
-                            <div class="stepper-selector" id="round-stepper" tabindex="0">
-                                <button type="button" class="stepper-arrow" id="round-prev" aria-label="减少回合数">←</button>
-                                <div class="stepper-value" id="round-value" tabindex="0">8 回合（快速对战）</div>
-                                <button type="button" class="stepper-arrow" id="round-next" aria-label="增加回合数">→</button>
-                            </div>
-                        </div>
-
-                        <div class="selector-row time-limit-select">
-                            <div class="stepper-selector" id="time-limit-stepper" tabindex="0">
-                                <button type="button" class="stepper-arrow" id="time-limit-prev" aria-label="减少时间限制">←</button>
-                                <div class="stepper-value" id="time-limit-value" tabindex="0">普通棋</div>
-                                <button type="button" class="stepper-arrow" id="time-limit-next" aria-label="增加时间限制">→</button>
-                            </div>
-                        </div>
-
-                        <!-- 反三角函数开关（解锁后可用，默认开启） -->
-                        <label class="inverse-trig-toggle" id="inverse-trig-toggle-wrap" title="需通关全部分数关（1/2~1/20）后解锁">
-                            <input type="checkbox" id="inverse-trig-toggle">
-                            <span>对战使用反三角函数（arcsin / arccos / arctan）</span>
-                        </label>
-                    </div>
-                </div>
-
-                <!-- 右侧：模式按钮 + 开始按钮 -->
-                <div class="start-right-column">
-                    <div class="start-top-actions">
-                        <button class="bgm-float-btn start-bgm-btn" id="start-bgm-open-btn" type="button" aria-label="背景音乐设置" title="背景音乐设置">
-                            <img src="files/images/VolumeButton.png" alt="背景音乐设置" class="bgm-float-icon-img">
-                        </button>
-                        <button class="bgm-float-btn" id="leaderboard-open-btn" type="button" aria-label="在线排行榜" title="在线排行榜">
-                            <span class="leaderboard-open-icon">榜</span>
-                        </button>
-                    </div>
-
-                    <div class="mode-select start-modes-right">
-                        <div class="mode-toggle mode-toggle-vertical">
-                            <button class="mode-btn active" id="mode-battle" data-mode="battle">对战模式</button>
-                            <!-- 对战子菜单 -->
-                            <div class="battle-submenu" id="battle-submenu" style="display:none;">
-                                <button class="mode-btn mode-btn-sub" id="mode-local" data-mode="local">本地对战</button>
-                                <button class="mode-btn mode-btn-sub" id="mode-ai" data-mode="ai">人机对战</button>
-                                <button class="mode-btn mode-btn-sub" id="mode-p2p" data-mode="p2p">联机对战</button>
-                            </div>
-                            <button class="mode-btn" id="mode-campaign" data-mode="campaign">闯关模式</button>
-                            <button class="mode-btn" id="mode-race" data-mode="race">竞速模式</button>
-                            <div class="mode-toggle-row">
-                                <button class="mode-btn" id="mode-test" data-mode="test">测试模式</button>
-                                <button class="mode-btn" id="mode-editor" type="button">关卡编辑器</button>
-                            </div>
-                        </div>
-                        <small id="mode-hint" style="display: block; margin-top: 5px; opacity: 0.7;">选择对战模式</small>
-                    </div>
-
-                    <div class="start-action-area">
-                        <button class="start-image-btn" id="start-btn" type="button" aria-label="开始游戏">
-                            <img src="files/images/StartButton.png" alt="开始游戏">
-                        </button>
-                    </div>
-                </div>
+            <!-- 开始界面（精简首页）：仅保留标题 + 开始游戏 + 关于我们 -->
+            <div class="start-page" id="start-page">
+                <img class="start-page-title" src="files/images/MainTitle.png" alt="函数棋">
+                <button class="start-page-btn" id="start-go-btn" type="button">开始游戏</button>
+                <a class="about-us-link" href="https://space.bilibili.com/3690976753223882" target="_blank" rel="noopener noreferrer">关于我们</a>
             </div>
 
-            <!-- 闯关模式选关 -->
-            <div class="panel-card" id="campaign-panel" style="display:none; margin-top: 10px; padding: 12px;">
-                <div style="opacity:0.85; font-size: 13px; margin-bottom: 6px;">
-                    需通关前置关卡才能解锁后续关卡
+            <!-- 主界面（原开始界面的全部内容，功能不变，多一个层级；返回主界面 = 返回这里） -->
+            <div class="main-page" id="main-page" style="display:none;">
+                <button class="race-back-circle main-back-btn" id="main-back-btn" type="button" title="返回开始界面" aria-label="返回">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+                </button>
+                <div class="start-settings-layout">
+                    <!-- 左侧：标题图片 + 难度/回合选择 -->
+                    <div class="start-left-column">
+                        <img class="start-modal-title-image" src="files/images/MainTitle.png" alt="函数棋">
+
+                        <div class="start-selectors-left">
+                            <div class="selector-row difficulty-select">
+                                <div class="stepper-selector" id="difficulty-stepper">
+                                    <button type="button" class="stepper-arrow" id="difficulty-prev" aria-label="上一个难度">←</button>
+                                    <div class="stepper-value" id="difficulty-value">简单 - 1个目标格</div>
+                                    <button type="button" class="stepper-arrow" id="difficulty-next" aria-label="下一个难度">→</button>
+                                </div>
+                                <small id="difficulty-hint" style="display:none; margin-top: 5px; opacity: 0.7;"></small>
+                            </div>
+
+                            <div class="selector-row round-select">
+                                <div class="stepper-selector" id="round-stepper" tabindex="0">
+                                    <button type="button" class="stepper-arrow" id="round-prev" aria-label="减少回合数">←</button>
+                                    <div class="stepper-value" id="round-value" tabindex="0">8 回合（快速对战）</div>
+                                    <button type="button" class="stepper-arrow" id="round-next" aria-label="增加回合数">→</button>
+                                </div>
+                            </div>
+
+                            <div class="selector-row time-limit-select">
+                                <div class="stepper-selector" id="time-limit-stepper" tabindex="0">
+                                    <button type="button" class="stepper-arrow" id="time-limit-prev" aria-label="减少时间限制">←</button>
+                                    <div class="stepper-value" id="time-limit-value" tabindex="0">普通棋</div>
+                                    <button type="button" class="stepper-arrow" id="time-limit-next" aria-label="增加时间限制">→</button>
+                                </div>
+                            </div>
+
+                            <!-- 反三角函数开关（解锁后可用，默认开启） -->
+                            <label class="inverse-trig-toggle" id="inverse-trig-toggle-wrap" title="需通关全部分数关（1/2~1/20）后解锁">
+                                <input type="checkbox" id="inverse-trig-toggle">
+                                <span>对战使用反三角函数（asin / acos / atan）</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- 右侧：模式按钮 + 开始按钮 -->
+                    <div class="start-right-column">
+                        <div class="start-top-actions">
+                            <button class="bgm-float-btn start-bgm-btn" id="start-bgm-open-btn" type="button" aria-label="背景音乐设置" title="背景音乐设置">
+                                <img src="files/images/VolumeButton.png" alt="背景音乐设置" class="bgm-float-icon-img">
+                            </button>
+                            <button class="bgm-float-btn" id="leaderboard-open-btn" type="button" aria-label="在线排行榜" title="在线排行榜">
+                                <span class="leaderboard-open-icon">榜</span>
+                            </button>
+                        </div>
+
+                        <div class="mode-select start-modes-right">
+                            <div class="mode-toggle mode-toggle-vertical">
+                                <button class="mode-btn active" id="mode-battle" data-mode="battle">对战模式</button>
+                                <!-- 对战子菜单 -->
+                                <div class="battle-submenu" id="battle-submenu" style="display:none;">
+                                    <button class="mode-btn mode-btn-sub" id="mode-local" data-mode="local">本地对战</button>
+                                    <button class="mode-btn mode-btn-sub" id="mode-ai" data-mode="ai">人机对战</button>
+                                    <button class="mode-btn mode-btn-sub" id="mode-p2p" data-mode="p2p">联机对战</button>
+                                </div>
+                                <button class="mode-btn" id="mode-campaign" data-mode="campaign">闯关模式</button>
+                                <button class="mode-btn" id="mode-race" data-mode="race">竞速模式</button>
+                                <div class="mode-toggle-row">
+                                    <button class="mode-btn" id="mode-test" data-mode="test">测试模式</button>
+                                    <button class="mode-btn" id="mode-editor" type="button">关卡编辑器</button>
+                                </div>
+                            </div>
+                            <small id="mode-hint" style="display: block; margin-top: 5px; opacity: 0.7;">选择对战模式</small>
+                        </div>
+
+                        <div class="start-action-area">
+                            <button class="start-image-btn" id="start-btn" type="button" aria-label="开始游戏">
+                                <img src="files/images/StartButton.png" alt="开始游戏">
+                            </button>
+                        </div>
+                    </div>
                 </div>
-                <label for="campaign-level-select">选择关卡：</label>
-                <select id="campaign-level-select" style="width: 100%; margin-top: 6px;">
-                    <option value="1">关卡 1</option>
-                </select>
-                <small id="campaign-progress" style="display:block; margin-top:6px; opacity:0.7;"></small>
+
+                <!-- 闯关模式选关 -->
+                <div class="panel-card" id="campaign-panel" style="display:none; margin-top: 10px; padding: 12px;">
+                    <div style="opacity:0.85; font-size: 13px; margin-bottom: 6px;">
+                        需通关前置关卡才能解锁后续关卡
+                    </div>
+                    <label for="campaign-level-select">选择关卡：</label>
+                    <select id="campaign-level-select" style="width: 100%; margin-top: 6px;">
+                        <option value="1">关卡 1</option>
+                    </select>
+                    <small id="campaign-progress" style="display:block; margin-top:6px; opacity:0.7;"></small>
+                </div>
             </div>
-            <a class="about-us-link" href="https://space.bilibili.com/3690976753223882" target="_blank" rel="noopener noreferrer">关于我们</a>
         </div>
     </div>
 
@@ -844,6 +839,34 @@
             <div class="canvas-frame">
               <canvas id="gridCanvas"></canvas>
               <button class="toggle mode-toggle" id="btnSwapMouse" type="button" title="切换左右键放置类型">左键:目标 右键:禁止</button>
+              <button class="editor-undo" id="btnUndo" type="button" title="撤回（等同 Ctrl+Z）" aria-label="撤回上一步">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M9 14 4 9l5-5"/>
+                  <path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5 5.5 5.5 0 0 1-5.5 5.5H11"/>
+                </svg>
+              </button>
+              <button class="editor-fx" id="btnFx" type="button" title="绘制函数参考线（geogebra-lite 引擎，不影响关卡）" aria-label="函数参考线">fx</button>
+              <div class="fx-panel" id="fxPanel" hidden>
+                <input id="fxInput" type="text" placeholder="函数表达式，如 x^2、sin(x)、1/x" spellcheck="false" />
+                <div class="fx-meta">
+                  <span class="fx-hint">参考线 · 仅辅助设计，不影响关卡内容</span>
+                  <button class="fx-clear" id="btnFxClear" type="button">清除</button>
+                </div>
+              </div>
+              <div class="dpad" role="group" aria-label="方向键（实体键）">
+                <button class="dpad-btn" id="btnArrowUp" type="button" aria-label="上移">▲</button>
+                <button class="dpad-btn" id="btnArrowLeft" type="button" aria-label="左移">◀</button>
+                <button class="dpad-btn" id="btnArrowDown" type="button" aria-label="下移">▼</button>
+                <button class="dpad-btn" id="btnArrowRight" type="button" aria-label="右移">▶</button>
+              </div>
+              <button class="editor-trash" id="btnTrash" type="button" title="删除选中区域的所有格子（Delete/Backspace）" aria-label="删除选中格子">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M3 6h18"/>
+                  <path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/>
+                  <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                  <path d="M10 11v6M14 11v6"/>
+                </svg>
+              </button>
             </div>
           </div>
         </div>
@@ -864,6 +887,7 @@
                   <option value="8">1/8</option>
                   <option value="10">1/10</option>
                 </select>
+                <small class="hint">若希望精度为1，可开启长方形。</small>
               </div>
               <div>
                 <label>点击基准</label>
@@ -874,10 +898,12 @@
               </div>
             </div>
             <div class="btnrow">
-              <button class="toggle" id="btnBoxSelect" type="button">框选</button>
-              <button class="toggle" id="btnPathPaint" type="button">路径涂满</button>
+              <button class="toggle" id="btnRect" type="button">长方形</button>
+              <button class="toggle" id="btnLine" type="button">直线</button>
+              <button class="toggle" id="btnBrush" type="button">画笔</button>
+              <button class="toggle" id="btnSelect" type="button">框选</button>
             </div>
-            <div class="help" style="margin-top:8px;">左键目标 / 右键禁止（网格右上角按钮可互换）；长按拖动可框选或路径涂满。支持 Ctrl+Z 撤回。</div>
+            <div class="help" style="margin-top:8px;">左键目标 / 右键禁止（网格右上角按钮可互换）。开启「长方形」「直线」「画笔」后拖动绘制对应形状；开启「框选」拖动框住区域选中，随后可拖动或用方向键 / 实体键（画布左下角）移动。支持 Ctrl+Z 撤回。</div>
           </div>
           <div class="section export-section stretch">
             <label>导出内容</label>
@@ -895,8 +921,16 @@
         </div>
       </div>
 
-      <button class="panel-open panel-open-left" id="btnShowLeft" title="显示左栏"></button>
-      <button class="panel-open panel-open-right" id="btnShowRight" title="显示右栏"></button>
+      <button class="panel-open panel-open-left" id="btnShowLeft" title="显示左栏">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 18l6-6-6-6"/>
+        </svg>
+      </button>
+      <button class="panel-open panel-open-right" id="btnShowRight" title="显示右栏">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M15 18l-6-6 6-6"/>
+        </svg>
+      </button>
     </div>
 
     <script src="files/vendor/katex/katex.min.js"></script>
@@ -976,6 +1010,7 @@
     <script src="files/js/ui/UISpectator.js"></script>
 <script src="files/js/ui/UICore.js"></script>
 <script src="files/js/ui/UIEditor.js"></script>
+<script src="files/js/ui/UIFloatKeypad.js"></script>
     <script src="files/js/SummaTrainer.js"></script>
     
     <script>

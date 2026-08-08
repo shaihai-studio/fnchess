@@ -194,6 +194,18 @@ if (typeof UIController === 'undefined') {
         this.initStartSelectors();
         this.initEditor();
         this.initCampaignImport();
+        this.initFloatKeypad();
+        // 「开始游戏」按钮（开始界面）→「进入主界面」；主界面左上角「返回」→ 回开始界面
+        const startGoBtn = document.getElementById('start-go-btn');
+        if (startGoBtn) startGoBtn.addEventListener('click', () => {
+            if (window.audioManager) window.audioManager.playClick();
+            this.showMainPage();
+        });
+        const mainBackBtn = document.getElementById('main-back-btn');
+        if (mainBackBtn) mainBackBtn.addEventListener('click', () => {
+            if (window.audioManager) window.audioManager.playClick();
+            this.showStartPage();
+        });
         this.refreshStartSelectorDisplay();
         
         
@@ -268,10 +280,6 @@ if (typeof UIController === 'undefined') {
         this.bindBackgroundMusicControls();
         this.initBackgroundMusic();
 
-        // 控制面板：在内容不溢出时不显示滚动条，溢出时自动出现滚动条
-        // 修复 #45：原本 overflow-y: auto 在不超高时也会渲染出空滚动条（Windows 上尤其明显）
-        this.initControlPanelAutoScroll();
-
         // 退出函数棋（关闭页面/标签页/刷新）前：房主有活跃房间或联机对局进行中时弹浏览器确认提醒。
         // ① 房主有房间：退出后房间失效；② 对局进行中：退出判负并扣 ELO。
         // 确认后页面才真正关闭；关闭时服务器因 WS 断开会自动清理房间。
@@ -290,38 +298,6 @@ if (typeof UIController === 'undefined') {
         });
     }
 ;
-
-// initControlPanelAutoScroll
-    UIController.prototype.initControlPanelAutoScroll = function() {
-        const evaluateScroll = (el) => {
-            if (!el) return;
-            // 纵向溢出检测（>1px 容差，避免亚像素误差造成的装饰性滚动条）
-            const overY = el.scrollHeight - el.clientHeight;
-            el.classList.toggle('is-scrollable', overY > 1);
-            // 横向溢出检测（极长的无空格 token 才会触发，正常表达式不会）
-            const overX = el.scrollWidth - el.clientWidth;
-            el.classList.toggle('is-scrollable-x', overX > 1);
-        };
-        const bind = (el) => {
-            if (!el) return;
-            evaluateScroll(el);
-            if (typeof ResizeObserver !== 'undefined') {
-                new ResizeObserver(() => evaluateScroll(el)).observe(el);
-            } else if (typeof MutationObserver !== 'undefined') {
-                new MutationObserver(() => evaluateScroll(el))
-                    .observe(el, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
-            }
-        };
-        // 控制面板：内容不多时不显示滚动条，溢出时才出现
-        bind(document.querySelector('.control-panel'));
-        // 表达式显示区的滚动状态由 UIInput.updateExpressionScrollState() 在每次
-        // updateExpressionDisplay 时驱动（更精确，随内容变化即时刷新）；这里仅
-        // 在窗口缩放时兜底同步一次，避免类残留
-        window.addEventListener('resize', () => {
-            evaluateScroll(document.querySelector('.control-panel'));
-            if (this.updateExpressionScrollState) this.updateExpressionScrollState();
-        });
-    }
 
 // updateDifficultyHint
     UIController.prototype.updateDifficultyHint = function() {
@@ -522,11 +498,8 @@ if (typeof UIController === 'undefined') {
 
         // 统一的输入阶段准备：只做 UI 侧清理（模型清理由 GameController.prepareInputPhase() 负责）
         this.gameController.on('prepareInputPhase', (data) => {
-            // 「提交失败后保留解析式」开关——仅闯关/竞速模式生效
-            const isCampaignOrRace = this.gameController.gameMode === 'campaign' ||
-                                     this.gameController.gameMode === 'race';
-            const keepExpr = (data && data.clearExpression === false) ||
-                             (isCampaignOrRace && this.keepExprToggle && this.keepExprToggle.checked);
+            // 「保留解析式」已改为默认行为：提交失败后不自动清空表达式（原开关已删除）
+            const keepExpr = true;
             if (!keepExpr) {
                 this.clearExpression();
             }
@@ -794,7 +767,7 @@ if (typeof UIController === 'undefined') {
                 this.gridSystem.forbiddenCells = data.roundState.forbiddenCells || [];
                 // 竞速每关独立，清空历史函数
                 this.gridSystem.functionHistory = [];
-                this.raceLivePanel && (this.raceLivePanel.style.display = 'block');
+                this.raceLiveTimeValue && (this.raceLiveTimeValue.style.display = 'block');
                 this.updateRacePuzzleProgress(data.solvedCount || 0, data.totalSolved || 10);
                 this.gridSystem.draw();
                 this.initDraggableElements();
@@ -860,10 +833,10 @@ if (typeof UIController === 'undefined') {
                 
                 // 2. 清空当前回合的目标格和禁区（但保留usedCells）
                 this.gridSystem.clearAll();
-                // 保留解析式开关——仅闯关/竞速模式生效，对战/P2P/AI 模式始终清空
-                const isCampaignOrRace = this.gameController.gameMode === 'campaign' ||
-                                         this.gameController.gameMode === 'race';
-                if (!(isCampaignOrRace && this.keepExprToggle && this.keepExprToggle.checked)) {
+                // 对战模式（local/ai/p2p）：每个回合结束后清空表达式，避免上一回合解析式残留到新回合
+                // （「提交失败后保留解析式」的默认保留行为仍作用于同一回合内的失败重试，不受影响）
+                const gm = this.gameController && this.gameController.gameMode;
+                if (gm === 'local' || gm === 'ai' || gm === 'p2p') {
                     this.clearExpression();
                 }
                 
@@ -989,6 +962,11 @@ if (typeof UIController === 'undefined') {
         this.confirmBtn.addEventListener('click', () => this.handleConfirm());
         this.clearBtn.addEventListener('click', () => this.handleClear());
         this.exitBtn.addEventListener('click', () => this.handleExitClick());
+        // 右下角圆形按钮：✓ 确认 / ← 返回退出
+        this.confirmFabBtn = document.getElementById('confirm-fab-btn');
+        this.exitFabBtn = document.getElementById('exit-fab-btn');
+        if (this.confirmFabBtn) this.confirmFabBtn.addEventListener('click', () => this.handleConfirm());
+        if (this.exitFabBtn) this.exitFabBtn.addEventListener('click', () => this.handleExitClick());
         if (this.skipBtn) this.skipBtn.addEventListener('click', () => {
             const gc = this.gameController;
             if (gc && gc.skipSubPhase) gc.skipSubPhase();
@@ -1483,9 +1461,12 @@ if (typeof UIController === 'undefined') {
 
 // forceStopGame
     UIController.prototype.forceStopGame = function() {
-        // 1. 停止计时器
+        // 1. 停止计时器（阶段倒计时 + 选格子倒计时，两者相互独立，退出时必须都停）
         if (this.gameController && typeof this.gameController.stopTimer === 'function') {
             this.gameController.stopTimer();
+        }
+        if (this.gameController && typeof this.gameController.stopTargetTimer === 'function') {
+            this.gameController.stopTargetTimer();
         }
 
         // 2. 清空 AI 触发队列，防止退出后 AI 继续行动
@@ -1807,93 +1788,8 @@ if (typeof UIController === 'undefined') {
     }
 ;
 
-// addFunctionListContainer
-    UIController.prototype.addFunctionListContainer = function() {
-        // 检查是否已存在
-        if (document.getElementById('function-list')) return;
-        
-        const container = document.createElement('div');
-        container.id = 'function-list';
-        container.className = 'function-list';
-        container.innerHTML = '<div class="function-list-title">已绘制函数（点击编辑或删除）</div>';
-        
-        // 插入到按钮区域之后
-        const buttonArea = this.confirmBtn.parentElement;
-        buttonArea.parentElement.insertBefore(container, buttonArea.nextSibling);
-    }
-;
 
-// updateFunctionList
-    UIController.prototype.updateFunctionList = function() {
-        const container = document.getElementById('function-list');
-        if (!container) return;
-        
-        const functions = this.gameController.getTestModeFunctions();
-        
-        // 清除旧的列表项（保留标题）
-        const title = container.querySelector('.function-list-title');
-        container.innerHTML = '';
-        container.appendChild(title);
-        
-        // 添加每个函数的条目
-        functions.forEach((func, index) => {
-            const item = document.createElement('div');
-            item.className = 'function-item';
-            item.style.borderLeftColor = func.color;
-            item.innerHTML = `
-                <span class="function-expr">${func.expression}</span>
-                <div class="function-actions">
-                    <button class="btn-edit" data-index="${index}" title="编辑">✎</button>
-                    <button class="btn-delete" data-index="${index}" title="删除">✕</button>
-                </div>
-            `;
-            
-            // 绑定编辑事件
-            item.querySelector('.btn-edit').addEventListener('click', () => {
-                this.editTestFunction(index);
-            });
-            
-            // 绑定删除事件
-            item.querySelector('.btn-delete').addEventListener('click', () => {
-                this.deleteTestFunction(index);
-            });
-            
-            container.appendChild(item);
-        });
-    }
-;
 
-// editTestFunction
-    UIController.prototype.editTestFunction = function(index) {
-        const functions = this.gameController.getTestModeFunctions();
-        const func = functions[index];
-        if (!func) return;
-        
-        // 使用智能分词加载函数表达式
-        this.expressionElements = this.tokenizeExpression(func.expression);
-        // 设置光标到末尾
-        this.cursorIndex = this.expressionElements.length;
-        this.updateExpressionDisplay();
-        
-        // 删除原函数（重新绘制时会添加新的）
-        this.deleteTestFunction(index);
-        
-        this.showMessage(`正在编辑: ${func.expression}`);
-    }
-;
-
-// deleteTestFunction
-    UIController.prototype.deleteTestFunction = function(index) {
-        const functions = this.gameController.getTestModeFunctions();
-        functions.splice(index, 1);
-        
-        // 重新绘制所有函数
-        this.redrawAllTestFunctions();
-        this.updateFunctionList();
-        
-        this.showMessage('函数已删除');
-    }
-;
 
 // showMessage
     UIController.prototype.showMessage = function(message, type = 'info') {
@@ -1938,7 +1834,7 @@ if (typeof UIController === 'undefined') {
                 this.messageElement.textContent = '';
                 this.messageElement.className = 'message';
                 this.messageElement.style.opacity = '1';
-                if (this.messagePanel) this.messagePanel.classList.remove('visible');
+                // 面板常驻显示（不随文字消失而隐藏），仅清空文字内容
             } else {
                 this.messageElement.style.opacity = opacity.toString();
             }

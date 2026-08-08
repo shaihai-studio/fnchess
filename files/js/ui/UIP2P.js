@@ -727,6 +727,14 @@ if (typeof UIController === 'undefined') {
 
 // _cleanupP2P
     UIController.prototype._cleanupP2P = function() {
+        // ★ 无论何种退出/断开路径，先停掉对局计时（阶段倒计时 + 选格子倒计时），
+        //   否则退出对局后倒计时仍继续跑，最终触发超时/判负弹窗
+        if (this.gameController && typeof this.gameController.stopTimer === 'function') {
+            this.gameController.stopTimer();
+        }
+        if (this.gameController && typeof this.gameController.stopTargetTimer === 'function') {
+            this.gameController.stopTargetTimer();
+        }
         console.warn(`[UI][P2P] _cleanupP2P 被调用：isP2PMode=${this.isP2PMode}, matchStarted=${this._p2pMatchStarted}, eloSettled=${this._p2pEloSettled}, roomDissolved=${this._p2pRoomDissolved}, matchMode=${this._p2pMatchMode}`);
     // 对局进行中 + 主动退出（点退出/解散/返回主菜单）→ 立即结算并弹 disconnect-modal
     // - 排位模式：房主解散判负扣 ELO（弹"中途退出"）；访客判负扣 ELO（弹"你已中途退出判负"）
