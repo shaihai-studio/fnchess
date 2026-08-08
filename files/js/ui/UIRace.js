@@ -90,7 +90,7 @@ if (typeof UIController === 'undefined') {
 
 // hideRaceUI
     UIController.prototype.hideRaceUI = function() {
-        if (this.raceLivePanel) this.raceLivePanel.style.display = 'none';
+        if (this.raceLiveTimeValue) this.raceLiveTimeValue.style.display = 'none';
         if (this.raceModal) this.hideModal(this.raceModal);
     }
 ;
@@ -290,7 +290,7 @@ if (typeof UIController === 'undefined') {
         if (this.timerElement && this.timerElement.parentElement) this.timerElement.parentElement.style.display = 'none';
         const roundDisplay = document.getElementById('round-display');
         if (roundDisplay) roundDisplay.style.display = 'none';
-        if (this.raceLivePanel) this.raceLivePanel.style.display = 'block';
+        if (this.raceLiveTimeValue) this.raceLiveTimeValue.style.display = 'block';
         this.updateCampaignDrawDelayToggleVisibility();
         this.updateRaceBattleUI(data?.currentRound || this.raceCurrentLevelId || 1, 0);
         if (this._raceElapsedTimer) clearInterval(this._raceElapsedTimer);
@@ -309,7 +309,7 @@ if (typeof UIController === 'undefined') {
                 badge.style.display = 'inline-flex';
                 value.textContent = '自定义竞速';
             }
-            if (this.raceLiveTimeValue) this.raceLiveTimeValue.textContent = `${Number(elapsedSeconds || 0).toFixed(2)}s / ${this.gameController?.raceState?.puzzlesPerLevel || 10}`;
+            if (this.raceLiveTimeValue) this.raceLiveTimeValue.textContent = `${Number(elapsedSeconds || 0).toFixed(2)}s`;
             return;
         }
         this.roundElement.textContent = levelId;
@@ -322,7 +322,7 @@ if (typeof UIController === 'undefined') {
             badge.style.display = 'inline-flex';
             value.textContent = Number.isFinite(displayBest) && displayBest > 0 ? `Lv. ${levelId}  best:${displayBest.toFixed(2)}s` : `Lv. ${levelId}`;
         }
-        if (this.raceLiveTimeValue) this.raceLiveTimeValue.textContent = `${Number(elapsedSeconds || 0).toFixed(2)}s / ${this.gameController?.raceState?.puzzlesPerLevel || 10}`;
+        if (this.raceLiveTimeValue) this.raceLiveTimeValue.textContent = `${Number(elapsedSeconds || 0).toFixed(2)}s`;
     }
 ;
 

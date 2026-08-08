@@ -73,64 +73,30 @@
     
     <!-- 主容器 -->
     <div class="main-container">
-        <!-- 左侧 Canvas 区域 -->
+        <!-- 左侧 Canvas 区域（坐标系面板） -->
         <section class="canvas-section">
             <canvas id="game-canvas"></canvas>
-        </section>
-        
-        <!-- 右侧控制面板 -->
-        <aside class="control-panel">
-            <!-- 状态气泡：剩余时间 | 当前玩家 | 当前阶段 -->
-            <div class="panel-card status-bubble">
-                <div class="status-bubble-inner">
-                    <div class="bubble-item timer-display">
-                        <h3>剩余时间</h3>
-                        <div class="timer-value" id="timer">40</div>
-                    </div>
-                    <div class="bubble-divider"></div>
-                    <div class="bubble-item player-display">
-                        <h3>当前玩家</h3>
-                        <div class="player-value" id="current-player">玩家 B</div>
-                    </div>
-                    <div class="bubble-divider"></div>
-                    <div class="bubble-item phase-display">
-                        <h3>当前阶段</h3>
-                        <div class="phase-hint-text" id="phase-hint">请点击棋盘选择目标网格</div>
-                    </div>
-                </div>
+            <!-- 左上角：饼图倒计时 -->
+            <div class="timer-pie canvas-corner-tl" id="timer-pie">
+                <div class="timer-pie-value" id="timer">40</div>
             </div>
-            
-            <!-- 竞速实时用时 -->
-            <div class="panel-card race-live-panel" id="race-live-panel" style="display:none;">
-                <h3>CURRENT LAP TIME</h3>
-                <div class="race-live-time-card">
-                    <div class="race-live-time-label">TIMING</div>
-                    <div class="race-live-time-value" id="race-live-time-value">0.00s</div>
-                    <div class="race-live-time-bars" aria-hidden="true"><span></span><span></span><span></span></div>
-                    <div class="race-live-time-meta">
-                        <span class="race-live-meta-chip">Fnchess</span>
-                        <span class="race-live-meta-chip accent">F1</span>
-                        <span class="race-live-meta-chip">PIT</span>
-                    </div>
-                </div>
+            <!-- 左上角：竞速实时用时（仅竞速模式显示） -->
+            <div class="canvas-race-timer" id="race-live-time-value">0.00s</div>
+            <!-- 右上角：当前玩家 -->
+            <div class="canvas-corner-tr">
+                <div class="player-value" id="current-player">玩家 B</div>
             </div>
-
-            <!-- 移动端内联元素拖拽区（已废弃，DOM 保留兼容 JS 引用） -->
-            <div class="panel-card inline-elements-card" id="inline-elements-card">
-                <div class="inline-elements-tabs" id="inline-elements-tabs"></div>
-                <div class="inline-elements-body" id="inline-elements-body"></div>
+            <!-- 底部：当前阶段 -->
+            <div class="canvas-corner-bc">
+                <div class="phase-hint-text" id="phase-hint">请点击棋盘选择目标网格</div>
             </div>
-
-            <!-- 按钮组（竖屏下固定底栏，避免溢出屏幕） -->
-            <div class="panel-card" id="action-buttons-card">
-                <div class="button-group">
-                    <button class="btn btn-primary" id="confirm-btn" data-arrow>确认目标</button>
-                    <button class="btn btn-secondary" id="skip-btn" style="display:none">跳过本阶段</button>
-                    <button class="btn btn-secondary" id="clear-btn">清除</button>
-                    <button class="btn btn-exit" id="exit-btn">退出对局</button>
-                </div>
+            <!-- 左下角：消息提示（无外框） -->
+            <div class="canvas-message" id="message-panel">
+                <div class="message" id="message"></div>
             </div>
-            
+            <!-- 右下角：圆形 确认(✓) / 返回(←) 按钮 -->
+            <button class="canvas-fab-btn confirm-fab" id="confirm-fab-btn" type="button" title="确认">✓</button>
+            <button class="canvas-fab-btn exit-fab" id="exit-fab-btn" type="button" title="退出对局">←</button>
             <!-- 退出确认气泡框 -->
             <div class="exit-confirm-popover" id="exit-confirm-popover">
                 <p>确定要退出当前对局吗？</p>
@@ -139,10 +105,18 @@
                     <button class="btn btn-small btn-cancel" id="cancel-exit-btn">取消</button>
                 </div>
             </div>
-            
-            <!-- 消息提示 -->
-            <div class="panel-card message-panel" id="message-panel">
-                <div class="message" id="message"></div>
+        </section>
+        
+        <!-- 右侧控制面板（普通模式整块隐藏；测试模式保留，用于右侧显示已绘制函数） -->
+        <aside class="control-panel">
+            <!-- 旧确认/退出/清除/跳过按钮：已由右下角圆形按钮替代，DOM 保留仅供 JS 引用（CSS 恒隐藏） -->
+            <div class="panel-card" id="action-buttons-card" style="display:none">
+                <div class="button-group">
+                    <button class="btn btn-primary" id="confirm-btn" data-arrow>确认目标</button>
+                    <button class="btn btn-secondary" id="skip-btn">跳过本阶段</button>
+                    <button class="btn btn-secondary" id="clear-btn">清除</button>
+                    <button class="btn btn-exit" id="exit-btn">退出对局</button>
+                </div>
             </div>
         </aside>
     </div>
@@ -159,12 +133,14 @@
       <div class="float-keypad-header" id="float-keypad-header" title="按住拖动可移动位置">
         <span class="float-keypad-title">表达式输入<small class="float-keypad-drag-hint">可拖动</small></span>
         <div class="float-keypad-actions">
+          <button class="float-keypad-mode-btn" id="float-keypad-mode" type="button" title="切换背景模式：透明 / 遮光 / 模糊">遮光</button>
           <button class="float-keypad-btn" id="float-keypad-collapse" type="button" title="收起为圆形按钮">×</button>
         </div>
       </div>
       <div class="float-keypad-display" id="float-keypad-display"></div>
       <!-- KaTeX 数学预览（位于表达式下方，常驻显示） -->
       <div class="float-keypad-math" id="float-keypad-math">
+        <button class="float-keypad-math-zoom" id="float-keypad-math-zoom" type="button" title="缩放数学预览" hidden>100%</button>
         <div class="math-preview" id="math-preview"><span class="math-preview-empty">构建表达式后在此实时预览数学公式</span></div>
       </div>
       <div class="float-keypad-body" id="float-keypad-body"></div>

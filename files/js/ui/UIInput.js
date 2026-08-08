@@ -783,31 +783,44 @@ if (typeof UIController === 'undefined') {
         if (!this.mathPreview) return;
 
         const expr = this.expressionElements.join('');
-        // 空表达式 / 引擎未就绪：显示引导提示（预览区域常驻可见）
+        // 空表达式 / 引擎未就绪：显示引导提示（预览区域常驻可见），隐藏缩放按钮
         if (!expr || typeof window.katex === 'undefined' || !window.MathLatex) {
             this.mathPreview.innerHTML = '';
             const hint = document.createElement('span');
             hint.className = 'math-preview-empty';
             hint.textContent = '构建表达式后在此实时预览数学公式';
             this.mathPreview.appendChild(hint);
+            this._setMathPreviewZoomVisible(false);
             return;
         }
 
         const latex = window.MathLatex.toLatex(expr);
         this.mathPreview.innerHTML = '';
         if (latex === null) {
-            // 表达式不完整/非法：显示原文，提示暂不可渲染
+            // 表达式不完整/非法：显示原文，提示暂不可渲染，隐藏缩放按钮
             const raw = document.createElement('span');
             raw.className = 'math-preview-raw';
             raw.textContent = expr;
             this.mathPreview.appendChild(raw);
+            this._setMathPreviewZoomVisible(false);
             return;
         }
 
         window.katex.render(latex, this.mathPreview, { throwOnError: false });
+        // 有公式时显示缩放按钮
+        this._setMathPreviewZoomVisible(true);
         // 自适应字号：表达式超出预览容器宽度时，随内容加长缩小字号（最多缩小 2 倍 = ×0.5），
         // 达到下限后不再缩小，由 .float-keypad-math 的 overflow-x:auto 显示滑动条
         this._fitMathPreviewFont();
+    }
+;
+
+// _setMathPreviewZoomVisible — 切换数学预览缩放按钮的显示状态
+    UIController.prototype._setMathPreviewZoomVisible = function(visible) {
+        if (!this.floatKeypadMathZoom) {
+            this.floatKeypadMathZoom = document.getElementById('float-keypad-math-zoom');
+        }
+        if (this.floatKeypadMathZoom) this.floatKeypadMathZoom.hidden = !visible;
     }
 ;
 
@@ -827,15 +840,17 @@ if (typeof UIController === 'undefined') {
             if (!Number.isNaN(kpv)) kpScale = kpv;
         }
         const base = 16 * kpScale;
+        // 用户手动缩放倍数（默认 1）：缩放按钮调节，叠加在自动适配之上
+        const zoom = (this._mathPreviewZoom != null) ? this._mathPreviewZoom : 1;
         let shrink = 1;
         let content = katexEl.scrollWidth;
         if (content > avail && content > 0) shrink = Math.max(0.5, avail / content);
-        katexEl.style.fontSize = (base * shrink) + 'px';
+        katexEl.style.fontSize = (base * shrink * zoom) + 'px';
         // 字号变化后宽度会变化，迭代一次更精确
         content = katexEl.scrollWidth;
         if (content > avail && shrink > 0.5) {
             shrink = Math.max(0.5, avail / content);
-            katexEl.style.fontSize = (base * shrink) + 'px';
+            katexEl.style.fontSize = (base * shrink * zoom) + 'px';
         }
     }
 ;

@@ -1136,41 +1136,7 @@ body::before {
     letter-spacing: 2px;
 }
 
-/* 计时器 */
-.timer-display {
-    text-align: center;
-}
-
-.timer-value {
-    font-size: 48px;
-    font-weight: bold;
-    color: #5b9e6e;
-    font-family: 'Courier New', monospace;
-}
-
-.timer-value.warning {
-    color: #ef4444;
-    animation: pulse 1s infinite;
-}
-
-@keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
-}
-
-/* 当前玩家 */
-.player-display {
-    text-align: center;
-}
-
-.player-value {
-    font-size: 22px;
-    font-weight: bold;
-    color: #5b7fa8;
-}
-
-/* 状态气泡：剩余时间 | 当前玩家 | 当前阶段
-   纵向三段均分、撑满控制面板剩余高度，合理利用下方空间 */
+/* 状态气泡：当前阶段提示（倒计时/玩家已移至画布左上/右上角） */
 .status-bubble {
     padding: 14px 16px !important;
     flex: 1 1 auto;
@@ -1180,8 +1146,167 @@ body::before {
     display: flex;
     flex-direction: column;
     align-items: stretch;
-    gap: 0;
+    gap: 10px;
     width: 100%;
+}
+/* 画布角落叠层（仅展示，不拦截画布点击） */
+.canvas-corner-tl {
+    position: absolute;
+    top: 14px;
+    left: 14px;
+    z-index: 5;
+    pointer-events: none;
+}
+.canvas-corner-tr {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    z-index: 5;
+    padding: 6px 12px;
+    border-radius: 10px;
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    pointer-events: none;
+}
+/* 坐标系面板底部居中：当前阶段提示 */
+.canvas-corner-bc {
+    position: absolute;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 5;
+    padding: 6px 16px;
+    border-radius: 10px;
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    text-align: center;
+    pointer-events: none;
+    max-width: 90%;
+    box-sizing: border-box;
+}
+.canvas-corner-bc .phase-hint-text {
+    font-size: 14px;
+    color: #e5e7eb;
+    line-height: 1.5;
+}
+/* 非测试模式：整块隐藏下方控制面板（测试模式需右侧显示已绘制函数） */
+body:not(.layout-test-mode) .control-panel {
+    display: none !important;
+}
+/* 竞速实时用时（坐标系面板左上角）：xx.xx s，默认隐藏，竞速模式显示 */
+.canvas-race-timer {
+    position: absolute;
+    top: 16px;
+    left: 78px;
+    z-index: 5;
+    display: none;
+    padding: 5px 12px;
+    border-radius: 10px;
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    font-size: 18px;
+    font-weight: bold;
+    color: #fbbf24;
+    font-family: 'Courier New', monospace;
+    pointer-events: none;
+}
+/* 消息提示（坐标系面板左下角，无外框） */
+.canvas-message {
+    position: absolute;
+    bottom: 14px;
+    left: 14px;
+    z-index: 5;
+    max-width: 45%;
+    pointer-events: none;
+}
+.canvas-message .message {
+    min-height: 0;
+    padding: 0;
+    border-radius: 0;
+    background: none;
+    border: none;
+    font-size: 14px;
+    text-align: left;
+}
+/* 右下角：圆形 确认(✓) / 返回(←) 按钮 */
+.canvas-fab-btn {
+    position: absolute;
+    bottom: 14px;
+    right: 14px;
+    z-index: 6;
+    width: 54px;
+    height: 54px;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: rgba(15, 23, 42, 0.7);
+    color: #e5e7eb;
+    font-size: 26px;
+    font-weight: bold;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+    transition: transform 0.12s, background 0.12s;
+}
+.canvas-fab-btn:hover {
+    background: rgba(59, 130, 246, 0.5);
+    color: #fff;
+}
+.canvas-fab-btn:active { transform: scale(0.92); }
+.canvas-fab-btn.confirm-fab {
+    right: 14px;
+    background: rgba(34, 197, 94, 0.55);
+    color: #fff;
+}
+.canvas-fab-btn.exit-fab {
+    right: 78px;
+    background: rgba(239, 68, 68, 0.5);
+    color: #fff;
+}
+.canvas-fab-btn.confirm-fab:hover { background: rgba(34, 197, 94, 0.7); }
+.canvas-fab-btn.exit-fab:hover { background: rgba(239, 68, 68, 0.7); }
+/* 饼图倒计时（坐标系面板左上角）：conic-gradient 扇形表示剩余时间占比，中心为数字 */
+.timer-pie {
+    width: 58px;
+    height: 58px;
+    border-radius: 50%;
+    background: conic-gradient(#5b9e6e 100%, rgba(255, 255, 255, 0.12) 0);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+}
+.timer-pie-value {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: rgba(15, 23, 42, 0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    font-weight: bold;
+    color: #e5e7eb;
+    font-family: 'Courier New', monospace;
+}
+.timer-pie.warning {
+    animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+/* 当前玩家（坐标系面板右上角，无“当前玩家”文字） */
+.player-value {
+    font-size: 20px;
+    font-weight: bold;
+    color: #5b7fa8;
+    line-height: 1.2;
+    white-space: nowrap;
 }
 .bubble-item {
     flex: 1;
@@ -1199,14 +1324,6 @@ body::before {
     font-size: 12px;
     color: #94a3b8;
     text-transform: uppercase;
-}
-.bubble-item .timer-value {
-    font-size: 40px;
-    line-height: 1.2;
-}
-.bubble-item .player-value {
-    font-size: 20px;
-    line-height: 1.2;
 }
 .bubble-item .phase-hint-text {
     font-size: 13px;
@@ -1496,8 +1613,9 @@ body::before {
 /* 退出确认气泡框 */
 .exit-confirm-popover {
     position: absolute;
-    bottom: 160px; /* 位于按钮组上方 */
-    right: 20px;
+    bottom: 80px; /* 位于右下角圆形按钮上方 */
+    right: 16px;
+    z-index: 7;
     background: rgba(15, 23, 42, 0.95);
     backdrop-filter: blur(10px);
     border: 1px solid rgba(255, 255, 255, 0.2);
@@ -1829,6 +1947,14 @@ body::before {
     color: #6b7280;
     border-color: rgba(107, 114, 128, 0.3);
     cursor: not-allowed;
+}
+/* 锁定元素保持可点击以播放错误音效，hover 时维持锁定外观（不产生蓝色高亮） */
+.element-btn.locked:hover {
+    background: rgba(107, 114, 128, 0.2);
+    color: #6b7280;
+    border-color: rgba(107, 114, 128, 0.3);
+    transform: none;
+    box-shadow: none;
 }
 
 .lock-icon {
@@ -3373,6 +3499,22 @@ body::before {
     }
 }
 
+/* ── 非测试模式的桌面/平板布局：整块隐藏下方控制面板，
+      坐标系面板撑满全部空间、画布居中；测试模式(body.layout-test-mode)保留双栏 ── */
+@media (min-width: 768px) {
+    body:not(.layout-test-mode) .main-container {
+        flex-direction: column !important;
+    }
+    body:not(.layout-test-mode) .canvas-section {
+        flex: 1 1 auto;
+        min-height: 0;
+        height: auto;
+    }
+    body:not(.layout-test-mode) .control-panel {
+        display: none;
+    }
+}
+
 /* 平板布局（iPad 横屏 / 小笔记本） */
 
 /* 平板布局（iPad 横屏 / 小笔记本） */
@@ -3665,9 +3807,15 @@ body::before {
         letter-spacing: 1.5px;
     }
     
-    /* 计时器缩小 */
-    .timer-value {
-        font-size: 32px;
+    /* 饼图倒计时缩小 */
+    .timer-pie {
+        width: 50px;
+        height: 50px;
+    }
+    .timer-pie-value {
+        width: 38px;
+        height: 38px;
+        font-size: 17px;
     }
     
     /* 玩家显示缩小 */
@@ -3675,26 +3823,13 @@ body::before {
         font-size: 14px;
     }
     
-    /* 状态气泡手机版：保持纵向三段，按内容自适应高度（不撑满，避免挤在一起） */
-    .status-bubble {
-        padding: 8px 10px !important;
-        flex: 0 0 auto;
+    /* 画布底部阶段提示：手机版缩小 */
+    .canvas-corner-bc {
+        bottom: 10px;
+        padding: 5px 12px;
     }
-    .bubble-item {
-        padding: 4px 0;
-    }
-    .bubble-item .timer-value {
-        font-size: 26px;
-    }
-    .bubble-item .player-value {
-        font-size: 14px;
-    }
-    .bubble-item .phase-hint-text {
-        font-size: 11px;
-    }
-    .bubble-divider {
-        height: 1px;
-        margin: 2px 6px;
+    .canvas-corner-bc .phase-hint-text {
+        font-size: 12px;
     }
     
     /* 阶段提示缩小 */
@@ -3772,7 +3907,7 @@ body::before {
     /* 退出确认气泡 - 移动端适配 */
     .exit-confirm-popover {
         position: fixed;
-        bottom: 20px;
+        bottom: 80px;
         right: 8px;
         left: auto;
         min-width: 200px;
@@ -3851,34 +3986,27 @@ body::before {
         padding: 10px 12px;
     }
     
-    .timer-value {
-        font-size: 28px;
+    .timer-pie {
+        width: 44px;
+        height: 44px;
+    }
+    .timer-pie-value {
+        width: 34px;
+        height: 34px;
+        font-size: 15px;
     }
     
     .phase-hint {
         font-size: 11px;
     }
     
-    /* 状态气泡超小屏：按内容自适应 */
-    .status-bubble {
-        padding: 6px 8px !important;
-        flex: 0 0 auto;
+    /* 画布底部阶段提示：超小屏进一步缩小 */
+    .canvas-corner-bc {
+        bottom: 8px;
+        padding: 4px 10px;
     }
-    .bubble-item {
-        padding: 3px 0;
-    }
-    .bubble-item .timer-value {
-        font-size: 22px;
-    }
-    .bubble-item .player-value {
-        font-size: 12px;
-    }
-    .bubble-divider {
-        height: 1px;
-        margin: 2px 6px;
-    }
-    .phase-hint-text {
-        font-size: 10px;
+    .canvas-corner-bc .phase-hint-text {
+        font-size: 11px;
     }
 
     /* 隐藏固定底栏，使用内联面板 */
@@ -5275,23 +5403,31 @@ body.device-mobile {
     /* 纵向 flex 列布局；高度由内容自适应（缩放功能已移除） */
     display: flex;
     flex-direction: column;
-    /* 输入栏整体不透明度 75% */
-    opacity: 0.75;
     /* 由 JS 按实际宽度更新：宽度缩放驱动字号 / 间距随窄屏自适应收缩 */
     --kp-w-scale: 1;
     --kp-h-scale: 1;
-    /* 玻璃拟态：半透明浅色背景 + 背景模糊，如水般通透 */
-    background: rgba(255, 255, 255, 0.07);
-    border: 1px solid rgba(255, 255, 255, 0.16);
+    /* 背景模式（默认遮光）：微微黑色、不模糊。
+       透明 / 模糊由 .keypad-bg-transparent / .keypad-bg-blur 覆盖 */
+    background: rgba(0, 0, 0, 0.35);
+    border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 16px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.18);
-    backdrop-filter: blur(20px) saturate(140%);
-    -webkit-backdrop-filter: blur(20px) saturate(140%);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.08);
     color: #e5e7eb;
     user-select: none;
     -webkit-user-select: none;
 }
-.float-keypad:hover { opacity: 1; } /* 悬浮时恢复不透明，便于阅读 */
+/* 背景模式：透明（无背景无模糊） */
+.float-keypad.keypad-bg-transparent {
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+/* 背景模式：模糊（仅背景模糊，不变暗） */
+.float-keypad.keypad-bg-blur {
+    background: transparent;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+}
 .float-keypad-header {
     display: flex;
     align-items: center;
@@ -5318,24 +5454,54 @@ body.device-mobile {
     color: #64748b;
     letter-spacing: 0.5px;
 }
-.float-keypad-actions { display: flex; gap: calc(6px * var(--kp-w-scale)); }
+.float-keypad-actions { display: flex; align-items: center; gap: calc(6px * var(--kp-w-scale)); }
+/* 背景模式切换按钮（位于关闭按钮左侧）：点击循环切换 透明 / 遮光 / 模糊 */
+.float-keypad-mode-btn {
+    flex: 0 0 auto;
+    padding: 0 calc(6px * var(--kp-w-scale));
+    height: calc(22px * var(--kp-h-scale));
+    min-width: calc(34px * var(--kp-w-scale));
+    border-radius: calc(8px * var(--kp-w-scale));
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.05);
+    color: #cbd5e1;
+    font-size: calc(11px * var(--kp-w-scale));
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.float-keypad-mode-btn:hover {
+    background: rgba(59, 130, 246, 0.3);
+    border-color: rgba(96, 165, 250, 0.6);
+    color: #fff;
+}
+.float-keypad-mode-btn:active { transform: scale(0.94); }
 .float-keypad-btn {
     width: calc(26px * var(--kp-h-scale));
     height: calc(26px * var(--kp-h-scale));
     padding: 0;
     border-radius: 50%;
-    border: 1px solid rgba(255, 255, 255, 0.22);
-    background: rgba(255, 255, 255, 0.09);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: transparent;
     color: #cbd5e1;
-    font-size: calc(14px * var(--kp-w-scale));
+    font-size: calc(20px * var(--kp-w-scale));
     line-height: 1;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15);
+}
+/* 关闭按钮：加一点红色 */
+#float-keypad-collapse {
+    color: #fca5a5;
+    border-color: rgba(248, 113, 113, 0.35);
+    background: rgba(239, 68, 68, 0.12);
+}
+#float-keypad-collapse:hover {
+    background: rgba(239, 68, 68, 0.25);
+    border-color: rgba(248, 113, 113, 0.6);
 }
 /* fx 按钮：底部操作栏中间（◀ ▶ 与 提交 之间），蓝色玻璃高亮 */
 .float-keypad-fx-btn {
@@ -5345,10 +5511,8 @@ body.device-mobile {
     border-radius: calc(10px * var(--kp-w-scale));
     border: 1px solid rgba(96, 165, 250, 0.5);
     background: rgba(59, 130, 246, 0.22);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
     color: #dbeafe;
-    font-size: calc(15px * var(--kp-w-scale));
+    font-size: calc(20px * var(--kp-w-scale));
     font-weight: 700;
     letter-spacing: 1px;
     cursor: pointer;
@@ -5382,10 +5546,8 @@ body.device-mobile {
     margin: calc(5px * var(--kp-w-scale)) calc(8px * var(--kp-w-scale)) 0;
     padding: calc(4px * var(--kp-w-scale)) calc(8px * var(--kp-w-scale));
     border-radius: calc(8px * var(--kp-w-scale));
-    background: rgba(255, 255, 255, 0.08);
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
     font-family: 'Courier New', Consolas, monospace;
     font-size: calc(14px * var(--kp-w-scale));
     color: #e2e8f0;
@@ -5397,22 +5559,52 @@ body.device-mobile {
 }
 /* KaTeX 数学预览（位于表达式显示下方，常驻显示） */
 .float-keypad-math {
+    position: relative;
     margin: calc(4px * var(--kp-w-scale)) calc(8px * var(--kp-w-scale)) 0;
     padding: calc(3px * var(--kp-w-scale)) calc(8px * var(--kp-w-scale));
     border-radius: calc(8px * var(--kp-w-scale));
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
     min-height: calc(24px * var(--kp-w-scale));
+    /* 限定最大高度：KaTeX 式子过高（如 x/x/x/... 叠层）时出现垂直滚动条；
+       用 safe center 保证溢出时从顶部对齐，两端都可滚动到 */
+    max-height: calc(120px * var(--kp-w-scale));
     display: flex;
-    align-items: center;
-    justify-content: center;
+    align-items: safe center;
+    justify-content: safe center;
     overflow-x: auto;
-    overflow-y: hidden;
+    overflow-y: auto;
     flex: 0 0 auto;
     font-size: calc(15px * var(--kp-w-scale));
 }
+/* 数学预览缩放按钮：位于预览区右上角，点击循环切换缩放级别 */
+.float-keypad-math-zoom {
+    position: absolute;
+    top: calc(2px * var(--kp-w-scale));
+    right: calc(2px * var(--kp-w-scale));
+    z-index: 1;
+    padding: 0;
+    min-width: calc(28px * var(--kp-w-scale));
+    height: calc(18px * var(--kp-w-scale));
+    border-radius: calc(6px * var(--kp-w-scale));
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: transparent;
+    color: #cbd5e1;
+    font-size: calc(11px * var(--kp-w-scale));
+    line-height: 1;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.float-keypad-math-zoom:hover {
+    background: rgba(59, 130, 246, 0.3);
+    border-color: rgba(96, 165, 250, 0.6);
+    color: #fff;
+}
+.float-keypad-math-zoom:active { transform: scale(0.94); }
+/* 缩放按钮使用 hidden 属性隐藏：强制 display:none（覆盖其 inline-flex 默认样式） */
+.float-keypad-math-zoom[hidden] { display: none !important; }
 .float-keypad-math:empty { display: none; }
 .float-keypad-math .math-preview-empty {
     color: #64748b;
@@ -5449,19 +5641,17 @@ body.device-mobile {
 .float-keypad-body .element-btn {
     padding: 0;
     /* 高度跟高度缩放走（垂直 resize 改变按钮高度），字号跟宽度缩放走（窄时不溢出）；
-       默认态整体缩小：按钮 30px 高 / 16px 字 */
+       主键盘按钮 30px 高 / 20px 字（函数按钮字号另行覆盖，不在此列） */
     height: calc(30px * var(--kp-h-scale));
-    font-size: calc(16px * var(--kp-w-scale));
+    font-size: calc(20px * var(--kp-w-scale));
     border-radius: calc(8px * var(--kp-w-scale));
     justify-content: center;
     min-width: 0;
     gap: calc(3px * var(--kp-w-scale));
-    /* 玻璃拟态：半透明白 + 背景模糊 + 内高光 */
-    background: rgba(255, 255, 255, 0.09);
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+    /* 透明玻璃：无背景模糊，与面板整体玻璃一致 */
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 /* fx 函数面板：悬浮栏左侧扩展区域（3×3 网格），默认隐藏，点击 fx 按钮展开。
    排列紧凑（gap 小、纵向间距小）、按钮加宽（尤其 asin/acos/atan 显示完整） */
@@ -5490,33 +5680,42 @@ body.device-mobile {
 }
 .float-keypad.fx-open .float-keypad-fx-panel {
     display: grid;
-    flex: 0 0 calc(168px * var(--kp-w-scale));
-    width: calc(168px * var(--kp-w-scale));
+    /* 函数按钮已收窄为原宽 80%：面板宽度同步收窄（168 → 134.4px） */
+    flex: 0 0 calc(134.4px * var(--kp-w-scale));
+    width: calc(134.4px * var(--kp-w-scale));
 }
 .float-keypad.fx-open .float-keypad-fx-panel .element-btn {
-    height: calc(40px * var(--kp-h-scale));
+    height: calc(30px * var(--kp-h-scale));
     font-size: calc(12px * var(--kp-w-scale));
     border-radius: calc(8px * var(--kp-w-scale));
     padding: 0 calc(3px * var(--kp-w-scale));
     white-space: nowrap;
     justify-content: center;
     min-width: 0;
-    /* 玻璃拟态：与主键盘按钮一致 */
-    background: rgba(255, 255, 255, 0.09);
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+    /* 透明玻璃：与主键盘按钮一致 */
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 /* fx 展开时悬浮栏整体加宽（容纳左侧函数面板），超窄屏时收缩；
-   fx 打开时输入栏高度不缩小：主键盘按钮恢复原高（44px/16px） */
+   fx 打开时按钮高度保持不变（与收起态一致 30px） */
 .float-keypad.fx-open {
-    width: min(394px, 96vw);
+    width: min(360px, 96vw);
 }
 .float-keypad.fx-open .float-keypad-grid .element-btn {
-    height: calc(36px * var(--kp-h-scale));
-    font-size: calc(16px * var(--kp-w-scale));
+    height: calc(30px * var(--kp-h-scale));
+    font-size: calc(20px * var(--kp-w-scale));
     border-radius: calc(8px * var(--kp-w-scale));
+}
+/* AC 清除按钮：加一点红色 */
+.float-keypad-grid .element-btn[data-action="clear"] {
+    color: #fca5a5;
+    border-color: rgba(248, 113, 113, 0.35);
+    background: rgba(239, 68, 68, 0.12);
+}
+.float-keypad-grid .element-btn[data-action="clear"]:hover {
+    background: rgba(239, 68, 68, 0.25);
+    border-color: rgba(248, 113, 113, 0.6);
 }
 /* 竖屏/窄屏：输入栏进一步缩小（宽度 + 高度 + 字号同步缩小）；
    fx 展开时函数面板与主键盘都收紧，避免按钮挤压出界 */
@@ -5525,16 +5724,15 @@ body.device-mobile {
     .float-keypad {
         width: min(220px, 88vw);
     }
-    /* fx 展开：宽度由内容自适应（函数面板 138px + 主键盘固定列宽），不再 96vw 撑满全屏 */
+    /* fx 展开：宽度固定（函数面板 110.4px + 主键盘固定列宽 + 内边距 ≈ 330px），
+       不再用 width:auto 以免长表达式把输入栏撑宽（长表达式在显示区内部换行） */
     .float-keypad.fx-open {
-        width: auto;
-        min-width: min(220px, 88vw);
-        max-width: 96vw;
+        width: min(330px, 92vw);
     }
     .float-keypad-grid .element-btn,
     .float-keypad-body .element-btn {
         height: calc(30px * var(--kp-h-scale));
-        font-size: calc(13px * var(--kp-w-scale));
+        font-size: calc(20px * var(--kp-w-scale));
         border-radius: calc(8px * var(--kp-w-scale));
     }
     .float-keypad .float-keypad-header {
@@ -5547,23 +5745,23 @@ body.device-mobile {
     .float-keypad-fx-btn,
     .float-keypad-submit {
         height: calc(34px * var(--kp-h-scale));
-        font-size: calc(13px * var(--kp-w-scale));
+        font-size: calc(20px * var(--kp-w-scale));
     }
     .float-keypad-nav-btn {
         width: calc(30px * var(--kp-w-scale));
     }
-    /* fx 展开：函数面板保持紧凑（竖屏时函数栏随输入栏同步缩小） */
+    /* fx 展开：函数面板保持紧凑（竖屏时函数栏随输入栏同步缩小；按钮收窄为 80% → 面板 138 → 110.4px） */
     .float-keypad.fx-open .float-keypad-fx-panel {
-        flex-basis: calc(138px * var(--kp-w-scale));
-        width: calc(138px * var(--kp-w-scale));
+        flex-basis: calc(110.4px * var(--kp-w-scale));
+        width: calc(110.4px * var(--kp-w-scale));
     }
     .float-keypad.fx-open .float-keypad-fx-panel .element-btn {
         font-size: calc(11px * var(--kp-w-scale));
-        height: calc(36px * var(--kp-h-scale));
+        height: calc(30px * var(--kp-h-scale));
     }
     .float-keypad.fx-open .float-keypad-grid .element-btn {
-        font-size: calc(13px * var(--kp-w-scale));
-        height: calc(34px * var(--kp-h-scale));
+        font-size: calc(20px * var(--kp-w-scale));
+        height: calc(30px * var(--kp-h-scale));
     }
     .float-keypad.fx-open .float-keypad-grid {
         gap: calc(4px * var(--kp-w-scale));
@@ -5587,13 +5785,11 @@ body.device-mobile {
     height: calc(36px * var(--kp-h-scale));
     padding: 0;
     border-radius: calc(10px * var(--kp-w-scale));
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    background: rgba(255, 255, 255, 0.09);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.05);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
     color: #cbd5e1;
-    font-size: calc(16px * var(--kp-w-scale));
+    font-size: calc(20px * var(--kp-w-scale));
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -5610,12 +5806,10 @@ body.device-mobile {
     padding: 0;
     border-radius: calc(10px * var(--kp-w-scale));
     border: 1px solid rgba(34, 197, 94, 0.5);
-    /* 玻璃拟态绿：半透明 + 模糊 + 内高光，保持绿色主操作语义 */
+    /* 透明玻璃绿：半透明背景、无背景模糊，保持绿色主操作语义 */
     background: rgba(34, 197, 94, 0.22);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
     color: #d1fae5;
-    font-size: calc(15px * var(--kp-w-scale));
+    font-size: calc(20px * var(--kp-w-scale));
     font-weight: 700;
     letter-spacing: 1px;
     cursor: pointer;
@@ -5639,10 +5833,8 @@ body.device-mobile {
     text-align: center;
     padding: calc(6px * var(--kp-w-scale));
     border-radius: calc(10px * var(--kp-w-scale));
-    background: rgba(255, 255, 255, 0.07);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
     flex: 0 0 auto;
 }
 /* 移除旧锁定视图专用网格（改为复用 float-keypad-grid） */
@@ -5682,11 +5874,9 @@ body.float-keypad-mode #clear-btn { display: none !important; }
     padding: 0;
     border-radius: 50%;
     border: 1px solid rgba(34, 211, 238, 0.55);
-    /* 玻璃拟态：半透明白 + 模糊，与水一致的观感 */
-    background: rgba(255, 255, 255, 0.12);
-    backdrop-filter: blur(14px) saturate(140%);
-    -webkit-backdrop-filter: blur(14px) saturate(140%);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 10px 30px rgba(0, 0, 0, 0.35);
+    /* 透明玻璃：无背景模糊，与输入栏面板一致的观感 */
+    background: rgba(255, 255, 255, 0.05);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 10px 30px rgba(0, 0, 0, 0.25);
     color: #cffafe;
     font-size: 22px;
     line-height: 1;

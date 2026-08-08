@@ -320,11 +320,23 @@ if (typeof UIController === 'undefined') {
     }
 ;
 
-// updateTimer
+// updateTimer — 更新剩余时间：左上角饼图倒计时（扇形按剩余占比），中心显示剩余秒数
     UIController.prototype.updateTimer = function(remainingTime) {
-        this.timerElement.textContent = Math.max(0, Math.round(remainingTime));
-        
-        if (remainingTime <= 10) {
+        const remain = Math.max(0, remainingTime);
+        this.timerElement.textContent = Math.round(remain);
+
+        // 饼图倒计时：填充占比 = 剩余 / 总时长（总时长 <= 0 时保持满饼）
+        const pie = document.getElementById('timer-pie');
+        const total = this.gameController?.timeLimit;
+        if (pie && total > 0) {
+            const pct = Math.max(0, Math.min(1, remain / total)) * 100;
+            const warn = remain <= 10;
+            const color = warn ? '#ef4444' : '#5b9e6e';
+            pie.style.background = `conic-gradient(${color} ${pct}%, rgba(255,255,255,0.12) ${pct}%)`;
+            pie.classList.toggle('warning', warn);
+        }
+
+        if (remain <= 10) {
             this.timerElement.classList.add('warning');
         } else {
             this.timerElement.classList.remove('warning');

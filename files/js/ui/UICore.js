@@ -421,6 +421,8 @@ if (typeof UIController === 'undefined') {
 // bindGameEvents
     UIController.prototype.bindGameEvents = function() {
         this.gameController.on('gameInit', (data) => {
+            // 标记是否为测试模式：测试模式需保留双栏布局（右侧显示已绘制函数）
+            document.body.classList.toggle('layout-test-mode', !!data.isTestMode);
             // 完全重置UI状态
             this.gridSystem.clearAll();
             this.gridSystem.functionHistory = [];
@@ -814,7 +816,7 @@ if (typeof UIController === 'undefined') {
                 this.gridSystem.forbiddenCells = data.roundState.forbiddenCells || [];
                 // 竞速每关独立，清空历史函数
                 this.gridSystem.functionHistory = [];
-                this.raceLivePanel && (this.raceLivePanel.style.display = 'block');
+                this.raceLiveTimeValue && (this.raceLiveTimeValue.style.display = 'block');
                 this.updateRacePuzzleProgress(data.solvedCount || 0, data.totalSolved || 10);
                 this.gridSystem.draw();
                 this.initDraggableElements();
@@ -1031,6 +1033,11 @@ if (typeof UIController === 'undefined') {
         this.confirmBtn.addEventListener('click', () => this.handleConfirm());
         this.clearBtn.addEventListener('click', () => this.handleClear());
         this.exitBtn.addEventListener('click', () => this.handleExitClick());
+        // 右下角圆形按钮：✓ 确认 / ← 返回退出
+        this.confirmFabBtn = document.getElementById('confirm-fab-btn');
+        this.exitFabBtn = document.getElementById('exit-fab-btn');
+        if (this.confirmFabBtn) this.confirmFabBtn.addEventListener('click', () => this.handleConfirm());
+        if (this.exitFabBtn) this.exitFabBtn.addEventListener('click', () => this.handleExitClick());
         if (this.skipBtn) this.skipBtn.addEventListener('click', () => {
             const gc = this.gameController;
             if (gc && gc.skipSubPhase) gc.skipSubPhase();

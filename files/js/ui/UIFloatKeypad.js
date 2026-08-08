@@ -30,7 +30,8 @@ if (typeof UIController === 'undefined') {
         let drag = null;
         const header = this.floatKeypadHeader;
         header.addEventListener('pointerdown', (e) => {
-            if (e.target.closest('button')) return; // 按钮不触发拖动
+            // 按钮等交互控件不触发拖动（避免 preventDefault 吞掉点击）
+            if (e.target.closest('button')) return;
             e.preventDefault();
             const r = el.getBoundingClientRect();
             drag = { sx: e.clientX, sy: e.clientY, left: r.left, top: r.top };
@@ -48,20 +49,26 @@ if (typeof UIController === 'undefined') {
         header.addEventListener('pointerup', endDrag);
         header.addEventListener('pointercancel', endDrag);
 
-        // —— 窗口尺寸/方向变化：自动夹回屏幕内 + 重算字号缩放 ——
+        // —— 窗口尺寸/方向变化：自动夹回屏幕内 + 重算字号缩放 + 函数名自适应 ——
         window.addEventListener('resize', () => {
             this._clampFloatKeypad();
             this.updateKeypadScale();
             this._clampFloatKeypadFab();
+            if (this._floatKeypadFxOpen) this._fitFloatFxFonts();
         });
 
         // —— 收起为圆形按钮（×） ——
         this.floatKeypadCollapseBtn.addEventListener('click', () => {
             if (window.audioManager) window.audioManager.playClick();
             this._floatKeypadCollapsed = true;
-            // 收起时同步收起 fx 面板（避免下次展开时残留展开态）
+            // 收起时仅移除 fx-open 类（面板此时隐藏），
+            // 但保留 _floatKeypadFxOpen 标志：下次展开输入栏时函数栏仍保持打开
             el.classList.remove('fx-open');
-            if (this._floatKeypadFxOpen) { this._floatKeypadFxOpen = false; }
+            // 收起后重新展开时位置由 FAB 决定：重置底边/右边界锚点，避免沿用旧锚点
+            this._floatKeypadBottom = null;
+            this._floatKeypadHeight = null;
+            this._floatKeypadRight = null;
+            this._floatKeypadWidth = null;
             // 圆形按钮出现在原输入栏位置
             const r = el.getBoundingClientRect();
             if (this.floatKeypadFab) {
@@ -145,12 +152,59 @@ if (typeof UIController === 'undefined') {
                 this._floatKeypadFxOpen = !this._floatKeypadFxOpen;
                 el.classList.toggle('fx-open', this._floatKeypadFxOpen);
                 this.floatKeypadFx.classList.toggle('active', this._floatKeypadFxOpen);
-                // 展开后宽度变化 → 夹回屏幕内 + 重算字号缩放
+                // 展开后宽度变化 → 夹回屏幕内 + 重算字号缩放 + 函数名自适应
                 requestAnimationFrame(() => {
                     this._clampFloatKeypad();
                     this.updateKeypadScale();
+                    if (this._floatKeypadFxOpen) this._fitFloatFxFonts();
                 });
             });
+        }
+
+        // —— 背景模式按钮：循环切换 透明 / 遮光 / 模糊 ——
+        this.floatKeypadModeBtn = document.getElementById('float-keypad-mode');
+        if (this.floatKeypadModeBtn) {
+            // 三种模式及对应背景类
+            this._keypadBgModes = [
+                { name: '透明', cls: 'keypad-bg-transparent' },
+                { name: '遮光', cls: 'keypad-bg-shade' },
+                { name: '模糊', cls: 'keypad-bg-blur' }
+            ];
+            this._keypadBgIndex = 1; // 默认遮光
+            const applyBgMode = (index) => {
+                const mode = this._keypadBgModes[index];
+                // 先移除所有背景类，再加当前模式类（遮光 = 基础样式，透明/模糊为覆盖类）
+                el.classList.remove('keypad-bg-transparent', 'keypad-bg-shade', 'keypad-bg-blur');
+                el.classList.add(mode.cls);
+                this.floatKeypadModeBtn.textContent = mode.name;
+            };
+            this.floatKeypadModeBtn.addEventListener('click', () => {
+                if (window.audioManager) window.audioManager.playClick();
+                this._keypadBgIndex = (this._keypadBgIndex + 1) % this._keypadBgModes.length;
+                applyBgMode(this._keypadBgIndex);
+            });
+            applyBgMode(this._keypadBgIndex); // 初始化
+        }
+
+        // —— 数学预览缩放按钮：点击循环切换缩放级别（缩小 → 放大回原尺寸） ——
+        this.floatKeypadMathZoom = document.getElementById('float-keypad-math-zoom');
+        if (this.floatKeypadMathZoom) {
+            // 缩放级别：100% / 80% / 60% / 45%
+            this._mathPreviewZoom = 1;
+            this._mathPreviewZoomLevels = [1, 0.8, 0.6, 0.45];
+            this._mathPreviewZoomIndex = 0;
+            const updateZoomBtnLabel = () => {
+                const pct = Math.round(this._mathPreviewZoom * 100);
+                this.floatKeypadMathZoom.textContent = pct + '%';
+            };
+            this.floatKeypadMathZoom.addEventListener('click', () => {
+                if (window.audioManager) window.audioManager.playClick();
+                this._mathPreviewZoomIndex = (this._mathPreviewZoomIndex + 1) % this._mathPreviewZoomLevels.length;
+                this._mathPreviewZoom = this._mathPreviewZoomLevels[this._mathPreviewZoomIndex];
+                updateZoomBtnLabel();
+                this._fitMathPreviewFont();
+            });
+            updateZoomBtnLabel();
         }
 
         // —— 底部 ◀ ▶：左右移动光标（与键盘 ArrowLeft/ArrowRight 一致） ——
@@ -269,16 +323,34 @@ if (typeof UIController === 'undefined') {
     }
 ;
 
-// _clampFloatKeypad — 夹回屏幕内（位置 + 尺寸；复用公共 clamp，行为与圆形按钮一致；默认居中）
+// _clampFloatKeypad — 夹回屏幕内（位置 + 尺寸；复用公共 clamp，行为与圆形按钮一致；默认居中）。
+//                     高度变化时保持底边界不动：上边界随高度上移；宽度变化（如 fx 面板展开）时
+//                     保持右边界不动：左边界左移。若调整后超出屏幕则夹到离目标位置最近的合法位置。
     UIController.prototype._clampFloatKeypad = function() {
         const el = this.floatKeypad;
         if (!el || el.hidden) return;
+        const h = el.offsetHeight;
+        const w = el.offsetWidth;
+        // 高度发生变化时：保持底边界位置不变（上边界 = 原底边 − 当前高）
+        if (this._floatKeypadBottom != null && this._floatKeypadHeight !== h) {
+            el.style.top = (this._floatKeypadBottom - h) + 'px';
+        }
+        // 宽度发生变化时（如 fx 面板展开/收起）：保持右边界不动（左边界 = 原右边 − 当前宽）
+        if (this._floatKeypadRight != null && this._floatKeypadWidth !== w) {
+            el.style.left = (this._floatKeypadRight - w) + 'px';
+        }
         this._clampToViewport(el, 8, true);
         el.style.transform = 'none'; // 消除居中 transform，确保 left/top 定位生效
+        // 记录当前底边界与右边界，供下次尺寸变化时保持（clamp 后为最近合法位置）
+        this._floatKeypadBottom = (parseFloat(el.style.top) || 0) + h;
+        this._floatKeypadRight = (parseFloat(el.style.left) || 0) + w;
+        this._floatKeypadHeight = h;
+        this._floatKeypadWidth = w;
     }
 ;
 
-// renderFloatKeypad — 按当前阶段渲染（input → 计算器键盘；set_locks → 锁定选择视图）
+// renderFloatKeypad — 按当前阶段渲染（input → 计算器键盘；set_locks → 锁定选择视图）。
+//                     锁定视图与输入栏布局完全一致（fx 按钮可见、函数收进 fx 面板，点击 fx 才展开）
     UIController.prototype.renderFloatKeypad = function() {
         if (!this.floatKeypadBody) return;
         const phase = this.gameController && this.gameController.currentPhase;
@@ -290,6 +362,10 @@ if (typeof UIController === 'undefined') {
         // 锁定阶段无表达式：隐藏数学预览区域；输入阶段显示
         const mathEl = document.getElementById('float-keypad-math');
         if (mathEl) mathEl.style.display = (phase === 'set_locks') ? 'none' : '';
+        // fx 面板展开时：函数名长度自适应（渲染后布局确定再执行）
+        if (this._floatKeypadFxOpen) {
+            requestAnimationFrame(() => this._fitFloatFxFonts());
+        }
     }
 ;
 
@@ -311,9 +387,18 @@ if (typeof UIController === 'undefined') {
         const funcNames = { 'sin': 'sin', 'cos': 'cos', 'tan': 'tan', 'asin': 'asin', 'acos': 'acos', 'atan': 'atan', 'abs': 'abs', 'ln': 'ln', 'sqrt': '√' };
         const lockBtn = (btn, display) => {
             btn.classList.add('locked');
-            btn.disabled = true;
             btn.innerHTML = `${display} <span class="lock-icon">🔒</span>`;
             btn.title = '本回合被锁定';
+            if (blockInput) {
+                // 观战 / AI 回合 / 对方回合：保持完全禁用
+                btn.disabled = true;
+            } else {
+                // 锁定元素被点击：播放错误音效
+                //（disabled 按钮不会触发 click 事件，故保持可点击并拦截）
+                btn.addEventListener('click', () => {
+                    if (window.audioManager) window.audioManager.playError();
+                });
+            }
         };
 
         const main = document.createElement('div');
@@ -418,7 +503,34 @@ if (typeof UIController === 'undefined') {
     }
 ;
 
-// _renderFloatLockView — 锁定选择视图：与输入栏完全相同的计算器网格样式（复用 float-keypad-grid）
+// _fitFloatFxFonts — 函数按钮字号自适应：函数名较长时自动缩小字号，
+//                    确保函数名称始终完整显示在按钮内部（不发生溢出/截断）
+    UIController.prototype._fitFloatFxFonts = function() {
+        const panel = this.floatKeypadBody && this.floatKeypadBody.querySelector('.float-keypad-fx-panel');
+        if (!panel || panel.offsetWidth <= 0) return; // 面板未展开（width:0）时跳过
+        const kpEl = this.floatKeypad;
+        const wScale = kpEl ? (parseFloat(kpEl.style.getPropertyValue('--kp-w-scale')) || 1) : 1;
+        const narrow = window.matchMedia('(max-width: 480px), (orientation: portrait) and (max-width: 767px)').matches;
+        // 与 CSS 一致的基础字号（乘上 width 缩放），另设下限避免过小
+        const baseSize = (narrow ? 11 : 12) * wScale;
+        const minSize = (narrow ? 8 : 9) * wScale;
+        panel.querySelectorAll('.element-btn').forEach((btn) => {
+            if (!btn.textContent) return;
+            btn.style.whiteSpace = 'nowrap';
+            btn.style.fontSize = baseSize + 'px';
+            let size = baseSize;
+            // 循环缩小，直到文本不再溢出按钮（scrollWidth 超出 clientWidth 视为溢出）
+            while (size > minSize && btn.scrollWidth > btn.clientWidth) {
+                size -= 0.5;
+                btn.style.fontSize = size + 'px';
+            }
+        });
+    }
+;
+
+// _renderFloatLockView — 锁定选择视图：布局与输入栏完全一致——fx 按钮可见，
+//                        函数收进 fx 面板（点击 fx 才展开），主键盘放数字/运算符。
+//                        点击按钮 = 切换该元素的锁定状态。
     UIController.prototype._renderFloatLockView = function() {
         const body = this.floatKeypadBody;
         if (!body) return;
@@ -430,38 +542,16 @@ if (typeof UIController === 'undefined') {
         const spectating = !!this._isSpectating;
         const blockInput = spectating || (this.isP2PMode && !this._isMyTurn());
 
-        const title = document.createElement('div');
-        title.className = 'float-keypad-lock-label';
-        title.textContent = `选择要锁定的元素 (${alreadyLocked.length}/${state.maxLocks})`;
-
-        // 与输入栏一致的 5 列计算器网格（按钮样式完全继承 float-keypad-grid .element-btn）
-        const itemsDiv = document.createElement('div');
-        itemsDiv.className = 'float-keypad-grid';
-
         const lockFuncDisplayNames = {
             'sin': 'sin', 'cos': 'cos', 'tan': 'tan',
             'abs': 'abs', 'exp': 'exp', 'ln': 'ln', 'log': 'log'
         };
+        const getDisplay = (v) => lockFuncDisplayNames[v] || this.getDisplaySymbol(v);
 
-        const allElements = [
-            ...elements.numbers.map(e => e.value),  // 包含 π, e, i
-            ...elements.basicOperators.map(e => e.value),
-            ...elements.operators.filter(e => e.value !== 'x' && e.value !== '(' && e.value !== ')').map(e => e.value),
-            ...elements.functions
-                .filter(e => !(Array.isArray(this.inverseTrigElements) && this.inverseTrigElements.includes(e.value))
-                    || !this._shouldSkipInverseTrigInLockView())
-                .map(e => e.value)
-        ];
-
-        for (const element of allElements) {
-            const btn = document.createElement('button');
-            btn.className = 'element-btn';
-            btn.textContent = lockFuncDisplayNames[element] || this.getDisplaySymbol(element);
-            btn.dataset.value = element;
-
+        // 通用：装饰锁定按钮（选中 / 已达上限 / 受保护 / 对方回合）并绑定点击切换
+        const decorate = (btn, element) => {
             const lockCount = state.getElementLockCount ? state.getElementLockCount(element) : 0;
             const isMaxLocked = lockCount >= 2;
-
             if (alreadyLocked.includes(element)) {
                 btn.classList.add('selected');
                 btn.style.background = 'rgba(239, 68, 68, 0.5)';
@@ -474,7 +564,6 @@ if (typeof UIController === 'undefined') {
             }
             btn.addEventListener('mouseenter', (e) => this.showLockCountTooltip(e, element, lockCount));
             btn.addEventListener('mouseleave', () => this.hideLockCountTooltip());
-
             const isProtectedInEasyMode = state.difficulty === 'easy' && ['+', '-', '*', '/'].includes(element);
             if (isProtectedInEasyMode) {
                 btn.classList.add('protected');
@@ -485,11 +574,64 @@ if (typeof UIController === 'undefined') {
             } else {
                 btn.addEventListener('click', () => this.toggleLockElement(element, btn));
             }
-            itemsDiv.appendChild(btn);
-        }
+        };
 
+        const title = document.createElement('div');
+        title.className = 'float-keypad-lock-label';
+        title.textContent = `选择要锁定的元素 (${alreadyLocked.length}/${state.maxLocks})`;
         body.appendChild(title);
-        body.appendChild(itemsDiv);
+
+        const main = document.createElement('div');
+        main.className = 'float-keypad-main';
+
+        // 左侧函数面板（3×3，默认隐藏；fx 展开时显示）
+        const fxPanel = document.createElement('div');
+        fxPanel.className = 'float-keypad-fx-panel';
+        const addFuncBtn = (v) => {
+            const btn = document.createElement('button');
+            btn.className = 'element-btn';
+            btn.textContent = getDisplay(v);
+            btn.dataset.value = v;
+            decorate(btn, v);
+            fxPanel.appendChild(btn);
+        };
+        for (const v of ['sin', 'cos', 'tan', 'ln', 'sqrt', 'abs']) {
+            if (elements.functions && elements.functions.some(f => f.value === v)) addFuncBtn(v);
+        }
+        for (const v of ['asin', 'acos', 'atan']) {
+            const item = (elements.functions || []).find(f => f.value === v);
+            if (!item) continue;
+            const isInverseTrig = Array.isArray(this.inverseTrigElements) && this.inverseTrigElements.includes(v);
+            if (isInverseTrig && this._shouldSkipInverseTrigInLockView()) continue;
+            addFuncBtn(v);
+        }
+        main.appendChild(fxPanel);
+
+        // 右侧主键盘（5 列）：数字 + 运算符（与输入栏主键盘布局一致）
+        const lockValues = [
+            ...elements.numbers.map(e => e.value),  // 包含 π, e, i
+            ...elements.basicOperators.map(e => e.value),
+            ...elements.operators.filter(e => e.value !== 'x' && e.value !== '(' && e.value !== ')').map(e => e.value)
+        ];
+        const grid = document.createElement('div');
+        grid.className = 'float-keypad-grid';
+        for (const element of lockValues) {
+            const btn = document.createElement('button');
+            btn.className = 'element-btn';
+            btn.textContent = getDisplay(element);
+            btn.dataset.value = element;
+            decorate(btn, element);
+            grid.appendChild(btn);
+        }
+        main.appendChild(grid);
+        body.appendChild(main);
+
+        // 恢复 fx 面板展开态（与输入栏一致：收起时复位，展开态保持）
+        const el = this.floatKeypad;
+        if (el && this._floatKeypadFxOpen) {
+            el.classList.add('fx-open');
+            if (this.floatKeypadFx) this.floatKeypadFx.classList.add('active');
+        }
     }
 ;
 
@@ -506,10 +648,13 @@ if (typeof UIController === 'undefined') {
     }
 ;
 
-// _syncFloatKeypadDisplay — 悬浮栏表达式显示镜像主输入区
+// _syncFloatKeypadDisplay — 悬浮栏表达式显示镜像主输入区；
+//                          镜像后输入栏高度可能变化，按底边界锚定重新夹回屏内
     UIController.prototype._syncFloatKeypadDisplay = function() {
         if (this.floatKeypadDisplay) {
             this.floatKeypadDisplay.innerHTML = this.expressionDisplay.innerHTML;
+            // 待布局完成后重算位置：高度变化时保持底边界不动
+            requestAnimationFrame(() => this._clampFloatKeypad());
         }
     }
 ;

@@ -372,11 +372,13 @@ if (typeof UIController === 'undefined') {
         }
         if (this.bgmOpenBtn) {
             this.bgmOpenBtn.addEventListener('click', () => {
+                if (window.audioManager) window.audioManager.playClick();
                 if (this.bgmModal) this.showModal(this.bgmModal);
             });
         }
         if (this.startBgmOpenBtn) {
             this.startBgmOpenBtn.addEventListener('click', () => {
+                if (window.audioManager) window.audioManager.playClick();
                 if (this.bgmModal) this.showModal(this.bgmModal);
             });
         }
@@ -423,7 +425,7 @@ if (typeof UIController === 'undefined') {
         if (!this._exitDocHandler) {
             this._exitDocHandler = (ev) => {
                 if (!this.exitPopover || !this.exitPopover.classList.contains('visible')) return;
-                if (!this.exitPopover.contains(ev.target) && !ev.target.closest('#exit-btn')) {
+                if (!this.exitPopover.contains(ev.target) && !ev.target.closest('#exit-btn') && !ev.target.closest('#exit-fab-btn')) {
                     this.hideExitConfirm();
                 }
             };

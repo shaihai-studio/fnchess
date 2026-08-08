@@ -98,6 +98,11 @@ if (typeof UIController === 'undefined') {
         if (confirmBtn) confirmBtn.style.display = 'none';
         const clearBtn = document.getElementById('clear-btn');
         if (clearBtn) clearBtn.style.display = 'none';
+        // 观战：隐藏右下角圆形 确认/返回 按钮
+        const confirmFab = document.getElementById('confirm-fab-btn');
+        const exitFab = document.getElementById('exit-fab-btn');
+        if (confirmFab) confirmFab.style.display = 'none';
+        if (exitFab) exitFab.style.display = 'none';
         // 加入观战
         lobby.joinSpectate(this._spectatorCode);
         this._updateLobbyStatus('spectating', `正在连接房间 ${this._spectatorCode} 观战...`);
@@ -182,6 +187,11 @@ if (typeof UIController === 'undefined') {
         if (confirmBtn) confirmBtn.style.display = '';
         const clearBtn = document.getElementById('clear-btn');
         if (clearBtn) clearBtn.style.display = '';
+        // 恢复右下角圆形按钮
+        const confirmFab = document.getElementById('confirm-fab-btn');
+        const exitFab = document.getElementById('exit-fab-btn');
+        if (confirmFab) confirmFab.style.display = '';
+        if (exitFab) exitFab.style.display = '';
         this.showMessage('已退出观战');
         // 返回开始界面（观战结束即回主页）
         this.handleRestart();
