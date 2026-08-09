@@ -47,8 +47,41 @@ UIController.prototype.initEditor = function() {
         dragState: null
     };
 
-    const els = Object.fromEntries(['id','difficulty','nextId','targetCells','forbiddenCells','lockedElements','exportBox','levelList','gridCanvas','status','btnBack','btnCloseLeft','btnCloseRight','btnShowLeft','btnShowRight','btnCopyOne','btnAdd','btnDelete','btnCopyExport','btnDownload','fileNameInput','precisionSelect','btnRect','btnLine','btnBrush','btnSelect','btnSwapMouse','btnUndo','btnFx','fxPanel','fxInput','btnFxClear','anchorModeSelect','btnArrowUp','btnArrowDown','btnArrowLeft','btnArrowRight','btnTrash'].map(id => [id, document.getElementById(id)]));
+    const els = Object.fromEntries(['id','difficulty','nextId','targetCells','forbiddenCells','lockedElements','exportBox','levelList','gridCanvas','status','btnBack','btnCloseLeft','btnCloseRight','btnShowLeft','btnShowRight','btnCopyOne','btnAdd','btnDelete','btnCopyExport','btnDownload','btnImportFile','btnImportText','editorImportFile','fileNameInput','precisionSelect','btnRect','btnLine','btnBrush','btnSelect','btnSwapMouse','btnUndo','btnFx','fxPanel','fxInput','btnFxClear','anchorModeSelect','btnArrowUp','btnArrowDown','btnArrowLeft','btnArrowRight','btnTrash','lockElementPanel'].map(id => [id, document.getElementById(id)]));
     const ctx = els.gridCanvas.getContext('2d');
+
+    // 锁定元素快捷面板：从解析器可用元素构建，点击元素按钮即锁定/解锁（无需手动输入坐标或编号）
+    const lockKeys = [];
+    {
+        const _lockParser = new FunctionParser();
+        Object.values(_lockParser.elementCategories).forEach((list) => list.forEach((el) => { if (!lockKeys.includes(el)) lockKeys.push(el); }));
+    }
+    function renderLockPanel() {
+        const panel = els.lockElementPanel;
+        if (!panel) return;
+        const lvl = currentLevel();
+        const locked = lvl.lockedElements || [];
+        panel.innerHTML = '';
+        lockKeys.forEach((key) => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.textContent = key;
+            btn.dataset.element = key;
+            btn.title = `点击${locked.includes(key) ? '解锁' : '锁定'}「${key}」`;
+            btn.className = 'lock-el' + (locked.includes(key) ? ' active' : '');
+            btn.onclick = () => {
+                const cur = currentLevel();
+                if (!Array.isArray(cur.lockedElements)) cur.lockedElements = [];
+                const idx = cur.lockedElements.indexOf(key);
+                if (idx === -1) cur.lockedElements.push(key);
+                else cur.lockedElements.splice(idx, 1);
+                syncFormFromLevel();
+                pushHistory();
+                setStatus(idx === -1 ? `已锁定元素「${key}」，玩家将无法使用` : `已解锁元素「${key}」`);
+            };
+            panel.appendChild(btn);
+        });
+    }
 
     const parseLines = (text) => text.split('\n').map(s => s.trim()).filter(Boolean);
     const safeJsonArray = (lines) => lines.map(line => JSON.parse(line.replace(/,$/,'').trim()));
@@ -91,6 +124,7 @@ UIController.prototype.initEditor = function() {
         els.forbiddenCells.value = fmtArr(lvl.forbiddenCells || []);
         els.lockedElements.value = (lvl.lockedElements || []).map(x => `"${x}"`).join('\n');
         renderList();
+        renderLockPanel();
         draw();
         autoGrow(els.targetCells); autoGrow(els.forbiddenCells); autoGrow(els.lockedElements);
     }
@@ -104,6 +138,7 @@ UIController.prototype.initEditor = function() {
         try { lvl.forbiddenCells = safeJsonArray(parseLines(els.forbiddenCells.value)); } catch {}
         try { lvl.lockedElements = parseLines(els.lockedElements.value).map(v => JSON.parse(v)); } catch {}
         renderList();
+        renderLockPanel();
         draw();
         pushHistory();
         autoGrow(els.targetCells); autoGrow(els.forbiddenCells); autoGrow(els.lockedElements);
@@ -139,6 +174,10 @@ UIController.prototype.initEditor = function() {
     function canvasToWorld(px, py) {
         const { w, h, cellSize, originX, originY } = gridMetrics();
         return { x: (px - originX) / cellSize, y: (originY - py) / cellSize, cellSize, w, h };
+    }
+    function worldToCanvas(x, y) {
+        const { cellSize, w, h, originX, originY } = gridMetrics();
+        return { x: originX + x * cellSize, y: originY - y * cellSize, cellSize, w, h };
     }
 
     function drawGrid() {
@@ -412,6 +451,100 @@ ${exportAll()}
         setStatus(`已下载 ${name}`);
     };
     els.btnCopyOne.onclick = async () => { const text = exportLevel(currentLevel()); await navigator.clipboard.writeText(text); setStatus('当前关卡文本已复制'); };
+
+    // ---- 导入项目：从外部 .js/.json 文件或粘贴文本，导入关卡布局、对象配置与游戏逻辑数据 ----
+    const parseProjectText = (raw) => {
+        const text = String(raw || '').trim();
+        if (!text) return null;
+        let data = null;
+        // 1) 标准 JSON（数组或 { "levels": [...] }）
+        try { data = JSON.parse(text); } catch {}
+        // 2) 编辑器导出的文本格式（无外层方括号的对象列表）→ 包裹成数组再解析
+        if (data === null) {
+            try { data = JSON.parse(`[${text}]`); } catch {}
+        }
+        // 3) JS 数组字面量片段（const X = [ ... ]; / 直接贴数组）→ 提取中括号内容
+        if (data === null) {
+            try {
+                const m = text.match(/\[[\s\S]*\]/);
+                if (m) data = JSON.parse(m[0]);
+            } catch {}
+        }
+        if (data === null) return null;
+        if (data && !Array.isArray(data) && Array.isArray(data.levels)) data = data.levels;
+        return data;
+    };
+    const applyImportedProject = (levels) => {
+        if (!Array.isArray(levels) || !levels.length) { setStatus('导入失败：未找到关卡数据'); return false; }
+        state.levels = structuredClone(levels).map((l) => ({
+            id: l.id ?? `import-${Math.random().toString(36).slice(2, 6)}`,
+            difficulty: l.difficulty ?? 'fraction',
+            nextId: l.nextId ?? null,
+            targetCells: Array.isArray(l.targetCells) ? l.targetCells : [],
+            forbiddenCells: Array.isArray(l.forbiddenCells) ? l.forbiddenCells : [],
+            lockedElements: Array.isArray(l.lockedElements) ? l.lockedElements : []
+        }));
+        state.current = 0;
+        state.history = [];
+        state.historyIndex = -1;
+        syncFormFromLevel();
+        pushHistory();
+        exportAll();
+        setStatus(`已导入 ${state.levels.length} 个关卡`);
+        return true;
+    };
+    els.btnImportFile.onclick = () => { if (els.editorImportFile) els.editorImportFile.click(); };
+    els.editorImportFile.addEventListener('change', async (e) => {
+        const f = e.target.files && e.target.files[0];
+        if (!f) return;
+        try {
+            const text = await f.text();
+            const levels = parseProjectText(text);
+            if (!levels || !applyImportedProject(levels)) setStatus('导入失败：文件内容不是有效的关卡数据');
+            else setStatus(`已从 ${f.name} 导入 ${levels.length} 个关卡`);
+        } catch (err) {
+            setStatus('导入失败：' + (err && err.message ? err.message : '无法解析文件'));
+        }
+        e.target.value = '';
+    });
+    // 粘贴导入弹窗（惰性创建）
+    const ensureImportTextModal = () => {
+        let m = document.getElementById('editor-import-text-modal');
+        if (m) return m;
+        m = document.createElement('div');
+        m.id = 'editor-import-text-modal';
+        m.style.cssText = 'position:fixed;inset:0;z-index:30000;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.55);backdrop-filter:blur(4px);';
+        m.innerHTML = `<div style="width:min(560px,92vw);background:#0b1526;border:1px solid rgba(250,204,21,.35);border-radius:16px;padding:18px 20px;box-shadow:0 24px 80px rgba(0,0,0,.5);box-sizing:border-box;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+                <strong style="color:#fde047;font-size:14px;">粘贴导入关卡项目</strong>
+                <button id="editor-import-text-close" type="button" style="background:none;border:none;color:#94a3b8;font-size:20px;line-height:1;cursor:pointer;" title="关闭">&times;</button>
+            </div>
+            <p style="color:#94a3b8;font-size:12px;margin:0 0 8px;">支持：编辑器导出的关卡文本 / JSON 数组 / { &quot;levels&quot;: [...] } / JS 数组片段。导入会覆盖当前全部关卡。</p>
+            <textarea id="editor-import-text-area" rows="10" placeholder="在此粘贴关卡项目文本…" style="width:100%;box-sizing:border-box;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:10px;color:#e2e8f0;padding:10px;font-size:12px;font-family:ui-monospace,Consolas,monospace;resize:vertical;"></textarea>
+            <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;">
+                <button id="editor-import-text-cancel" type="button" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:10px;padding:8px 18px;color:#cbd5e1;cursor:pointer;font-size:12px;">取消</button>
+                <button id="editor-import-text-confirm" type="button" style="background:linear-gradient(135deg,#facc15,#f59e0b);border:none;border-radius:10px;padding:8px 22px;color:#1e293b;font-weight:700;cursor:pointer;font-size:12px;">导入</button>
+            </div>
+        </div>`;
+        document.body.appendChild(m);
+        m.addEventListener('click', (e) => { if (e.target === m) m.style.display = 'none'; });
+        m.querySelector('#editor-import-text-close').onclick = () => { m.style.display = 'none'; };
+        m.querySelector('#editor-import-text-cancel').onclick = () => { m.style.display = 'none'; };
+        m.querySelector('#editor-import-text-confirm').onclick = () => {
+            const text = m.querySelector('#editor-import-text-area').value;
+            if (!text.trim()) { setStatus('请先粘贴关卡项目文本'); return; }
+            const levels = parseProjectText(text);
+            if (!levels || !applyImportedProject(levels)) setStatus('导入失败：文本不是有效的关卡数据');
+            else m.style.display = 'none';
+        };
+        return m;
+    };
+    els.btnImportText.onclick = () => {
+        const m = ensureImportTextModal();
+        m.querySelector('#editor-import-text-area').value = '';
+        m.style.display = 'flex';
+        setTimeout(() => m.querySelector('#editor-import-text-area').focus(), 30);
+    };
     els.btnCloseLeft.onclick = () => { editorView.classList.add('left-hidden'); fitCanvas(); };
     els.btnCloseRight.onclick = () => { editorView.classList.add('right-hidden'); fitCanvas(); };
     els.btnShowLeft.onclick = () => { editorView.classList.remove('left-hidden'); fitCanvas(); };

@@ -23,6 +23,20 @@ if (typeof UIController === 'undefined') {
 
         this._floatKeypadCollapsed = false;  // 收起为圆形按钮
 
+        // —— 尺寸调节：统一缩放比例因子 scale ——
+        // 最小窗口 = 默认尺寸（scale=1，220px 宽 × 基准高）；最大窗口 = 默认 × 固定倍数；
+        // 宽高同乘 scale 保持宽高比恒定，按钮 / 字号 / 间距随之等比例缩放
+        this._kpMinScale = 1;           // 最小 scale（横屏/桌面）= 默认尺寸
+        this._kpPortraitMinScale = 0.5; // 竖屏最小 scale = 默认尺寸的 50%（110px 宽）
+        this._kpMaxScale = 2.2;         // 最大 scale = 默认 × 2.2（220 × 2.2 = 484px 宽）
+        this._kpSizeFactor = 1.12;      // 每次点击 ±12%，连续点击平滑缩放
+        this._floatKeypadScale = null;      // null = 未调节（scale=1，默认尺寸）
+        this._floatKeypadBaseH = null;      // 基准高（scale=1 时内容自适应高度，首次可见时记录）
+        // scale 夹取：下限按屏幕方向取 _kpPortraitMinScale / _kpMinScale（见 _kpMinScaleFor），
+        // 上限受 _kpMaxScale 与视口双约束
+        //（实现抽到原型方法 _clampFloatKeypadScale，按钮 hidden 判断也复用同一套约束）
+        const clampUserScale = (scale) => this._clampFloatKeypadScale(scale);
+
         // 初始化一次缩放（窄屏时字号随宽度自适应）
         this.updateKeypadScale();
 
@@ -33,6 +47,7 @@ if (typeof UIController === 'undefined') {
             // 按钮等交互控件不触发拖动（避免 preventDefault 吞掉点击）
             if (e.target.closest('button')) return;
             e.preventDefault();
+            el.classList.remove('kp-sizing'); // 开始拖动：取消尺寸过渡，避免位置跟随延迟
             const r = el.getBoundingClientRect();
             drag = { sx: e.clientX, sy: e.clientY, left: r.left, top: r.top };
             try { header.setPointerCapture(e.pointerId); } catch (err) {}
@@ -51,6 +66,15 @@ if (typeof UIController === 'undefined') {
 
         // —— 窗口尺寸/方向变化：自动夹回屏幕内 + 重算字号缩放 + 函数名自适应 ——
         window.addEventListener('resize', () => {
+            // 用户调节的 scale 若超出新视口允许的范围（含横竖屏切换导致的下限变化），先重新夹定再定位
+            if (this._floatKeypadScale) {
+                const clamped = clampUserScale(this._floatKeypadScale);
+                if (clamped !== this._floatKeypadScale) {
+                    this._floatKeypadScale = clamped;
+                    this._applyFloatKeypadUserSize();
+                    this._updateFloatKeypadSizeButtons();
+                }
+            }
             this._clampFloatKeypad();
             this.updateKeypadScale();
             this._clampFloatKeypadFab();
@@ -151,10 +175,18 @@ if (typeof UIController === 'undefined') {
                 this._floatKeypadFxOpen = !this._floatKeypadFxOpen;
                 el.classList.toggle('fx-open', this._floatKeypadFxOpen);
                 this.floatKeypadFx.classList.toggle('active', this._floatKeypadFxOpen);
+                // fx 展开/收起时宽度基准（220→360）变化，scale 上限随之改变 → 重夹用户 scale
+                if (this._floatKeypadScale) {
+                    const clamped = this._clampFloatKeypadScale(this._floatKeypadScale);
+                    if (clamped !== this._floatKeypadScale) this._floatKeypadScale = clamped;
+                }
+                // 高度切换：fx 展开交给内容自适应、收起恢复 基准高 × scale（scale 未设置时 _applyFloatKeypadUserSize 直接 return）
+                this._applyFloatKeypadUserSize();
                 // 展开后宽度变化 → 夹回屏幕内 + 重算字号缩放 + 函数名自适应
                 requestAnimationFrame(() => {
                     this._clampFloatKeypad();
                     this.updateKeypadScale();
+                    this._updateFloatKeypadSizeButtons();
                     if (this._floatKeypadFxOpen) this._fitFloatFxFonts();
                 });
             });
@@ -183,6 +215,53 @@ if (typeof UIController === 'undefined') {
                 applyBgMode(this._keypadBgIndex);
             });
             applyBgMode(this._keypadBgIndex); // 初始化
+        }
+
+        // —— 输入栏尺寸调节按钮：缩小 / 增大（统一 scale 等比缩放宽高与内部元素，平滑过渡） ——
+        this.floatKeypadShrinkBtn = document.getElementById('float-keypad-shrink');
+        this.floatKeypadGrowBtn = document.getElementById('float-keypad-grow');
+        if (this.floatKeypadShrinkBtn && this.floatKeypadGrowBtn) {
+            const resizeKeypad = (factor) => {
+                if (window.audioManager) window.audioManager.playClick();
+                // 快速连续点击：先取消上一次收尾定时器，避免位置 / 尺寸抖动
+                if (this._kpSizingTimer) { clearTimeout(this._kpSizingTimer); this._kpSizingTimer = null; }
+                // 过渡期间启用 kp-sizing（width/height/left/top 平滑过渡）
+                el.classList.add('kp-sizing');
+                const r = el.getBoundingClientRect();
+                // 首次调节时记录基准高（scale=1 时内容自适应高度；fx 展开时高度不同，等收起态再记录）
+                if (this._floatKeypadBaseH == null && !this._floatKeypadFxOpen) {
+                    this._floatKeypadBaseH = el.offsetHeight || 320;
+                }
+                // 统一 scale：最小窗口 = 默认尺寸，最大窗口 = 默认 × MAX_SCALE，宽高同乘保持宽高比
+                const next = clampUserScale((this._floatKeypadScale || 1) * factor);
+                this._floatKeypadScale = next;
+                // 以当前右 / 下边界为锚：扩大时左上角上移、缩小时左上角下移，底边 / 右边保持不动
+                const narrow = window.matchMedia('(max-width: 480px), (orientation: portrait) and (max-width: 767px)').matches;
+                const baseW = this._floatKeypadFxOpen ? (narrow ? 330 : 360) : 220;
+                const nextW = Math.round(baseW * next);
+                const nextH = Math.round((this._floatKeypadBaseH || 320) * next);
+                el.style.left = (r.right - nextW) + 'px';
+                el.style.top = (r.bottom - nextH) + 'px';
+                // 过渡期间先固定高度（fx 展开时高度交给内容自适应，不固定避免截断）
+                if (!this._floatKeypadFxOpen) el.style.height = nextH + 'px';
+                el.style.transform = 'none';
+                // 宽高交给 CSS：--kp-w-scale / --kp-h-scale 驱动 calc(base * scale)，
+                // 宽度 / 高度 / 按钮 / 字号 / 间距全部等比缩放
+                this.updateKeypadScale();
+                this._updateFloatKeypadSizeButtons();
+                // 过渡结束后：移除过渡类、夹回屏内（宽度可能已超出视口）
+                this._kpSizingTimer = setTimeout(() => {
+                    this._kpSizingTimer = null;
+                    el.classList.remove('kp-sizing');
+                    this._applyFloatKeypadUserSize();
+                    this._clampFloatKeypad();
+                    this.updateKeypadScale();
+                    this._updateFloatKeypadSizeButtons();
+                }, 330); // 匹配 CSS 过渡 0.28s + 余量
+            };
+            this.floatKeypadShrinkBtn.addEventListener('click', () => resizeKeypad(1 / this._kpSizeFactor));
+            this.floatKeypadGrowBtn.addEventListener('click', () => resizeKeypad(this._kpSizeFactor));
+            this._updateFloatKeypadSizeButtons(); // 初始化：scale=1 时隐藏缩小按钮
         }
 
         // —— 数学预览缩放按钮：点击循环切换缩放级别（缩小 → 放大回原尺寸） ——
@@ -269,8 +348,11 @@ if (typeof UIController === 'undefined') {
             this.renderFloatKeypad();
             // 首次显示时夹回屏幕内（小屏可能溢出）
             requestAnimationFrame(() => {
+                // 收起再展开后保持用户自定义尺寸（fx 展开过窄时宽度交给 fx-open 规则）
+                this._applyFloatKeypadUserSize();
                 this._clampFloatKeypad();
                 this.updateKeypadScale();
+                this._updateFloatKeypadSizeButtons();
                 // 同步「提交」按钮的可用态（与主确认按钮一致）
                 if (this._refreshFloatKeypadSubmit) this._refreshFloatKeypadSubmit();
             });
@@ -314,17 +396,88 @@ if (typeof UIController === 'undefined') {
     }
 ;
 
-// updateKeypadScale — 根据当前宽度更新 --kp-w-scale，
-//                      驱动 CSS 中 calc(base * scale) 的字号 / 间距随窄屏自适应收缩。
-//                      （高度已由内容自适应，--kp-h-scale 固定为 1；fx 展开变宽时不放大字号）
+// _kpMinScaleFor — 当前屏幕方向下的最小 scale：竖屏可缩至默认尺寸的 50%（_kpPortraitMinScale），
+//                  横屏/桌面保持默认尺寸（_kpMinScale）。随方向切换即时生效。
+    UIController.prototype._kpMinScaleFor = function() {
+        return (window.matchMedia('(orientation: portrait)').matches && !window.matchMedia('(min-width: 1024px)').matches)
+            ? this._kpPortraitMinScale
+            : this._kpMinScale;
+    }
+;
+
+// _clampFloatKeypadScale — scale 夹取：下限按方向取 _kpPortraitMinScale / _kpMinScale、
+//                          上限受 _kpMaxScale 与视口双约束。
+//                          fx 展开时函数面板需要额外宽度（360px 基准），最大 scale 相应收紧。
+//                          构造函数内闭包 clampUserScale 与按钮 hidden 判断共用此实现，保证单一数据源。
+    UIController.prototype._clampFloatKeypadScale = function(scale) {
+        const el = this.floatKeypad;
+        const vw = window.innerWidth, vh = window.innerHeight;
+        const baseH = this._floatKeypadBaseH || (el && el.offsetHeight) || 320;
+        // fx 展开时函数面板需要额外宽度，最大 scale 相应收紧（桌面 360px 基准，窄屏横屏 330px）
+        const narrow = window.matchMedia('(max-width: 480px), (orientation: portrait) and (max-width: 767px)').matches;
+        const baseW = this._floatKeypadFxOpen ? (narrow ? 330 : 360) : 220;
+        const maxByVw = (vw * 0.92) / baseW;
+        const maxByVh = (vh * 0.92) / baseH;
+        const maxScale = Math.min(this._kpMaxScale, maxByVw, maxByVh);
+        return Math.max(this._kpMinScaleFor(), Math.min(maxScale, scale));
+    }
+;
+
+// updateKeypadScale — 更新 --kp-w-scale / --kp-h-scale，驱动 CSS 中 calc(base * scale)
+//                      的字号 / 间距 / 按钮尺寸随统一缩放因子等比缩放。
+//                      注意：--kp-w-scale 直接用用户 scale，宽度由 CSS min(calc(220px*scale), 92vw)
+//                      处理视口夹取——不可用 el.offsetWidth 反推（宽度本身依赖该变量，会循环取 1）。
+//                      未调节（scale=null）时沿用旧逻辑：窄屏被 92vw 压缩时字号自适应收缩。
     UIController.prototype.updateKeypadScale = function() {
         const el = this.floatKeypad;
         if (!el) return;
-        const w = el.offsetWidth;
-        // 基准宽度 220 为 1.0（默认态已缩小并匹配主键盘）；只允许缩窄（窄屏收缩），fx 展开变宽不放大字号
-        const wScale = Math.min(1, Math.max(0.72, (w || 220) / 220));
+        const userScale = this._floatKeypadScale || 1;
+        let wScale;
+        if (this._floatKeypadScale) {
+            // 用户已调节：统一等比（视口约束已由 _clampFloatKeypadScale 保证 220*scale ≤ 92vw）
+            wScale = userScale;
+        } else {
+            // 未调节：保留窄屏字号自适应（宽度可能被 92vw 压缩，字号随实际宽度收缩）
+            const w = el.offsetWidth;
+            wScale = Math.min(1, Math.max(0.72, (w || 220) / 220));
+        }
         el.style.setProperty('--kp-w-scale', wScale.toFixed(3));
-        el.style.setProperty('--kp-h-scale', '1');
+        el.style.setProperty('--kp-h-scale', userScale.toFixed(3));
+    }
+;
+
+// _applyFloatKeypadUserSize — 把用户通过「增大/缩小」按钮设定的 scale 应用回输入栏。
+//                             宽度由 CSS 驱动（calc(220px * --kp-w-scale)，fx 展开 360px）；
+//                             高度：收起时固定为 基准高 × scale（宽高比恒定 + 过渡平滑），
+//                             fx 展开时函数面板与主键盘上下堆叠、整体变高 → 交给内容自适应。
+    UIController.prototype._applyFloatKeypadUserSize = function() {
+        const el = this.floatKeypad;
+        if (!el) return;
+        const scale = this._floatKeypadScale;
+        if (!scale) return;
+        if (this._floatKeypadFxOpen) {
+            el.style.height = '';
+        } else {
+            // 基准高优先取记录值；未记录（首次调节恰在 fx 展开态）时用当前收起态实际高度
+            const baseH = this._floatKeypadBaseH || el.offsetHeight || 320;
+            el.style.height = Math.round(baseH * scale) + 'px';
+        }
+    }
+;
+
+// _updateFloatKeypadSizeButtons — 根据当前 scale 同步「增大/缩小」按钮可用态：
+//                                 达到最大窗口隐藏增大按钮，缩到当前方向允许的最小隐藏缩小按钮。
+    UIController.prototype._updateFloatKeypadSizeButtons = function() {
+        const shrink = this.floatKeypadShrinkBtn;
+        const grow = this.floatKeypadGrowBtn;
+        if (!shrink && !grow) return;
+        const scale = this._floatKeypadScale || 1;
+        const maxScale = this._clampFloatKeypadScale(this._kpMaxScale);
+        const EPS = 1e-6;
+        if (shrink) shrink.hidden = scale <= this._kpMinScaleFor() + EPS;
+        if (grow) grow.hidden = scale >= maxScale - EPS;
+        if (shrink) shrink.title = shrink.hidden ? '' : '缩小输入栏';
+        if (grow) grow.title = grow.hidden ? '' : '增大输入栏';
     }
 ;
 
@@ -381,6 +534,10 @@ if (typeof UIController === 'undefined') {
         if (!body) return;
         body.innerHTML = '';
 
+        // 键盘内联图标（SVG 替代 emoji/特殊字符，避免字体渲染不一致）
+        const LOCK_SVG = '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>';
+        const BACKSPACE_SVG = '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"></path><line x1="18" y1="9" x2="12" y2="15"></line><line x1="12" y1="9" x2="18" y2="15"></line></svg>';
+
         const elements = this.parser.getAvailableElements();
         const state = this.gameController.getGameState();
         const roundLocked = (state.roundState && state.roundState.lockedElements) || [];
@@ -392,7 +549,7 @@ if (typeof UIController === 'undefined') {
         const funcNames = { 'sin': 'sin', 'cos': 'cos', 'tan': 'tan', 'asin': 'asin', 'acos': 'acos', 'atan': 'atan', 'abs': 'abs', 'ln': 'ln', 'sqrt': '√' };
         const lockBtn = (btn, display) => {
             btn.classList.add('locked');
-            btn.innerHTML = `${display} <span class="lock-icon">🔒</span>`;
+            btn.innerHTML = `${display} <span class="lock-icon">${LOCK_SVG}</span>`;
             btn.title = '本回合被锁定';
             if (blockInput) {
                 // 观战 / AI 回合 / 对方回合：保持完全禁用
@@ -446,7 +603,7 @@ if (typeof UIController === 'undefined') {
             btn.dataset.value = v;
             if (isInverseTrig && !this.isInverseTrigUnlocked()) {
                 btn.classList.add('locked', 'inverse-trig-locked');
-                btn.innerHTML = `${display} <span class="lock-icon">🔒</span>`;
+                btn.innerHTML = `${display} <span class="lock-icon">${LOCK_SVG}</span>`;
                 btn.title = '需通关全部分数关解锁';
                 if (!blockInput) btn.addEventListener('click', () => this.showInverseTrigLockedDialog());
                 fxPanel.appendChild(btn);
@@ -471,7 +628,7 @@ if (typeof UIController === 'undefined') {
                 const btn = document.createElement('button');
                 btn.className = 'element-btn';
                 if (key === 'back') {
-                    btn.textContent = '⌫';
+                    btn.innerHTML = BACKSPACE_SVG;
                     btn.dataset.action = 'back';
                     btn.title = '删除光标前一个元素';
                     if (!blockInput) btn.addEventListener('click', () => this.floatKeypadBackspace());

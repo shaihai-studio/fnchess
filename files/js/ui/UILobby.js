@@ -18,6 +18,8 @@ if (typeof UIController === 'undefined') {
         lobby.currentLobbyMode = this._getP2PMode();
         lobby.onConnectionChange = (connected) => this._renderLobbyStatus(connected);
         lobby.onRoomsUpdate = (rooms) => this._renderLobbyRooms(rooms);
+        // 观战表情：对战双方（房主/访客）与其他观众收到观众发表情 → 右侧小图展示
+        lobby.onSpectateEmoji = (code, mood) => this._showSummaEmoji(mood, false);
         // 我的 ELO：排位大厅排序基准；休闲大厅不需要（缓存初始 null，异步查回）
         this._lobbyMyElo = null;
         if (this._getP2PMode() === 'ranked') {

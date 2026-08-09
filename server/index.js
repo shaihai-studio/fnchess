@@ -461,7 +461,17 @@ function updateCometBoards(playerId, nickname, minTokenMap, verifiedOnly) {
     }
 }
 
-/** D6：玩家举报（90s 间隔，被举报者下次 lr 强制核验，失败清分） */
+/** 目标玩家是否存在于 LR∑ 榜或任意彗星 pl* 分关榜（彗星数据由 lr 上报附带产生） */
+function playerOnAnyBoard(playerId) {
+    const lr = scoreBoards['lr'];
+    if (lr && lr.has(playerId)) return true;
+    for (const t of Object.keys(scoreBoards)) {
+        if (/^pl\d+(?:\/\d+)?$/.test(t) && scoreBoards[t].has(playerId)) return true;
+    }
+    return false;
+}
+
+/** D6：玩家举报（90s 间隔，被举报者下次 lr 强制核验，失败清分，连带清理彗星榜） */
 function handleReport(ws, msg) {
     if (!verifySig(ws, msg)) { sendSubmitResultBT(ws, false, 'lr', { code: 'invalid_signature' }); return; }
     const target = String(msg.target || '').slice(0, 64);
@@ -470,8 +480,7 @@ function handleReport(ws, msg) {
     const now = Date.now();
     if (now - (lastReportAt.get(playerId) || 0) < REPORT_GATE) { sendSubmitResultBT(ws, false, 'lr', { code: 'rate_limited' }); return; }
     lastReportAt.set(playerId, now);
-    const map = scoreBoards['lr'];
-    if (!map || !map.has(target)) { sendSubmitResultBT(ws, false, 'lr', { code: 'target_not_found' }); return; }
+    if (!playerOnAnyBoard(target)) { sendSubmitResultBT(ws, false, 'lr', { code: 'target_not_found' }); return; }
     flaggedForVerify.add(target);
     console.log(`[LB] ${playerId} 举报 ${target}（90s 间隔 OK），已标记强制核验`);
     sendSubmitResultBT(ws, true, 'lr', { code: 'reported' });
@@ -1099,6 +1108,25 @@ lobbyWss.on('connection', (ws, req) => {
                     if (room.hostWs === ws || room.guestWs === ws) {
                         for (const sp of room.spectators) {
                             send(sp, { type: 'spectate_state', code, payload: msg.payload });
+                        }
+                        break;
+                    }
+                }
+                break;
+            }
+
+            // 观众发表情 → 转发给该房间对战双方（房主/访客）与其他观众
+            case 'spectate_emoji': {
+                const mood = String(msg.mood || '');
+                const moods = ['neutral', 'thinking', 'smug', 'happy', 'surprised', 'sad', 'angry', 'determined', 'exhausted'];
+                if (moods.indexOf(mood) === -1) break;
+                for (const [code, room] of rooms) {
+                    if (room.spectators && room.spectators.has(ws)) {
+                        const out = { type: 'spectate_emoji_from_viewer', code, mood };
+                        if (room.hostWs) send(room.hostWs, out);
+                        if (room.guestWs) send(room.guestWs, out);
+                        for (const sp of room.spectators) {
+                            if (sp !== ws) send(sp, out);
                         }
                         break;
                     }

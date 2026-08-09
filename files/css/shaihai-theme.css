@@ -394,17 +394,17 @@ code {
    7. 颜色微调 —— 仅增强/加回源生配色细节
    ================================================================ */
 
-/* game-title 渐变保持 style.css 原样：绿 → 蓝 */
+/* game-title 渐变统一为 #A0F1D8 → #848BCF */
 .game-title {
-    background: linear-gradient(135deg, #22c55e, #3b82f6) !important;
+    background: linear-gradient(135deg, #A0F1D8, #848BCF) !important;
     -webkit-background-clip: text !important;
     -webkit-text-fill-color: transparent !important;
     background-clip: text !important;
 }
 
-/* modal h2 保持 style.css 原样：绿 → 蓝 */
+/* modal h2 统一为 #A0F1D8 → #848BCF */
 .modal-content h2 {
-    background: linear-gradient(135deg, #22c55e, #3b82f6) !important;
+    background: linear-gradient(135deg, #A0F1D8, #848BCF) !important;
     -webkit-background-clip: text !important;
     -webkit-text-fill-color: transparent !important;
     background-clip: text !important;
@@ -426,7 +426,7 @@ code {
     filter: drop-shadow(0 0 10px rgba(167, 139, 250, 0.25));
 }
 .summa-dialog-title {
-    background: linear-gradient(135deg, #a78bfa, #818cf8, #22c55e) !important;
+    background: linear-gradient(135deg, #A0F1D8, #848BCF) !important;
     -webkit-background-clip: text !important;
     -webkit-text-fill-color: transparent !important;
     background-clip: text !important;

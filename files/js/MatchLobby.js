@@ -74,6 +74,7 @@ class MatchLobbyController {
         this.onSpectateEnded = null;      // (code, reason) => void（观战结束：房主关闭/断线）
         this.onSpectateJoined = null;     // (code) => void（观众加入成功）
         this.onSpectateJoinRejected = null;// (code, reason) => void（观众加入被拒）
+        this.onSpectateEmoji = null;      // (code, mood) => void（收到观众发表情：对战双方与其他观众）
         // ── 排行榜回调 ─────────────────────────────────────────
         this.onLeaderboardResult = null;  // (data) => void（收到排行榜查询结果）
         this.onPlayerEloResult = null;    // (data) => void（收到批量 ELO 查询结果）
@@ -216,6 +217,9 @@ class MatchLobbyController {
             case 'spectate_join_rejected':
                 if (this.onSpectateJoinRejected) this.onSpectateJoinRejected(String(data.code), data.reason);
                 break;
+            case 'spectate_emoji_from_viewer':
+                if (this.onSpectateEmoji) this.onSpectateEmoji(String(data.code), data.mood);
+                break;
             case 'leaderboard_result':
                 if (this.onLeaderboardResult) this.onLeaderboardResult(data);
                 break;
@@ -338,6 +342,11 @@ class MatchLobbyController {
     /** 观众退出观战 */
     leaveSpectate(code) {
         this._send({ type: 'spectate_leave', code: String(code) });
+    }
+
+    /** 观众发表情 → 服务器转发给该房间对战双方与其他观众 */
+    sendSpectateEmoji(code, mood) {
+        this._send({ type: 'spectate_emoji', code: String(code), mood: String(mood) });
     }
 
     // ─── 排行榜 API ────────────────────────────────────────────

@@ -120,10 +120,17 @@ if (typeof UIController === 'undefined') {
         this.modeAiBtn = document.getElementById('mode-ai');
         this.modeP2PBtn = document.getElementById('mode-p2p');
         this.modeEditorBtn = document.getElementById('mode-editor');
+        this.modeCampaignClassicBtn = document.getElementById('mode-campaign-classic');
+        this.modeRaceStandardBtn = document.getElementById('mode-race-standard');
+        this.modeRaceCustomBtn = document.getElementById('mode-race-custom');
         this._battleSubmenu = document.getElementById('battle-submenu');
+        this._campaignSubmenu = document.getElementById('campaign-submenu');
+        this._raceSubmenu = document.getElementById('race-submenu');
         this.modeHint = document.getElementById('mode-hint');
         this.selectedMode = 'battle'; // 默认对战模式
         this._battleSubMode = 'local'; // 默认子模式：本地对战
+        this._campaignSubMode = 'classic'; // 闯关子模式：经典闯关（classic）/ 关卡编辑器（editor）
+        this._raceSubMode = 'standard'; // 竞速子模式：标准竞速（standard）/ 竞速试炼场（custom）
 
         // 闯关面板
         this.campaignPanel = document.getElementById('campaign-panel');
@@ -238,8 +245,36 @@ if (typeof UIController === 'undefined') {
                 this.modeHint.textContent = '联机对战：与远方好友同台竞技';
             });
         }
-        // 关卡编辑器：选中模式，点击「开始游戏」后才打开编辑器
-        if (this.modeEditorBtn) this.modeEditorBtn.addEventListener('click', () => this.selectMode('editor'));
+        // 闯关子菜单按钮：经典闯关 / 关卡编辑器
+        if (this.modeCampaignClassicBtn) {
+            this.modeCampaignClassicBtn.addEventListener('click', () => {
+                this._campaignSubMode = 'classic';
+                this.selectMode('campaign');
+                this.modeHint.textContent = '经典闯关：通关解锁下一关';
+            });
+        }
+        if (this.modeEditorBtn) {
+            this.modeEditorBtn.addEventListener('click', () => {
+                this._campaignSubMode = 'editor';
+                this.selectMode('campaign');
+                this.modeHint.textContent = '关卡编辑器：创造属于你自己的关卡';
+            });
+        }
+        // 竞速子菜单按钮：标准竞速 / 竞速试炼场
+        if (this.modeRaceStandardBtn) {
+            this.modeRaceStandardBtn.addEventListener('click', () => {
+                this._raceSubMode = 'standard';
+                this.selectMode('race');
+                this.modeHint.textContent = '标准竞速：通过 30 个关卡，追求更快速度';
+            });
+        }
+        if (this.modeRaceCustomBtn) {
+            this.modeRaceCustomBtn.addEventListener('click', () => {
+                this._raceSubMode = 'custom';
+                this.selectMode('race');
+                this.modeHint.textContent = '竞速试炼场：自定义允许区/禁止区，打造专属竞速关卡';
+            });
+        }
         if (this.raceBackBtn) this.raceBackBtn.addEventListener('click', () => this.showRaceLevelList());
         if (this.raceCloseBtn) this.raceCloseBtn.addEventListener('click', () => this.closeRaceUI());
 
@@ -259,7 +294,6 @@ if (typeof UIController === 'undefined') {
         bind('campaign-back-btn', () => this.playUIButtonSound(() => this.showCampaignDifficulty()));
         bind('campaign-reset-btn', () => this.playUIButtonSound(() => this.resetCampaignProgress()));
         bind('race-reset-btn', () => this.playUIButtonSound(() => this.resetRaceProgress()));
-        bind('race-custom-btn', () => this.playUIButtonSound(() => this.openRaceCustomModal()));
         bind('campaign-diff-fraction', () => this.playUIButtonSound(() => this.openCampaignLevels('fraction')));
         bind('campaign-diff-easy', () => this.playUIButtonSound(() => this.openCampaignLevels('easy')));
         bind('campaign-return-difficulty-btn', () => this.playUIButtonSound(() => this.returnCampaignToDifficulty()));
@@ -1365,6 +1399,12 @@ if (typeof UIController === 'undefined') {
         if (this.isP2PMode && this.p2pController && this.p2pController.isHost && this._p2pMatchStarted) {
             snapshot.players = this._buildSpectatePlayers();
         }
+        // 观战快照附带最近一次 Summa 表情事件（一次性，推完即清）：
+        // 双方互发的表情经房主透传给观众，观众端 applySpectateSnapshot 弹出展示。
+        if (this._spectatePendingEmoji) {
+            snapshot._emoji = this._spectatePendingEmoji;
+            this._spectatePendingEmoji = null;
+        }
         return snapshot;
     }
 ;
@@ -1712,6 +1752,12 @@ if (typeof UIController === 'undefined') {
         this._globalEscBound = true;
         document.addEventListener('keydown', (e) => {
             if (e.key !== 'Escape') return;
+            // 关卡编辑器：ESC 退出编辑器返回主界面（编辑器是 #editor-view 就地显示，不属于 modal 栈）
+            if (this.editorView && this.editorView.style.display === 'flex') {
+                e.preventDefault();
+                this.closeEditor();
+                return;
+            }
             const top = this._modalStackTopVisible();
             if (!top || top === this.startModal) return;
             // 仅处理显式注册为「可关闭」的弹窗，避免误关未注册弹窗（如关卡选择）

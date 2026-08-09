@@ -7,16 +7,16 @@ if (typeof UIController === 'undefined') {
 // initStartSelectors
     UIController.prototype.initStartSelectors = function() {
         this.roundOptions = [
-            { value: 8, label: '8 回合（快速对战）' },
-            { value: 12, label: '12 回合（深度对战）' },
-            { value: 16, label: '16 回合（持久战）' },
-            { value: 20, label: '20 回合（极限挑战）' },
-            { value: 24, label: '24 回合（终极对决）' }
+            { value: 8, label: '8 回合（快速对战）', shortLabel: '8 回合' },
+            { value: 12, label: '12 回合（深度对战）', shortLabel: '12 回合' },
+            { value: 16, label: '16 回合（持久战）', shortLabel: '16 回合' },
+            { value: 20, label: '20 回合（极限挑战）', shortLabel: '20 回合' },
+            { value: 24, label: '24 回合（终极对决）', shortLabel: '24 回合' }
         ];
         this.difficultyOptions = [
-            { value: 'easy', label: '简单 - 1个目标格' },
-            { value: 'normal', label: '普通 - 2个目标格' },
-            { value: 'expert', label: '专家 - 3个目标格' }
+            { value: 'easy', label: '简单 - 1个目标格', shortLabel: '简单' },
+            { value: 'normal', label: '普通 - 2个目标格', shortLabel: '普通' },
+            { value: 'expert', label: '专家 - 3个目标格', shortLabel: '专家' }
         ];
         this.timeLimitOptions = [
             { value: 'super_slow', label: '超慢棋', multiplier: 2.0 },
@@ -33,6 +33,13 @@ if (typeof UIController === 'undefined') {
         if (this.currentRoundIndex < 0) this.currentRoundIndex = 0;
         if (this.currentDifficultyIndex < 0) this.currentDifficultyIndex = 0;
         this.bindStepperButtons();
+        if (!this._selectorLabelResizeBound) {
+            this._selectorLabelResizeBound = true;
+            window.addEventListener('resize', () => {
+                this.refreshStartSelectorDisplay();
+                if (typeof this._refreshP2PStepperDisplay === 'function') this._refreshP2PStepperDisplay();
+            });
+        }
         this.refreshStartSelectorDisplay();
         this.syncStartSelectionState();
     }
@@ -75,12 +82,21 @@ if (typeof UIController === 'undefined') {
     }
 ;
 
+// getSelectorLabel
+    UIController.prototype.getSelectorLabel = function(option) {
+        if (option && window.matchMedia && window.matchMedia('(max-width: 767px)').matches) {
+            return option.shortLabel || option.label;
+        }
+        return option ? option.label : '';
+    }
+;
+
 // refreshStartSelectorDisplay
     UIController.prototype.refreshStartSelectorDisplay = function() {
         if (this.roundValue && this.roundOptions && this.roundOptions.length) {
             const idx = Math.min(this.roundOptions.length - 1, Math.max(0, this.currentRoundIndex || 0));
             const option = this.roundOptions[idx];
-            this.roundValue.textContent = option.label;
+            this.roundValue.textContent = this.getSelectorLabel(option);
             this.roundValue.dataset.value = String(option.value);
             this.roundValue.style.color = this.getRoundColor(option.value);
             this.applyStepperColors('round', option.value);
@@ -88,7 +104,7 @@ if (typeof UIController === 'undefined') {
         if (this.difficultyValue && this.difficultyOptions && this.difficultyOptions.length) {
             const idx = Math.min(this.difficultyOptions.length - 1, Math.max(0, this.currentDifficultyIndex || 0));
             const option = this.difficultyOptions[idx];
-            this.difficultyValue.textContent = option.label;
+            this.difficultyValue.textContent = this.getSelectorLabel(option);
             this.difficultyValue.dataset.value = option.value;
             this.difficultyValue.style.color = this.getDifficultyColor(option.value);
             this.applyStepperColors('difficulty', option.value);
@@ -96,7 +112,7 @@ if (typeof UIController === 'undefined') {
         if (this.timeLimitValue && this.timeLimitOptions && this.timeLimitOptions.length) {
             const idx = Math.min(this.timeLimitOptions.length - 1, Math.max(0, this.currentTimeLimitIndex ?? 2));
             const option = this.timeLimitOptions[idx];
-            this.timeLimitValue.textContent = option.label;
+            this.timeLimitValue.textContent = this.getSelectorLabel(option);
             this.timeLimitValue.dataset.value = option.value;
             this.timeLimitValue.style.color = this.getTimeLimitColor(option.value);
             this.applyStepperColors('time', option.value);
@@ -130,7 +146,14 @@ if (typeof UIController === 'undefined') {
         this.modeCampaignBtn.classList.toggle('active', this.selectedMode === 'campaign');
         this.modeRaceBtn.classList.toggle('active', this.selectedMode === 'race');
         this.modeTestBtn.classList.toggle('active', this.selectedMode === 'test');
-        if (this.modeEditorBtn) this.modeEditorBtn.classList.toggle('active', this.selectedMode === 'editor');
+        // 闯关子菜单高亮：经典闯关 / 关卡编辑器
+        const isCampaign = this.selectedMode === 'campaign';
+        if (this.modeCampaignClassicBtn) this.modeCampaignClassicBtn.classList.toggle('active', isCampaign && this._campaignSubMode === 'classic');
+        if (this.modeEditorBtn) this.modeEditorBtn.classList.toggle('active', isCampaign && this._campaignSubMode === 'editor');
+        // 竞速子菜单高亮：标准竞速 / 竞速试炼场
+        const isRace = this.selectedMode === 'race';
+        if (this.modeRaceStandardBtn) this.modeRaceStandardBtn.classList.toggle('active', isRace && this._raceSubMode === 'standard');
+        if (this.modeRaceCustomBtn) this.modeRaceCustomBtn.classList.toggle('active', isRace && this._raceSubMode === 'custom');
 
         if (this.modeAiBtn) {
             this.modeAiBtn.disabled = false;
@@ -139,7 +162,7 @@ if (typeof UIController === 'undefined') {
             this.modeAiBtn.title = '';
         }
 
-        const lockSelectors = this.selectedMode === 'campaign' || this.selectedMode === 'test' || this.selectedMode === 'race' || this.selectedMode === 'editor' || (this.selectedMode === 'battle' && this._battleSubMode === 'p2p');
+        const lockSelectors = isCampaign || this.selectedMode === 'test' || this.selectedMode === 'race' || (this.selectedMode === 'battle' && this._battleSubMode === 'p2p');
         this.setStartSelectorsEnabled(!lockSelectors);
         [this.roundStepper, this.difficultyStepper, this.timeLimitStepper].forEach(el => {
             if (!el) return;
@@ -250,11 +273,10 @@ if (typeof UIController === 'undefined') {
         const isCampaign = mode === 'campaign';
         const isTest = mode === 'test';
         const isRace = mode === 'race';
-        const isEditor = mode === 'editor';
         if (this.roundStepper) this.roundStepper.classList.remove('selector-change');
         if (this.difficultyStepper) this.difficultyStepper.classList.remove('selector-change');
-        // 闯关模式、测试模式、竞速模式、联机对战模式、关卡编辑器禁用回合数/难度/时间选择
-        const lockSelectors = isCampaign || isTest || isRace || isEditor || (mode === 'battle' && this._battleSubMode === 'p2p');
+        // 闯关模式、测试模式、竞速模式、联机对战模式（关卡编辑器是闯关子模式，一并锁定）
+        const lockSelectors = isCampaign || isTest || isRace || (mode === 'battle' && this._battleSubMode === 'p2p');
         if (this.roundStepper) {
             this.roundStepper.classList.toggle('disabled', lockSelectors);
         }
@@ -269,13 +291,15 @@ if (typeof UIController === 'undefined') {
         this.refreshStartSelectorDisplay();
         this.updateCampaignDrawDelayToggleVisibility();
 
-        // 重置所有模式按钮的高亮
-        const allModeBtns = [this.modeBattleBtn, this.modeCampaignBtn, this.modeRaceBtn, this.modeTestBtn, this.modeEditorBtn];
+        // 重置所有模式按钮的高亮（子菜单按钮由 syncModeButtonsFromDifficulty 维护）
+        const allModeBtns = [this.modeBattleBtn, this.modeCampaignBtn, this.modeRaceBtn, this.modeTestBtn];
         allModeBtns.forEach(btn => { if (btn) btn.classList.remove('active'); });
 
         if (mode === 'battle') {
             this.modeBattleBtn.classList.add('active');
             if (this._battleSubmenu) this._battleSubmenu.style.display = '';
+            if (this._campaignSubmenu) this._campaignSubmenu.style.display = 'none';
+            if (this._raceSubmenu) this._raceSubmenu.style.display = 'none';
             this.modeHint.textContent = 
                 this._battleSubMode === 'local' ? '本地对战：两位玩家轮流操作' :
                 this._battleSubMode === 'ai' ? '人机对战：你将对抗AI Summa' :
@@ -286,7 +310,12 @@ if (typeof UIController === 'undefined') {
         } else if (mode === 'campaign') {
             this.modeCampaignBtn.classList.add('active');
             if (this._battleSubmenu) this._battleSubmenu.style.display = 'none';
-            this.modeHint.textContent = '闯关模式：通关解锁下一关';
+            if (this._campaignSubmenu) this._campaignSubmenu.style.display = '';
+            if (this._raceSubmenu) this._raceSubmenu.style.display = 'none';
+            // hint 按闯关子模式显示
+            this.modeHint.textContent = this._campaignSubMode === 'editor'
+                ? '关卡编辑器：创造属于你自己的关卡'
+                : '经典闯关：通关解锁下一关';
             if (this.campaignPanel) this.campaignPanel.style.display = 'none';
             this.hideRaceUI();
             this.setStartSelectorsEnabled(false);
@@ -294,7 +323,12 @@ if (typeof UIController === 'undefined') {
         } else if (mode === 'race') {
             this.modeRaceBtn.classList.add('active');
             if (this._battleSubmenu) this._battleSubmenu.style.display = 'none';
-            this.modeHint.textContent = '竞速模式：快一点，再快一点！';
+            if (this._campaignSubmenu) this._campaignSubmenu.style.display = 'none';
+            if (this._raceSubmenu) this._raceSubmenu.style.display = '';
+            // hint 按竞速子模式显示
+            this.modeHint.textContent = this._raceSubMode === 'custom'
+                ? '竞速试炼场：自定义允许区/禁止区，打造专属竞速关卡'
+                : '标准竞速：通过 30 个关卡，追求更快速度';
             if (this.campaignPanel) this.campaignPanel.style.display = 'none';
             this.hideRaceUI();
             this.setStartSelectorsEnabled(false);
@@ -302,18 +336,13 @@ if (typeof UIController === 'undefined') {
         } else if (mode === 'test') {
             this.modeTestBtn.classList.add('active');
             if (this._battleSubmenu) this._battleSubmenu.style.display = 'none';
+            if (this._campaignSubmenu) this._campaignSubmenu.style.display = 'none';
+            if (this._raceSubmenu) this._raceSubmenu.style.display = 'none';
             this.modeHint.textContent = '测试模式：自由绘图，已绘制函数会保留在画布上';
             if (this.campaignPanel) this.campaignPanel.style.display = 'none';
             this.hideRaceUI();
             this.setStartSelectorsEnabled(false);
             this.restoreBattleUI();
-        } else if (mode === 'editor') {
-            if (this.modeEditorBtn) this.modeEditorBtn.classList.add('active');
-            if (this._battleSubmenu) this._battleSubmenu.style.display = 'none';
-            this.modeHint.textContent = '关卡编辑器：创造属于你自己的关卡';
-            if (this.campaignPanel) this.campaignPanel.style.display = 'none';
-            this.hideRaceUI();
-            this.setStartSelectorsEnabled(false);
         }
     }
 ;
@@ -464,21 +493,23 @@ if (typeof UIController === 'undefined') {
             window.audioManager.playClick();
         }
         
-        // 关卡编辑器：仅选中模式，点击「开始游戏」才打开编辑器（就地显示，不再独立页面）
-        if (this.selectedMode === 'editor') {
-            this.openEditor();
-            return;
-        }
-
-        // 闯关模式：进入关卡选择界面（难度选择）
+        // 闯关模式子模式：经典闯关进入关卡选择界面；关卡编辑器就地打开
         if (this.selectedMode === 'campaign') {
-            this.openCampaignUI();
+            if (this._campaignSubMode === 'editor') {
+                this.openEditor();
+            } else {
+                this.openCampaignUI();
+            }
             return;
         }
 
-        // 竞速模式：与闯关逻辑一致，先等开始按钮/Enter 再进入等级界面
+        // 竞速子模式：标准竞速进入选关界面；竞速试炼场打开自定义弹窗
         if (this.selectedMode === 'race') {
-            this.openRaceUI();
+            if (this._raceSubMode === 'custom') {
+                this.openRaceCustomModal();
+            } else {
+                this.openRaceUI();
+            }
             return;
         }
 

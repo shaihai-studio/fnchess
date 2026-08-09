@@ -257,6 +257,14 @@ body::before {
     margin-left: auto;
 }
 
+/* 主界面右上角音量/排行榜按钮改为胶囊形（局内 #bgm-open-btn 保持圆形） */
+#start-bgm-open-btn,
+#leaderboard-open-btn {
+    width: 62px;
+    height: 38px;
+    border-radius: 999px;
+}
+
 .bgm-float-btn:hover {
     transform: translateY(-1px) scale(1.05);
     box-shadow: 0 10px 28px rgba(0,0,0,0.28);
@@ -312,9 +320,9 @@ body::before {
 }
 
 .about-us-link {
-    position: absolute;
-    left: 24px;
-    bottom: 18px;
+    position: relative;
+    left: auto;
+    bottom: auto;
     color: rgba(229, 231, 235, 0.72);
     font-size: 14px;
     text-decoration: none;
@@ -1017,7 +1025,7 @@ body::before {
 .game-title {
     font-size: 28px;
     font-weight: bold;
-    background: linear-gradient(135deg, #4d8c5e, #5b7fa8);
+    background: linear-gradient(135deg, #A0F1D8, #848BCF);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
@@ -1243,6 +1251,55 @@ body::before {
 }
 .canvas-fab-btn.confirm-fab:hover { background: rgba(34, 197, 94, 0.7); }
 .canvas-fab-btn.exit-fab:hover { background: rgba(239, 68, 68, 0.7); }
+/* 闯关「绘制后等待时间」药丸开关：画布右下固定浮层，位于 ✓确认/←返回 圆形按钮上方（闯关专属） */
+.campaign-draw-delay-pill {
+    position: absolute;
+    bottom: 78px;
+    right: 14px;
+    z-index: 6;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 6px;
+    border-radius: 999px;
+    background: rgba(10, 16, 32, 0.82);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    user-select: none;
+    -webkit-user-select: none;
+}
+.campaign-draw-delay-pill .campaign-delay-label {
+    font-size: 11px;
+    line-height: 1;
+    color: #e5e7eb;
+    opacity: 0.85;
+    padding: 0 2px;
+    white-space: nowrap;
+}
+.campaign-draw-delay-pill .campaign-delay-btn {
+    min-width: 32px;
+    height: 22px;
+    padding: 0 8px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.12);
+    color: #e5e7eb;
+    font-size: 11px;
+    line-height: 1;
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s;
+}
+.campaign-draw-delay-pill .campaign-delay-btn:hover {
+    background: rgba(255, 255, 255, 0.22);
+}
+.campaign-draw-delay-pill .campaign-delay-btn.active {
+    background: #4d8c5e;
+    color: #fff;
+    border-color: rgba(255, 255, 255, 0.2);
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.18) inset;
+}
 /* Summa 表情入口按钮（右下角 确认/返回 按钮左侧，仅 P2P 联机对局显示） */
 .canvas-fab-btn.emoji-fab {
     right: 142px;
@@ -2004,7 +2061,11 @@ body::before {
 
 .lock-icon {
     font-size: 12px;
-    filter: grayscale(100%) brightness(1.5);
+    line-height: 1;
+}
+.lock-icon svg {
+    display: inline-block;
+    vertical-align: -0.15em;
 }
 
 /* ========== 移动端内联元素栏（替代固定底栏） ========== */
@@ -2389,7 +2450,7 @@ body::before {
 .modal-content h2 {
     font-size: 32px;
     margin-bottom: 24px;
-    background: linear-gradient(135deg, #22c55e, #3b82f6);
+    background: linear-gradient(135deg, #A0F1D8, #848BCF);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
@@ -2708,10 +2769,10 @@ body::before {
     box-shadow: 0 0 10px rgba(34, 211, 238, 0.2);
 }
 .mode-toggle .mode-btn[data-mode="race"] {
-    border-color: rgba(45, 212, 191, 0.5);
-    color: #b5e3dc;
-    background: rgba(18, 94, 90, 0.24);
-    box-shadow: 0 0 10px rgba(45, 212, 191, 0.18);
+    border-color: rgba(244, 63, 94, 0.5);
+    color: #e8c2ca;
+    background: rgba(94, 24, 40, 0.24);
+    box-shadow: 0 0 10px rgba(244, 63, 94, 0.18);
 }
 .mode-toggle .mode-btn[data-mode="battle"] {
     border-color: rgba(251, 191, 36, 0.5);
@@ -2723,7 +2784,7 @@ body::before {
 .mode-toggle .mode-btn.active[data-mode="local"] { background: rgba(99, 102, 241, 0.26); color: #d7d8ff; box-shadow: 0 0 24px rgba(99,102,241,0.4); }
 .mode-toggle .mode-btn.active[data-mode="ai"] { background: rgba(59, 130, 246, 0.26); color: #dbeafe; box-shadow: 0 0 24px rgba(59,130,246,0.4); }
 .mode-toggle .mode-btn.active[data-mode="campaign"] { background: rgba(34, 211, 238, 0.24); color: #d6fbff; box-shadow: 0 0 24px rgba(34,211,238,0.4); }
-.mode-toggle .mode-btn.active[data-mode="race"] { background: rgba(45, 212, 191, 0.26); color: #e6fffb; box-shadow: 0 0 24px rgba(45,212,191,0.42); }
+.mode-toggle .mode-btn.active[data-mode="race"] { background: rgba(244, 63, 94, 0.26); color: #ffdbe2; box-shadow: 0 0 24px rgba(244,63,94,0.42); }
 .mode-toggle .mode-btn.active[data-mode="battle"] { background: rgba(251, 191, 36, 0.26); color: #fff7dc; box-shadow: 0 0 24px rgba(251,191,36,0.4); }
 
 .mode-btn {
@@ -2759,19 +2820,19 @@ body::before {
     box-shadow: 0 0 10px rgba(34, 197, 94, 0.3);
 }
 #start-modal .mode-btn[data-mode="race"] {
-    border-color: rgba(45, 212, 191, 0.6);
-    background: rgba(18, 94, 90, 0.28);
-    color: #c3e5e1;
+    border-color: rgba(244, 63, 94, 0.6);
+    background: rgba(94, 24, 40, 0.28);
+    color: #f0c7cf;
 }
 #start-modal .mode-btn[data-mode="race"]:hover {
-    background: rgba(45, 212, 191, 0.22);
-    border-color: rgba(45, 212, 191, 0.75);
+    background: rgba(244, 63, 94, 0.22);
+    border-color: rgba(244, 63, 94, 0.75);
 }
 #start-modal .mode-btn.active[data-mode="race"] {
-    background: rgba(45, 212, 191, 0.28);
-    border-color: #2dd4bf;
-    color: #dbf6f1;
-    box-shadow: 0 0 24px rgba(45, 212, 191, 0.42);
+    background: rgba(244, 63, 94, 0.28);
+    border-color: #f43f5e;
+    color: #ffdde4;
+    box-shadow: 0 0 24px rgba(244, 63, 94, 0.42);
 }
 
 /* 对战模式子菜单 */
@@ -2810,6 +2871,97 @@ body::before {
 .battle-submenu .mode-btn-sub:hover {
     background: rgba(251, 191, 36, 0.15);
     border-color: rgba(251, 191, 36, 0.3);
+}
+.battle-submenu .mode-btn-sub.active {
+    background: rgba(251, 191, 36, 0.24) !important;
+    border-color: rgba(251, 191, 36, 0.5) !important;
+    color: #fff7dc !important;
+    box-shadow: 0 0 24px rgba(251, 191, 36, 0.4) !important;
+}
+
+/* 竞速模式子菜单（标准竞速 / 竞速试炼场） */
+.race-submenu {
+    display: grid;
+    grid-template-columns: 1fr 1fr !important;
+    align-items: stretch;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    gap: 6px;
+    margin-top: 4px;
+    padding: 6px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 12px;
+    border: 1px solid rgba(244, 63, 94, 0.2);
+}
+#start-modal .race-submenu .mode-btn-sub,
+.race-submenu .mode-btn-sub {
+    width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+    padding: 12px 10px !important;
+    font-size: 14px !important;
+    border-radius: 8px !important;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.04);
+    color: #cbd5e1;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: center;
+    white-space: nowrap;
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+}
+.race-submenu .mode-btn-sub:hover {
+    background: rgba(244, 63, 94, 0.15);
+    border-color: rgba(244, 63, 94, 0.3);
+}
+.race-submenu .mode-btn-sub.active {
+    background: rgba(244, 63, 94, 0.24) !important;
+    border-color: rgba(244, 63, 94, 0.5) !important;
+    color: #ffdbe2 !important;
+    box-shadow: 0 0 24px rgba(244, 63, 94, 0.4) !important;
+}
+
+/* 闯关模式子菜单（经典闯关 / 关卡编辑器） */
+.campaign-submenu {
+    display: grid;
+    grid-template-columns: 1fr 1fr !important;
+    align-items: stretch;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    gap: 6px;
+    margin-top: 4px;
+    padding: 6px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 12px;
+    border: 1px solid rgba(34, 211, 238, 0.2);
+}
+#start-modal .campaign-submenu .mode-btn-sub,
+.campaign-submenu .mode-btn-sub {
+    width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+    padding: 12px 10px !important;
+    font-size: 14px !important;
+    border-radius: 8px !important;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.04);
+    color: #cbd5e1;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s, color 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.campaign-submenu .mode-btn-sub:hover {
+    background: rgba(34, 211, 238, 0.15);
+    border-color: rgba(34, 211, 238, 0.3);
+}
+.campaign-submenu .mode-btn-sub.active {
+    background: rgba(34, 211, 238, 0.24) !important;
+    border-color: rgba(34, 211, 238, 0.5) !important;
+    color: #d6fbff !important;
 }
 
 /* P2P 联机房间模态框 */
@@ -2857,6 +3009,10 @@ body::before {
         padding-right: 0 !important;
         padding-bottom: 12px !important;
         border-bottom: 1px solid rgba(255,255,255,0.08) !important;
+    }
+    /* 竖屏：联机主页面选项字体调小（与主页面同理） */
+    .p2p-selectors-left .stepper-value {
+        font-size: 14px;
     }
     .p2p-selectors-right {
         flex: none !important;
@@ -3638,6 +3794,21 @@ body::before {
         -webkit-overflow-scrolling: touch;
     }
 
+    /* 主界面：顶部让出返回按钮区域，避免标题与左上角返回按钮重叠；
+       按钮以主页面为定位基准（position:relative），随入场动画与标题同步移动，不再跳变 */
+    #start-modal .main-page {
+        position: relative;
+        padding-top: 62px;
+    }
+    /* 返回按钮：胶囊状，位于标题图片正上方居中，与标题位置联动：
+       top = 标题顶部相对主页面(48px) - 按钮高(32px) - 间隙(10px) = 6px
+       left = 左列中心(84.5px) - 按钮半宽(26px) = 58px
+       选择器提高特异性（多 .main-page），避免被文件后部的基础规则覆盖 */
+    #start-modal .main-page .main-back-btn {
+        top: 6px;
+        left: 58px;
+    }
+
     .start-settings-layout {
         grid-template-columns: 1fr;
         gap: 14px;
@@ -3664,6 +3835,17 @@ body::before {
         font-size: 24px;
         padding: 16px 14px;
         border-radius: 22px;
+    }
+
+    /* 竖屏：所有子模式按钮字体调小 */
+    .battle-submenu .mode-btn-sub,
+    .race-submenu .mode-btn-sub,
+    .campaign-submenu .mode-btn-sub,
+    #start-modal .battle-submenu .mode-btn-sub,
+    #start-modal .race-submenu .mode-btn-sub,
+    #start-modal .campaign-submenu .mode-btn-sub {
+        font-size: 12px !important;
+        padding: 10px 8px !important;
     }
 
     #start-modal .start-selectors-left .stepper-value {
@@ -3762,13 +3944,34 @@ body::before {
         font-size: 14px;
     }
     
-    /* 画布底部阶段提示：手机版缩小 */
+    /* 画布底部阶段提示：手机版缩小（最大宽度限制为当前 90% 的 75% = 67.5%，字号不变） */
     .canvas-corner-bc {
         bottom: 10px;
         padding: 5px 12px;
+        max-width: 67.5%;
     }
     .canvas-corner-bc .phase-hint-text {
         font-size: 12px;
+    }
+
+    /* 右下角圆形按钮：表情/提交/退出 手机竖屏缩至 75%（54→40.5px，字号 26→19.5px，间隙 10→7.5px） */
+    .canvas-fab-btn {
+        bottom: 14px;
+        width: 40.5px;
+        height: 40.5px;
+        font-size: 19.5px;
+    }
+    .canvas-fab-btn.confirm-fab {
+        right: 62px;
+    }
+    .canvas-fab-btn.emoji-fab {
+        right: 110px;
+    }
+
+    /* 闯关「绘制后等待」药丸：尺寸已恢复原值（基础样式），手机竖屏仅随按钮缩小上移
+       （bottom 78→62px）保持原间距 */
+    .campaign-draw-delay-pill {
+        bottom: 62px;
     }
     
     /* 阶段提示缩小 */
@@ -4253,11 +4456,13 @@ body.device-mobile {
 }
 
 .element-btn[data-locked="true"]::after {
-    content: '🔒';
+    content: '';
     position: absolute;
-    top: -5px;
-    right: -5px;
-    font-size: 10px;
+    top: -4px;
+    right: -4px;
+    width: 10px;
+    height: 10px;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23f59e0b' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='5' y='11' width='14' height='10' rx='2'/%3E%3Cpath d='M8 11V7a4 4 0 0 1 8 0v4'/%3E%3C/svg%3E") center/contain no-repeat;
 }
 
 /* 简单难度保护状态 */
@@ -4268,11 +4473,13 @@ body.device-mobile {
 }
 
 .element-btn.protected::after {
-    content: '🛡️';
+    content: '';
     position: absolute;
-    top: -5px;
-    right: -5px;
-    font-size: 10px;
+    top: -4px;
+    right: -4px;
+    width: 10px;
+    height: 10px;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z'/%3E%3C/svg%3E") center/contain no-repeat;
     filter: grayscale(100%) brightness(1.5);
 }
 
@@ -4347,7 +4554,7 @@ body.device-mobile {
 .summa-dialog-title {
     font-size: 26px !important;
     margin-bottom: 15px !important;
-    background: linear-gradient(135deg, #a78bfa, #818cf8, #5b9e6e) !important;
+    background: linear-gradient(135deg, #A0F1D8, #848BCF) !important;
     -webkit-background-clip: text !important;
     -webkit-text-fill-color: transparent !important;
     background-clip: text !important;
@@ -4687,12 +4894,7 @@ body.device-mobile {
     color: #fff !important;
 }
 
-/* 竞速自定义关卡弹窗 */
-.race-custom-btn {
-    background: rgba(255,255,255,.1);
-    color: #fff !important;
-    min-width: 120px;
-}
+/* 竞速试炼场弹窗 */
 .race-custom-content {
     max-width: 460px;
 }
@@ -4795,17 +4997,11 @@ body.device-mobile {
 
 /* ── 在线排行榜 ─────────────────────────────────────────── */
 .leaderboard-open-icon {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 20px;
-    height: 20px;
-    border-radius: 6px;
-    background: linear-gradient(135deg, #f59e0b, #fbbf24);
-    color: #0f172a;
-    font-size: 13px;
-    font-weight: 800;
-    line-height: 1;
+    display: inline-block;
+    width: 40px;
+    height: 40px;
+    object-fit: contain;
+    filter: drop-shadow(0 2px 3px rgba(0,0,0,0.35));
 }
 .leaderboard-modal-content {
     max-width: 680px;
@@ -4987,11 +5183,12 @@ body.device-mobile {
     outline: none;
 }
 .race-level-trigger::after {
-    content: '▼';
+    content: '';
+    width: 10px;
+    height: 10px;
     float: right;
-    font-size: 10px;
-    color: #94a3b8;
     margin-left: 8px;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2394a3b8'%3E%3Cpath d='M12 17l-6-8h12z'/%3E%3C/svg%3E") center/contain no-repeat;
 }
 .race-level-trigger:focus,
 .race-level-select.open .race-level-trigger {
@@ -5298,9 +5495,10 @@ body.device-mobile {
     top: 38%;
     transform: translate(-50%, -50%);
     z-index: 5000;
-    /* 窄高布局：宽度收敛，不占横向空间；宽度匹配收窄后的主键盘（5×34px + 间距 + 内边距） */
-    width: min(220px, 92vw);
-    /* 纵向 flex 列布局；高度由内容自适应（缩放功能已移除） */
+    /* 窄高布局：宽度收敛，不占横向空间；宽度匹配收窄后的主键盘（5×34px + 间距 + 内边距）；
+       宽度随用户统一缩放因子 --kp-w-scale 等比缩放，视口过窄时夹回 92vw */
+    width: min(calc(220px * var(--kp-w-scale)), 92vw);
+    /* 纵向 flex 列布局；高度由内容自适应（scale=1 时），用户调节后 JS 设定 height */
     display: flex;
     flex-direction: column;
     /* 由 JS 按实际宽度更新：宽度缩放驱动字号 / 间距随窄屏自适应收缩 */
@@ -5315,6 +5513,11 @@ body.device-mobile {
     color: #e5e7eb;
     user-select: none;
     -webkit-user-select: none;
+}
+/* 输入栏尺寸调节过渡：仅在点击「增大/缩小」按钮期间启用，
+   宽度 / 高度 / 位置平滑过渡；拖动标题栏时由 JS 移除，避免位置跟随延迟 */
+.float-keypad.kp-sizing {
+    transition: width 0.28s ease, height 0.28s ease, left 0.28s ease, top 0.28s ease;
 }
 /* 背景模式：透明（无背景无模糊） */
 .float-keypad.keypad-bg-transparent {
@@ -5347,6 +5550,12 @@ body.device-mobile {
     display: inline-flex;
     align-items: baseline;
     gap: 6px;
+    /* 标题栏新增两个尺寸调节按钮后空间变窄：标题自动收缩省略，不挤压按钮 */
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
 }
 /* 标题右侧「可拖动」小字 */
 .float-keypad-drag-hint {
@@ -5377,6 +5586,33 @@ body.device-mobile {
     color: #fff;
 }
 .float-keypad-mode-btn:active { transform: scale(0.94); }
+/* 输入栏尺寸调节按钮（缩小 / 增大，位于背景模式按钮左侧）：紧凑圆钮 */
+.float-keypad-size-btn {
+    flex: 0 0 auto;
+    width: calc(24px * var(--kp-h-scale));
+    height: calc(24px * var(--kp-h-scale));
+    padding: 0;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.08);
+    color: #cbd5e1;
+    font-size: calc(16px * var(--kp-w-scale));
+    line-height: 1;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15);
+    transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.15s;
+}
+.float-keypad-size-btn:hover {
+    background: rgba(59, 130, 246, 0.3);
+    border-color: rgba(96, 165, 250, 0.6);
+    color: #fff;
+}
+.float-keypad-size-btn:active { transform: scale(0.92); }
+/* 最小 / 最大窗口时隐藏对应调节按钮：强制 display:none（覆盖 inline-flex 默认样式） */
+.float-keypad-size-btn[hidden] { display: none !important; }
 .float-keypad-btn {
     width: calc(26px * var(--kp-h-scale));
     height: calc(26px * var(--kp-h-scale));
@@ -5521,6 +5757,9 @@ body.device-mobile {
     display: flex;
     flex-direction: column;
     gap: calc(6px * var(--kp-w-scale));
+    /* 用户通过「增大/缩小」按钮调整尺寸后：主体伸缩填充剩余高度，内容超出时滚动 */
+    flex: 1 1 auto;
+    min-height: 0;
     /* 内容超出时仍可滚动（兜底） */
     overflow-y: auto;
     scrollbar-width: thin;
@@ -5598,9 +5837,10 @@ body.device-mobile {
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 /* fx 展开时悬浮栏整体加宽（容纳左侧函数面板），超窄屏时收缩；
-   fx 打开时按钮高度保持不变（与收起态一致 30px） */
+   fx 打开时按钮高度保持不变（与收起态一致 30px）；
+   宽度随 --kp-w-scale 等比例缩放，保证与最大/最小窗口的比例一致 */
 .float-keypad.fx-open {
-    width: min(360px, 96vw);
+    width: min(calc(360px * var(--kp-w-scale)), 96vw);
 }
 .float-keypad.fx-open .float-keypad-grid .element-btn {
     height: calc(30px * var(--kp-h-scale));
@@ -5620,14 +5860,15 @@ body.device-mobile {
 /* 竖屏/窄屏：输入栏进一步缩小（宽度 + 高度 + 字号同步缩小）；
    fx 展开时函数面板与主键盘都收紧，避免按钮挤压出界 */
 @media (max-width: 480px), (orientation: portrait) and (max-width: 767px) {
-    /* 默认态（fx 收起）：整体再缩小，字号同步缩小；宽度匹配主键盘 */
+    /* 默认态（fx 收起）：整体再缩小，字号同步缩小；宽度匹配主键盘，随 --kp-w-scale 等比缩放 */
     .float-keypad {
-        width: min(220px, 88vw);
+        width: min(calc(220px * var(--kp-w-scale)), 88vw);
     }
     /* fx 展开：宽度固定（函数面板 110.4px + 主键盘固定列宽 + 内边距 ≈ 330px），
-       不再用 width:auto 以免长表达式把输入栏撑宽（长表达式在显示区内部换行） */
+       不再用 width:auto 以免长表达式把输入栏撑宽（长表达式在显示区内部换行）；
+       宽度随 --kp-w-scale 等比例缩放 */
     .float-keypad.fx-open {
-        width: min(330px, 92vw);
+        width: min(calc(330px * var(--kp-w-scale)), 92vw);
     }
     .float-keypad-grid .element-btn,
     .float-keypad-body .element-btn {
@@ -5836,15 +6077,15 @@ body.float-keypad-mode #clear-btn { display: none !important; }
 }
 .start-page .start-page-btn:active { transform: scale(0.97); }
 
-/* 主界面左上角返回按钮（回到开始界面） */
+/* 主界面左上角返回按钮（回到开始界面），胶囊状；横屏/桌面固定在左上角 */
 #start-modal .main-back-btn {
     position: absolute;
     top: 8px;
     left: 8px;
-    width: 40px;
-    height: 40px;
+    width: 52px;
+    height: 32px;
     padding: 0;
-    border-radius: 50%;
+    border-radius: 999px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -5858,6 +6099,23 @@ body.float-keypad-mode #clear-btn { display: none !important; }
 #start-modal .main-back-btn:hover {
     border-color: rgba(124, 219, 157, 0.6);
     box-shadow: 0 0 12px rgba(124, 219, 157, 0.3);
+}
+
+/* 横屏/桌面：主界面内容由 modal 垂直居中且可能溢出视口（标题顶部超出视口）。
+   .main-page 的 pageFadeIn 动画（transform translateY）会把 fixed 子按钮临时降级为
+   相对 main-page 定位，动画结束瞬间恢复相对视口造成跳变，故横屏下禁用该动画；
+   按钮 fixed 固定在视口左上角，与标题一同只随 modal-content 入场动画同步移动。
+   实测与标题/设置区水平不重叠（标题从 left=64 开始） */
+@media (min-width: 768px) {
+    #start-modal .main-page {
+        animation: none;
+    }
+    #start-modal .main-back-btn {
+        position: fixed;
+        top: 8px;
+        left: 8px;
+        animation: none;
+    }
 }
 
 /* ============================================================

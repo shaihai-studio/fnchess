@@ -96,8 +96,8 @@
             </div>
             <!-- 右下角：圆形 确认(✓) / 返回(←) 按钮；左侧为 Summa 表情入口（P2P 联机对局专用） -->
             <button class="canvas-fab-btn emoji-fab" id="emoji-fab-btn" type="button" title="发送表情" style="display:none"></button>
-            <button class="canvas-fab-btn confirm-fab" id="confirm-fab-btn" type="button" title="确认">✓</button>
-            <button class="canvas-fab-btn exit-fab" id="exit-fab-btn" type="button" title="退出对局">←</button>
+            <button class="canvas-fab-btn confirm-fab" id="confirm-fab-btn" type="button" title="确认"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.125em"><path d="M20 6L9 17l-5-5"/></svg></button>
+            <button class="canvas-fab-btn exit-fab" id="exit-fab-btn" type="button" title="退出对局"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.125em"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg></button>
             <!-- 退出确认气泡框 -->
             <div class="exit-confirm-popover" id="exit-confirm-popover">
                 <p>确定要退出当前对局吗？</p>
@@ -147,8 +147,10 @@
       <div class="float-keypad-header" id="float-keypad-header" title="按住拖动可移动位置">
         <span class="float-keypad-title">表达式输入<small class="float-keypad-drag-hint">可拖动</small></span>
         <div class="float-keypad-actions">
+          <button class="float-keypad-size-btn" id="float-keypad-shrink" type="button" title="缩小输入栏">−</button>
+          <button class="float-keypad-size-btn" id="float-keypad-grow" type="button" title="增大输入栏">+</button>
           <button class="float-keypad-mode-btn" id="float-keypad-mode" type="button" title="切换背景模式：透明 / 遮光 / 模糊">遮光</button>
-          <button class="float-keypad-btn" id="float-keypad-collapse" type="button" title="收起为圆形按钮">×</button>
+          <button class="float-keypad-btn" id="float-keypad-collapse" type="button" title="收起为圆形按钮"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.125em"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
         </div>
       </div>
       <div class="float-keypad-display" id="float-keypad-display"></div>
@@ -161,15 +163,15 @@
       <!-- 底部操作栏：左侧 ◀ ▶ 移动光标；中间 fx 展开函数面板；右侧 提交（占 3 个常规按钮宽） -->
       <div class="float-keypad-footer">
         <div class="float-keypad-nav">
-          <button class="float-keypad-nav-btn" id="float-keypad-left" type="button" title="光标左移">◀</button>
-          <button class="float-keypad-nav-btn" id="float-keypad-right" type="button" title="光标右移">▶</button>
+          <button class="float-keypad-nav-btn" id="float-keypad-left" type="button" title="光标左移"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor" style="vertical-align:-0.125em"><path d="M15 4v16l-11-8z"/></svg></button>
+          <button class="float-keypad-nav-btn" id="float-keypad-right" type="button" title="光标右移"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor" style="vertical-align:-0.125em"><path d="M9 4v16l11-8z"/></svg></button>
         </div>
         <button class="float-keypad-fx-btn" id="float-keypad-fx" type="button" title="展开/收起函数面板">fx</button>
         <button class="float-keypad-submit" id="float-keypad-submit" type="button" title="提交函数（Enter）">提交</button>
       </div>
     </div>
     <!-- 收起后的圆形按钮：点击展开输入栏，可拖动 -->
-    <button class="float-keypad-fab" id="float-keypad-fab" type="button" title="展开输入栏" hidden>⌨</button>
+    <button class="float-keypad-fab" id="float-keypad-fab" type="button" title="展开输入栏" hidden><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.125em"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h.01M18 14h.01M9 14h6"/></svg></button>
 
     <!-- 开始界面模态框 -->
     <div class="modal" id="start-modal" style="display:none;">
@@ -194,26 +196,26 @@
                         <div class="start-selectors-left">
                             <div class="selector-row difficulty-select">
                                 <div class="stepper-selector" id="difficulty-stepper">
-                                    <button type="button" class="stepper-arrow" id="difficulty-prev" aria-label="上一个难度">←</button>
+                                    <button type="button" class="stepper-arrow" id="difficulty-prev" aria-label="上一个难度"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.125em"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg></button>
                                     <div class="stepper-value" id="difficulty-value">简单 - 1个目标格</div>
-                                    <button type="button" class="stepper-arrow" id="difficulty-next" aria-label="下一个难度">→</button>
+                                    <button type="button" class="stepper-arrow" id="difficulty-next" aria-label="下一个难度"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.125em"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg></button>
                                 </div>
                                 <small id="difficulty-hint" style="display:none; margin-top: 5px; opacity: 0.7;"></small>
                             </div>
 
                             <div class="selector-row round-select">
                                 <div class="stepper-selector" id="round-stepper" tabindex="0">
-                                    <button type="button" class="stepper-arrow" id="round-prev" aria-label="减少回合数">←</button>
+                                    <button type="button" class="stepper-arrow" id="round-prev" aria-label="减少回合数"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.125em"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg></button>
                                     <div class="stepper-value" id="round-value" tabindex="0">8 回合（快速对战）</div>
-                                    <button type="button" class="stepper-arrow" id="round-next" aria-label="增加回合数">→</button>
+                                    <button type="button" class="stepper-arrow" id="round-next" aria-label="增加回合数"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.125em"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg></button>
                                 </div>
                             </div>
 
                             <div class="selector-row time-limit-select">
                                 <div class="stepper-selector" id="time-limit-stepper" tabindex="0">
-                                    <button type="button" class="stepper-arrow" id="time-limit-prev" aria-label="减少时间限制">←</button>
+                                    <button type="button" class="stepper-arrow" id="time-limit-prev" aria-label="减少时间限制"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.125em"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg></button>
                                     <div class="stepper-value" id="time-limit-value" tabindex="0">普通棋</div>
-                                    <button type="button" class="stepper-arrow" id="time-limit-next" aria-label="增加时间限制">→</button>
+                                    <button type="button" class="stepper-arrow" id="time-limit-next" aria-label="增加时间限制"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.125em"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg></button>
                                 </div>
                             </div>
 
@@ -232,7 +234,7 @@
                                 <img src="files/images/VolumeButton.png" alt="背景音乐设置" class="bgm-float-icon-img">
                             </button>
                             <button class="bgm-float-btn" id="leaderboard-open-btn" type="button" aria-label="在线排行榜" title="在线排行榜">
-                                <span class="leaderboard-open-icon">榜</span>
+                                <img class="leaderboard-open-icon" src="files/images/championship.png" alt="在线排行榜">
                             </button>
                         </div>
 
@@ -246,11 +248,18 @@
                                     <button class="mode-btn mode-btn-sub" id="mode-p2p" data-mode="p2p">联机对战</button>
                                 </div>
                                 <button class="mode-btn" id="mode-campaign" data-mode="campaign">闯关模式</button>
-                                <button class="mode-btn" id="mode-race" data-mode="race">竞速模式</button>
-                                <div class="mode-toggle-row">
-                                    <button class="mode-btn" id="mode-test" data-mode="test">测试模式</button>
-                                    <button class="mode-btn" id="mode-editor" type="button">关卡编辑器</button>
+                                <!-- 闯关子菜单：经典闯关 / 关卡编辑器 -->
+                                <div class="campaign-submenu" id="campaign-submenu" style="display:none;">
+                                    <button class="mode-btn mode-btn-sub" id="mode-campaign-classic" data-mode="campaign">经典闯关</button>
+                                    <button class="mode-btn mode-btn-sub" id="mode-editor" data-mode="editor">关卡编辑器</button>
                                 </div>
+                                <button class="mode-btn" id="mode-race" data-mode="race">竞速模式</button>
+                                <!-- 竞速子菜单：标准竞速 / 竞速试炼场 -->
+                                <div class="race-submenu" id="race-submenu" style="display:none;">
+                                    <button class="mode-btn mode-btn-sub" id="mode-race-standard" data-mode="race">标准竞速</button>
+                                    <button class="mode-btn mode-btn-sub" id="mode-race-custom" data-mode="race">竞速试炼场</button>
+                                </div>
+                                <button class="mode-btn" id="mode-test" data-mode="test">测试模式</button>
                             </div>
                             <small id="mode-hint" style="display: block; margin-top: 5px; opacity: 0.7;">选择对战模式</small>
                         </div>
@@ -303,9 +312,6 @@
                 </div>
                 <small id="race-level-progress" style="display:block; text-align:left; margin-top:4px; opacity:0.75;"></small>
                 <div id="race-ttsigma-display" class="campaign-lrsigma-display" style="margin-top:4px;"></div>
-                <div style="display:flex; justify-content:flex-end; margin-top:10px;">
-                    <button class="btn race-custom-btn" id="race-custom-btn">自定义</button>
-                </div>
             </div>
         </div>
     </div>
@@ -338,29 +344,29 @@
     <!-- 竞速自定义关卡弹窗 -->
     <div class="modal" id="race-custom-modal" style="display:none;">
         <div class="modal-content race-custom-content">
-            <h2>自定义竞速关卡</h2>
+            <h2>竞速试炼场</h2>
             <div class="race-custom-field">
                 <label for="race-custom-allowed">允许区数量</label>
                 <div class="stepper-selector race-custom-stepper" id="race-custom-allowed-stepper">
-                    <button type="button" class="stepper-arrow" id="race-custom-allowed-prev" aria-label="减少">←</button>
+                    <button type="button" class="stepper-arrow" id="race-custom-allowed-prev" aria-label="减少"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.125em"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg></button>
                     <input type="number" class="stepper-value-input" id="race-custom-allowed" min="1" max="398" step="1" value="3">
-                    <button type="button" class="stepper-arrow" id="race-custom-allowed-next" aria-label="增加">→</button>
+                    <button type="button" class="stepper-arrow" id="race-custom-allowed-next" aria-label="增加"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.125em"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg></button>
                 </div>
             </div>
             <div class="race-custom-field">
                 <label for="race-custom-forbidden">禁止区数量</label>
                 <div class="stepper-selector race-custom-stepper" id="race-custom-forbidden-stepper">
-                    <button type="button" class="stepper-arrow" id="race-custom-forbidden-prev" aria-label="减少">←</button>
+                    <button type="button" class="stepper-arrow" id="race-custom-forbidden-prev" aria-label="减少"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.125em"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg></button>
                     <input type="number" class="stepper-value-input" id="race-custom-forbidden" min="0" max="398" step="1" value="5">
-                    <button type="button" class="stepper-arrow" id="race-custom-forbidden-next" aria-label="增加">→</button>
+                    <button type="button" class="stepper-arrow" id="race-custom-forbidden-next" aria-label="增加"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.125em"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg></button>
                 </div>
             </div>
             <div class="race-custom-field">
                 <label for="race-custom-locks">锁定元素数量</label>
                 <div class="stepper-selector race-custom-stepper" id="race-custom-locks-stepper">
-                    <button type="button" class="stepper-arrow" id="race-custom-locks-prev" aria-label="减少">←</button>
+                    <button type="button" class="stepper-arrow" id="race-custom-locks-prev" aria-label="减少"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.125em"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg></button>
                     <input type="number" class="stepper-value-input" id="race-custom-locks" min="0" max="20" step="1" value="6">
-                    <button type="button" class="stepper-arrow" id="race-custom-locks-next" aria-label="增加">→</button>
+                    <button type="button" class="stepper-arrow" id="race-custom-locks-next" aria-label="增加"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.125em"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg></button>
                 </div>
             </div>
             <div class="race-custom-hint" id="race-custom-hint"></div>
@@ -480,16 +486,16 @@
             <div class="campaign-victory-text" id="campaign-victory-text">恭喜通关！</div>
             <div class="campaign-victory-actions">
                 <button class="btn btn-primary icon-btn" id="campaign-home-btn" title="返回关卡选择">
-                    <span class="icon">⌂</span>
+                    <svg class="icon" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5L12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M10 21v-6h4v6"/></svg>
                     <span>关卡选择</span>
                 </button>
                 <button class="btn btn-primary icon-btn" id="campaign-retry-btn" title="再来一次">
-                    <span class="icon">↻</span>
+                    <svg class="icon" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
                     <span>再来一次</span>
                 </button>
                 <button class="btn btn-primary icon-btn" id="campaign-next-btn" title="下一关">
                     <span>下一关</span>
-                    <span class="icon">→</span>
+                    <svg class="icon" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg>
                 </button>
             </div>
         </div>
@@ -610,23 +616,23 @@
                 <div class="p2p-selectors-left" style="flex:0 0 220px; display:flex; flex-direction:column; gap:14px; padding-right:16px; border-right:1px solid rgba(255,255,255,0.08);">
                     <div class="selector-row">
                         <div class="stepper-selector" id="p2p-difficulty-stepper">
-                            <button type="button" class="stepper-arrow" id="p2p-difficulty-prev" aria-label="切换难度">←</button>
+                            <button type="button" class="stepper-arrow" id="p2p-difficulty-prev" aria-label="切换难度"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.125em"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg></button>
                             <div class="stepper-value" id="p2p-difficulty-value">简单 - 1个目标格</div>
-                            <button type="button" class="stepper-arrow" id="p2p-difficulty-next" aria-label="切换难度">→</button>
+                            <button type="button" class="stepper-arrow" id="p2p-difficulty-next" aria-label="切换难度"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.125em"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg></button>
                         </div>
                     </div>
                     <div class="selector-row">
                         <div class="stepper-selector" id="p2p-round-stepper" tabindex="0">
-                            <button type="button" class="stepper-arrow" id="p2p-round-prev" aria-label="调整回合数">←</button>
+                            <button type="button" class="stepper-arrow" id="p2p-round-prev" aria-label="调整回合数"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.125em"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg></button>
                             <div class="stepper-value" id="p2p-round-value" tabindex="0">8 回合（快速对战）</div>
-                            <button type="button" class="stepper-arrow" id="p2p-round-next" aria-label="调整回合数">→</button>
+                            <button type="button" class="stepper-arrow" id="p2p-round-next" aria-label="调整回合数"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.125em"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg></button>
                         </div>
                     </div>
                     <div class="selector-row">
                         <div class="stepper-selector" id="p2p-time-limit-stepper" tabindex="0">
-                            <button type="button" class="stepper-arrow" id="p2p-time-limit-prev" aria-label="调整时间限制">←</button>
+                            <button type="button" class="stepper-arrow" id="p2p-time-limit-prev" aria-label="调整时间限制"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.125em"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg></button>
                             <div class="stepper-value" id="p2p-time-limit-value" tabindex="0">普通棋</div>
-                            <button type="button" class="stepper-arrow" id="p2p-time-limit-next" aria-label="调整时间限制">→</button>
+                            <button type="button" class="stepper-arrow" id="p2p-time-limit-next" aria-label="调整时间限制"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.125em"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg></button>
                         </div>
                     </div>
                 </div>
@@ -801,7 +807,7 @@
           <div class="subtitle">关卡编辑器：创造属于你自己的关卡</div>
         </div>
         <div class="btnrow">
-          <button class="ghost" id="btnBack">← 返回主界面</button>
+          <button class="ghost" id="btnBack"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.15em"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg> 返回主界面</button>
           <button class="ghost" id="btnCopyOne">复制当前关卡文本</button>
         </div>
       </header>
@@ -833,8 +839,10 @@
             <textarea id="forbiddenCells" rows="4" wrap="soft"></textarea>
           </div>
           <div class="section">
-            <label>lockedElements（每行一个）</label>
+            <label>lockedElements（每行一个，也可点击下方元素按钮锁定）</label>
             <textarea id="lockedElements" rows="4" wrap="soft"></textarea>
+            <div class="tiny" style="margin:5px 0 4px;">点击元素即锁定 / 解锁，无需手动输入：</div>
+            <div id="lockElementPanel" class="lock-element-panel"></div>
           </div>
           <div class="section">
             <label>关卡列表</label>
@@ -871,10 +879,10 @@
                 </div>
               </div>
               <div class="dpad" role="group" aria-label="方向键（实体键）">
-                <button class="dpad-btn" id="btnArrowUp" type="button" aria-label="上移">▲</button>
-                <button class="dpad-btn" id="btnArrowLeft" type="button" aria-label="左移">◀</button>
-                <button class="dpad-btn" id="btnArrowDown" type="button" aria-label="下移">▼</button>
-                <button class="dpad-btn" id="btnArrowRight" type="button" aria-label="右移">▶</button>
+                <button class="dpad-btn" id="btnArrowUp" type="button" aria-label="上移"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor"><path d="M12 3l8 16H4z"/></svg></button>
+                <button class="dpad-btn" id="btnArrowLeft" type="button" aria-label="左移"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor"><path d="M3 12l16-8v16z"/></svg></button>
+                <button class="dpad-btn" id="btnArrowDown" type="button" aria-label="下移"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor"><path d="M12 21L4 5h16z"/></svg></button>
+                <button class="dpad-btn" id="btnArrowRight" type="button" aria-label="右移"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor"><path d="M21 12L5 4v16z"/></svg></button>
               </div>
               <button class="editor-trash" id="btnTrash" type="button" title="删除选中区域的所有格子（Delete/Backspace）" aria-label="删除选中格子">
                 <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -932,8 +940,11 @@
             <div class="toolbar">
               <button class="primary" id="btnCopyExport">复制导出文本</button>
               <button class="ghost" id="btnDownload">下载 .js 片段</button>
+              <button class="ghost" id="btnImportFile">导入 .js 文件</button>
+              <button class="ghost" id="btnImportText">粘贴导入</button>
               <div class="status" id="status"></div>
             </div>
+            <input type="file" id="editorImportFile" accept=".js,.json,application/javascript,text/javascript" style="display:none;" />
           </div>
         </div>
       </div>

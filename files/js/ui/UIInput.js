@@ -299,7 +299,7 @@ if (typeof UIController === 'undefined') {
                 // 反三角函数未解锁：锁定样式但保持可点击，点击弹出解锁提示
                 if (isInverseTrig && !this.isInverseTrigUnlocked()) {
                     btn.classList.add('locked', 'inverse-trig-locked');
-                    btn.innerHTML = `${displayValue} <span class="lock-icon">🔒</span>`;
+                    btn.innerHTML = `${displayValue} <span class="lock-icon"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></span>`;
                     btn.title = '需通关全部分数关解锁';
                     btn.addEventListener('click', () => this.showInverseTrigLockedDialog());
                     itemsDiv.appendChild(btn);
@@ -317,7 +317,7 @@ if (typeof UIController === 'undefined') {
                     const lockedDisplayValue = cat.key === 'functions' && funcDisplayNames[item.value] 
                         ? funcDisplayNames[item.value] 
                         : this.getDisplaySymbol(item.value);
-                    btn.innerHTML = `${lockedDisplayValue} <span class="lock-icon">🔒</span>`;
+                    btn.innerHTML = `${lockedDisplayValue} <span class="lock-icon"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></span>`;
                     if (isLockedThisRound) {
                         btn.title = '本回合被锁定';
                     }
@@ -590,7 +590,7 @@ if (typeof UIController === 'undefined') {
                 btn.disabled = false;
                 if (!btn.querySelector('.lock-icon')) {
                     const originalValue = lockFuncDisplayNames[value] || this.getDisplaySymbol(value);
-                    btn.innerHTML = `${originalValue} <span class="lock-icon">🔒</span>`;
+                    btn.innerHTML = `${originalValue} <span class="lock-icon"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></span>`;
                 }
                 return;
             }
@@ -609,7 +609,7 @@ if (typeof UIController === 'undefined') {
                 btn.classList.add('locked');
                 btn.disabled = true;
                 if (!btn.querySelector('.lock-icon')) {
-                    btn.innerHTML = `${value} <span class="lock-icon">🔒</span>`;
+                    btn.innerHTML = `${value} <span class="lock-icon"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></span>`;
                 }
             }
         });

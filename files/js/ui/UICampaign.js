@@ -30,36 +30,21 @@ if (typeof UIController === 'undefined') {
 // addCampaignDrawDelayToggle
     UIController.prototype.addCampaignDrawDelayToggle = function() {
         if (document.getElementById('campaign-draw-delay-toggle')) return;
-        const host = this.confirmBtn?.parentElement;
+        // 画布右下固定药丸：挂在 Canvas 区域内（与 ✓确认/←返回 圆形按钮同容器），
+        // 定位到这两个按钮上方（bottom 78px > FAB 顶部 68px），不依赖键盘，键盘收起也可见。
+        const host = document.querySelector('.canvas-section');
         if (!host) return;
         const wrap = document.createElement('div');
         wrap.id = 'campaign-draw-delay-toggle';
+        wrap.className = 'campaign-draw-delay-pill';
         wrap.style.display = 'none';
-        wrap.style.alignItems = 'center';
-        wrap.style.gap = '4px';
-        wrap.style.marginLeft = '8px';
-        wrap.style.padding = '2px 4px';
-        wrap.style.borderRadius = '999px';
-        wrap.style.background = 'rgba(255,255,255,0.08)';
-        wrap.style.border = '1px solid rgba(255,255,255,0.12)';
-        wrap.style.userSelect = 'none';
         wrap.innerHTML = `
-            <span style="font-size:11px;color:#e5e7eb;opacity:.85;">延迟</span>
+            <span class="campaign-delay-label">绘制后等待</span>
             <button class="campaign-delay-btn" data-delay="0">0s</button>
             <button class="campaign-delay-btn" data-delay="1000">1s</button>
             <button class="campaign-delay-btn" data-delay="5000">5s</button>
         `;
-        const styleBtn = (btn) => {
-            btn.style.minWidth = '30px';
-            btn.style.height = '22px';
-            btn.style.padding = '0 6px';
-            btn.style.borderRadius = '999px';
-            btn.style.border = 'none';
-            btn.style.fontSize = '11px';
-            btn.style.cursor = 'pointer';
-        };
         wrap.querySelectorAll('.campaign-delay-btn').forEach(btn => {
-            styleBtn(btn);
             btn.addEventListener('click', () => {
                 if (window.audioManager) window.audioManager.playClick();
                 this.setCampaignDrawDelaySetting(btn.dataset.delay);
@@ -74,7 +59,7 @@ if (typeof UIController === 'undefined') {
     UIController.prototype.updateCampaignDrawDelayToggleVisibility = function() {
         const wrap = document.getElementById('campaign-draw-delay-toggle');
         if (!wrap) return;
-        wrap.style.display = (this.gameController?.gameMode === 'campaign') ? 'inline-flex' : 'none';
+        wrap.style.display = (this.gameController?.gameMode === 'campaign') ? 'flex' : 'none';
     }
 ;
 
@@ -84,9 +69,7 @@ if (typeof UIController === 'undefined') {
         if (!wrap) return;
         wrap.querySelectorAll('.campaign-delay-btn').forEach(btn => {
             const active = Number(btn.dataset.delay) === this.campaignDrawDelay;
-            btn.style.background = active ? '#4d8c5e' : 'rgba(255,255,255,0.12)';
-            btn.style.color = active ? '#fff' : '#e5e7eb';
-            btn.style.boxShadow = active ? '0 0 0 1px rgba(255,255,255,0.18) inset' : 'none';
+            btn.classList.toggle('active', active);
         });
     }
 ;
@@ -513,6 +496,17 @@ if (typeof UIController === 'undefined') {
 
 // openCampaignUI
     UIController.prototype.openCampaignUI = function() {
+        // ESC：选关列表 → 返回难度选择；难度选择 → 返回主界面
+        if (this.campaignModal) {
+            this.campaignModal._dismissBound = true;
+            this.campaignModal._onEscDismiss = () => {
+                if (this.campaignStepLevels && this.campaignStepLevels.style.display !== 'none') {
+                    this.showCampaignDifficulty();
+                } else {
+                    this.closeCampaignUI();
+                }
+            };
+        }
         this.hideModal(this.startModal, () => {
             this.showModal(this.campaignModal);
         });

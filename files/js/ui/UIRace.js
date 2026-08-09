@@ -170,7 +170,12 @@ if (typeof UIController === 'undefined') {
     UIController.prototype.showRaceLevelList = function() {
         this.renderRaceLevelList();
         if (this.raceLevelTitle) this.raceLevelTitle.textContent = '选择等级';
-        if (this.raceModal) this.showModal(this.raceModal);
+        if (this.raceModal) {
+            // ESC：返回主界面
+            this.raceModal._dismissBound = true;
+            this.raceModal._onEscDismiss = () => this.closeRaceUI();
+            this.showModal(this.raceModal);
+        }
         this.hideBattleUI();
         this.updateRaceModalBackground();
     }
@@ -877,20 +882,24 @@ if (typeof UIController === 'undefined') {
     }
 ;
 
-// openRaceCustomModal — 打开竞速自定义弹窗
+// openRaceCustomModal — 打开竞速试炼场弹窗（从主界面竞速子模式进入）
     UIController.prototype.openRaceCustomModal = function() {
         const modal = document.getElementById('race-custom-modal');
         if (!modal) return;
         if (this._raceCustomSyncArcNote) this._raceCustomSyncArcNote();
         if (this._raceStepperRenders) { for (const k in this._raceStepperRenders) this._raceStepperRenders[k](); }
-        this.showModal(modal);
+        // 先隐藏开始界面弹窗，再打开试炼场弹窗
+        this.hideModal(this.startModal, () => {
+            this.showModal(modal);
+        });
     }
 ;
 
-// closeRaceCustomModal
+// closeRaceCustomModal — 关闭试炼场弹窗并回到主界面（开始界面）
     UIController.prototype.closeRaceCustomModal = function() {
         const modal = document.getElementById('race-custom-modal');
         if (modal) this.hideModal(modal);
+        if (this.startModal) this.showModal(this.startModal);
     }
 ;
 
@@ -972,7 +981,9 @@ if (typeof UIController === 'undefined') {
         this.gameController.currentRound = 0;
         this.raceCurrentLevelId = 0;
 
-        this.closeRaceCustomModal();
+        // 直接隐藏试炼场弹窗（closeRaceCustomModal 会恢复主界面，这里避免闪烁）
+        const customModal = document.getElementById('race-custom-modal');
+        if (customModal) this.hideModal(customModal);
         this.hideModal(this.raceModal);
         this.hideModal(this.startModal);
         if (window.audioManager) window.audioManager.playClick();

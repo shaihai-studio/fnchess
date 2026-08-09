@@ -175,7 +175,7 @@ if (typeof UIController === 'undefined') {
             return;
         }
         if (!this._leaderboardService) return;
-        if (!window.confirm(`确认举报「${targetName || targetPlayerId}」？\n举报后对方下一次 LR∑ 提交将被强制核验，作弊会被清分。\n（每 90 秒最多举报一次）`)) return;
+        if (!window.confirm(`确认举报「${targetName || targetPlayerId}」？\n举报后对方下一次闯关成绩上报将被强制核验，作弊会被清分。\n（每 90 秒最多举报一次）`)) return;
         this._leaderboardService.report(targetPlayerId, 'cheat');
         if (typeof this.showMessage === 'function') this.showMessage('举报已提交，感谢反馈', 'success');
     }
@@ -244,8 +244,8 @@ if (typeof UIController === 'undefined') {
                 const sub = (boardType === 'elo')
                     ? `${row.wins}胜 ${row.losses}负 ${row.draws}平`
                     : '';
-                // 举报按钮：仅 LR∑ 榜显示，且不能举报自己
-                const reportBtn = (boardType === 'lr' && !row.isMe)
+                // 举报按钮：LR∑ 榜 / 彗星分关榜 显示，且不能举报自己
+                const reportBtn = ((boardType === 'lr' || isCometBoard) && !row.isMe)
                     ? `<button class="leaderboard-report-btn" data-action="report" data-target="${this._escapeHtml(row.playerId || '')}" data-name="${this._escapeHtml(row.nickname || '')}">举报</button>`
                     : '';
                 html += `

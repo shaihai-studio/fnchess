@@ -14,6 +14,9 @@ if (typeof UIController === 'undefined') {
         // 休闲模式玩家在匹配大厅看不到排位房间（反之亦然），由服务器按 mode 过滤。
         const sel = document.getElementById('p2p-mode-select-modal');
         if (sel) {
+            // ESC 关闭模式选择弹窗（返回主界面）
+            sel._dismissBound = true;
+            sel._onEscDismiss = () => this.hideModal(sel);
             const pick = (mode) => {
                 this._p2pMatchMode = mode;
                 this.hideModal(sel);
@@ -615,21 +618,21 @@ if (typeof UIController === 'undefined') {
 
         const roundOpt = this.roundOptions[this.p2pCurrentRoundIndex];
         if (roundOpt) {
-            this.p2pRoundValue.textContent = roundOpt.label;
+            this.p2pRoundValue.textContent = this.getSelectorLabel(roundOpt);
             this.p2pRoundValue.dataset.value = String(roundOpt.value);
             const t = theme.round[roundOpt.value] || theme.round[8];
             applyArrowTheme('p2p-round-prev', 'p2p-round-next', this.p2pRoundValue, t);
         }
         const diffOpt = this.difficultyOptions[this.p2pCurrentDifficultyIndex];
         if (diffOpt) {
-            this.p2pDifficultyValue.textContent = diffOpt.label;
+            this.p2pDifficultyValue.textContent = this.getSelectorLabel(diffOpt);
             this.p2pDifficultyValue.dataset.value = diffOpt.value;
             const t = theme.difficulty[diffOpt.value] || theme.difficulty.easy;
             applyArrowTheme('p2p-difficulty-prev', 'p2p-difficulty-next', this.p2pDifficultyValue, t);
         }
         const timeOpt = this.timeLimitOptions[this.p2pCurrentTimeLimitIndex];
         if (timeOpt) {
-            this.p2pTimeLimitValue.textContent = timeOpt.label;
+            this.p2pTimeLimitValue.textContent = this.getSelectorLabel(timeOpt);
             this.p2pTimeLimitValue.dataset.value = timeOpt.value;
             const t = theme.time[timeOpt.value] || theme.time.normal;
             applyArrowTheme('p2p-time-limit-prev', 'p2p-time-limit-next', this.p2pTimeLimitValue, t);
@@ -888,6 +891,23 @@ UIController.prototype._toggleSummaEmojiPanel = function(forceShow) {
 };
 
 UIController.prototype._sendSummaEmoji = function(mood) {
+    // 观战模式：没有 PeerJS 连接，表情走 Lobby WS 发给对战双方与其他观众
+    if (this._isSpectating) {
+        const lobby = this._lobby;
+        if (!lobby || !lobby.isConnected || !this._spectatorCode) return;
+        if (this._summaEmojiCooldown) return;
+        lobby.sendSpectateEmoji(this._spectatorCode, mood);
+        this._showSummaEmoji(mood, false);
+        this._summaEmojiCooldown = true;
+        const fab = document.getElementById('emoji-fab-btn');
+        if (fab) fab.classList.add('emoji-cooldown');
+        setTimeout(() => {
+            this._summaEmojiCooldown = false;
+            if (fab) fab.classList.remove('emoji-cooldown');
+        }, 2000);
+        this._toggleSummaEmojiPanel(false);
+        return;
+    }
     const p2p = this.p2pController;
     if (!p2p || !p2p.isConnected) return;
     if (this._summaEmojiCooldown) return;
@@ -908,6 +928,11 @@ UIController.prototype._sendSummaEmoji = function(mood) {
 UIController.prototype._showSummaEmoji = function(mood, fromOpponent) {
     if (!this._summaEmojiQueue) this._summaEmojiQueue = [];
     this._summaEmojiQueue.push({ mood, fromOpponent });
+    // 观战转发：房主开启观战推送时，记录最近一次表情事件，
+    // 随下一个观战快照（buildSyncSnapshot）经 Lobby WS 推给观众端展示。
+    if (this._spectateSyncTimer && this.p2pController && this.p2pController.isHost) {
+        this._spectatePendingEmoji = { mood, fromOpponent };
+    }
     this._playNextSummaEmoji();
 };
 

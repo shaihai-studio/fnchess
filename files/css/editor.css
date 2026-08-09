@@ -89,7 +89,7 @@
 #editor-view h1 {
   margin: 0;
   font-size: 18px;
-  background: linear-gradient(135deg, #22c55e, #3b82f6);
+  background: linear-gradient(135deg, #A0F1D8, #848BCF);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -495,6 +495,34 @@
 #editor-view .right .export-section.stretch .export-box { flex: 1; min-height: 80px; resize: none; font-size: 11px; }
 #editor-view .tools-section .btnrow { margin-top: 2px; }
 #editor-view .tools-section .btnrow button { flex: 1; min-width: 0; padding: 6px 4px; font-size: 11px; }
+
+/* 锁定元素快捷面板：点击元素即锁定/解锁 */
+#editor-view .lock-element-panel { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+#editor-view .lock-element-panel .lock-el {
+  min-width: 32px;
+  padding: 4px 8px;
+  font-size: 11px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--text);
+  cursor: pointer;
+  font-family: 'Courier New', 'Consolas', monospace !important;
+}
+#editor-view .lock-element-panel .lock-el:hover:not(:disabled) {
+  border-color: rgba(250, 204, 21, 0.45);
+  transform: translateY(-2px) !important;
+  box-shadow: 0 4px 14px rgba(250, 204, 21, 0.18);
+}
+#editor-view .lock-element-panel .lock-el.active {
+  background: rgba(250, 204, 21, 0.16);
+  border-color: rgba(250, 204, 21, 0.6);
+  color: #fde047;
+  box-shadow: 0 0 0 1px rgba(250, 204, 21, 0.25), 0 6px 18px rgba(250, 204, 21, 0.22);
+}
+#editor-view .lock-element-panel .lock-el.active::before {
+  background: linear-gradient(90deg, transparent, rgba(250, 204, 21, 0.55), transparent);
+}
 
 /* 框选 / 路径涂满：glass 风格切换按钮 */
 #editor-view button.toggle.active {

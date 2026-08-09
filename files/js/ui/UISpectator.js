@@ -77,6 +77,8 @@ if (typeof UIController === 'undefined') {
             this.showMessage('观战结束：房主已解散该房间', 'warning');
             this.exitSpectatorMode();
         };
+        // 其他观众发表情 → 本观众也展示（右侧小图；对战双方的表情走快照 _emoji 通道）
+        lobby.onSpectateEmoji = (roomCode, mood) => this._showSummaEmoji(mood, false);
 
         // 显示观战 UI 并退出到主界面（关闭主页 modal）
         this.hideStartModal();
@@ -101,13 +103,15 @@ if (typeof UIController === 'undefined') {
         if (confirmBtn) confirmBtn.style.display = 'none';
         const clearBtn = document.getElementById('clear-btn');
         if (clearBtn) clearBtn.style.display = 'none';
-        // 观战：隐藏右下角圆形 确认/返回 按钮与 Summa 表情入口
+        // 观战：隐藏右下角圆形 确认/返回 按钮；Summa 表情入口保留（观众也可以发表情）
         const confirmFab = document.getElementById('confirm-fab-btn');
         const exitFab = document.getElementById('exit-fab-btn');
         const emojiFab = document.getElementById('emoji-fab-btn');
         if (confirmFab) confirmFab.style.display = 'none';
         if (exitFab) exitFab.style.display = 'none';
-        if (emojiFab) emojiFab.style.display = 'none';
+        // 构建表情面板并显示入口按钮
+        this._ensureSummaEmojiUI();
+        if (emojiFab) { emojiFab.style.display = ''; emojiFab.classList.remove('emoji-cooldown'); }
         // 加入观战
         lobby.joinSpectate(this._spectatorCode);
         this._updateLobbyStatus('spectating', `正在连接房间 ${this._spectatorCode} 观战...`);
@@ -183,6 +187,11 @@ if (typeof UIController === 'undefined') {
         if (payload._notice) {
             this._handleSpectateNotice(payload._notice);
         }
+        // 房主转发的 Summa 表情事件 → 观众端弹出展示
+        // （保留方向语义：房主发的右侧小图、访客发的左侧大图，与房主视角一致）
+        if (payload._emoji && payload._emoji.mood) {
+            this._showSummaEmoji(payload._emoji.mood, payload._emoji.fromOpponent !== false);
+        }
         const applied = gc.loadStateSnapshot(payload.gc);
         if (!applied) return;
         // 历史函数剥离采样点 → 本地重新采样绘制
@@ -225,6 +234,8 @@ if (typeof UIController === 'undefined') {
         }
         this._spectatorCode = null;
         this._spectateNicknames = null;
+        // 清理残留的 Summa 表情展示队列与浮层
+        this._hideSummaEmojiUI?.();
         // 恢复顶部玩家名为默认（观战昵称已清空，按当前模式重新解析）
         this.updateHeaderPlayerNames();
         const overlay = document.getElementById('spectator-overlay');
