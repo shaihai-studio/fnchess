@@ -65,8 +65,9 @@ class MatchLobbyController {
         this.onConnectionChange = null;   // (connected) => void
         this.onRoomsUpdate = null;        // (rooms) => void
         this.onHostRegistered = null;     // (code, expiresAt) => void
-        this.onGuestJoining = null;       // (code) => void（房主收到：有人申请加入）
-        this.onJoinAccepted = null;       // (code) => void（访客收到：服务器放行）
+        this.onGuestJoining = null;       // (code, info) => void（房主收到：有人申请加入；info={playerId,nickname,currentPlayers,maxPlayers}）
+        this.onGuestLeft = null;          // (code, info) => void（房主收到：竞速访客离开/断开）
+        this.onJoinAccepted = null;       // (code, maxPlayers) => void（访客收到：服务器放行）
         this.onJoinRejected = null;       // (code, reason) => void
         this.onHostRoomExpired = null;    // (code) => void（房主收到：房间到期被服务器清理）
         // ── 观战回调 ─────────────────────────────────────────
@@ -197,10 +198,23 @@ class MatchLobbyController {
                 if (this.onHostRoomExpired) this.onHostRoomExpired(String(data.code));
                 break;
             case 'guest_joining':
-                if (this.onGuestJoining) this.onGuestJoining(String(data.code));
+                if (this.onGuestJoining) this.onGuestJoining(String(data.code), {
+                    playerId: data.playerId || '',
+                    nickname: data.nickname || '',
+                    currentPlayers: data.currentPlayers,
+                    maxPlayers: data.maxPlayers
+                });
+                break;
+            case 'guest_left':
+                if (this.onGuestLeft) this.onGuestLeft(String(data.code), {
+                    playerId: data.playerId || '',
+                    nickname: data.nickname || '',
+                    currentPlayers: data.currentPlayers,
+                    maxPlayers: data.maxPlayers
+                });
                 break;
             case 'join_accepted':
-                if (this.onJoinAccepted) this.onJoinAccepted(String(data.code));
+                if (this.onJoinAccepted) this.onJoinAccepted(String(data.code), data.maxPlayers || 2);
                 break;
             case 'join_rejected':
                 if (this.onJoinRejected) this.onJoinRejected(String(data.code), data.reason);
@@ -293,13 +307,14 @@ class MatchLobbyController {
         });
     }
 
-    /** 访客申请加入（带模式与身份，服务器校验匹配及 ELO 距离过滤） */
+    /** 访客申请加入（带模式与身份，服务器校验匹配及 ELO 距离过滤；竞速房昵称用于成员列表） */
     joinRoom(code) {
         this._send({
             type: 'join_request',
             code: String(code),
             mode: this.currentLobbyMode || null,
-            playerId: this._getPlayerId()
+            playerId: this._getPlayerId(),
+            nickname: this._getNickname()
         });
     }
 

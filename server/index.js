@@ -88,9 +88,10 @@ server.on('upgrade', (req, socket, head) => {
 
 /**
  * 房间表
- * Map<code, { code, options, hostWs, guestWs, status, spectateEnabled, spectators, createdAt }>
+ * Map<code, { code, options, hostWs, guestWs, isRace, maxPlayers, guests, status, spectateEnabled, spectators, createdAt }>
  * status: 'waiting' | 'joining' | 'playing'
- * spectateEnabled: 是否允许观战（默认 true）
+ * spectateEnabled: 是否允许观战（默认 true，竞速房强制 false）
+ * 竞速房（isRace=true）：guestWs 恒为 null，多访客存于 guests（[{ws,playerId,nickname}]），1v1 房 guests 恒为 null
  * spectators: 观众 WebSocket 集合
  */
 const rooms = new Map();
@@ -147,6 +148,70 @@ function boardOrder(boardType) {
     return 'desc';
 }
 const eloSettled = new Set();  // 已结算的房间码（ELO 去重：防 A/B 双端重复上报）
+
+// ── 竞速对战积分榜（boardType 'rsc'）──
+// 结构：Map(playerId, { playerId, nickname, score, games, wins, updatedAt })
+const raceBoard = new Map();
+const raceSettled = new Set();  // 已结算的竞速房间码（按 roomKey:playerId 去重，防多端重复上报）
+// 竞速段位区间（分数越高段位越高）
+const RACE_TIERS = [
+    { name: '青铜', min: 0 },
+    { name: '白银', min: 400 },
+    { name: '黄金', min: 800 },
+    { name: '铂金', min: 1200 },
+    { name: '钻石', min: 1600 },
+    { name: '大师', min: 2000 }
+];
+function raceTier(score) {
+    let t = RACE_TIERS[0];
+    for (const x of RACE_TIERS) if (score >= x.min) t = x;
+    return t;
+}
+// 按名次固定加减分（人数不同分值不同）：place 1 为第一名；局数越多变化越小（抑制刷分），衰减下限 40%
+function raceDelta(place, totalPlayers, games) {
+    const base = totalPlayers <= 2 ? [20, -20]
+        : totalPlayers === 3 ? [25, 5, -25]
+        : [30, 10, -10, -30];
+    const idx = Math.max(0, Math.min((place | 0) - 1, base.length - 1));
+    const scale = Math.max(0.4, 1 - (games | 0) * 0.03);
+    return Math.round(base[idx] * scale);
+}
+// 竞速对战积分结算（服务端权威计算 delta，不信任客户端上报的数值，防伪造刷分）
+function handleRaceScore(ws, msg) {
+    if (!verifySig(ws, msg)) { sendSubmitResultBT(ws, false, 'rsc', { code: 'invalid_signature' }); return; }
+    const playerId = String(msg.playerId || '').slice(0, 64);
+    const nickname = String(msg.nickname || '棋手').trim().slice(0, 16) || '棋手';
+    if (!playerId) return;
+    const payload = msg.payload || {};
+    const roomKey = String(payload.roomCode || '').slice(0, 64);
+    if (!roomKey) return;
+    const dedupKey = roomKey + ':' + playerId;
+    if (raceSettled.has(dedupKey)) return; // 该房间该玩家已结算
+    raceSettled.add(dedupKey);
+    if (raceSettled.size > 20000) { // 防止内存无限增长
+        const first = raceSettled.values().next().value;
+        if (first) raceSettled.delete(first);
+    }
+    const place = Math.max(1, parseInt(payload.place, 10) || 1);
+    const totalPlayers = Math.min(4, Math.max(2, parseInt(payload.totalPlayers, 10) || 2));
+    const now = Date.now();
+    const p = raceBoard.get(playerId) || { playerId, nickname, score: 0, games: 0, wins: 0, updatedAt: now };
+    const delta = raceDelta(place, totalPlayers, p.games);
+    p.score = Math.max(0, p.score + delta);
+    p.nickname = nickname;
+    p.games++;
+    if (delta > 0) p.wins++;
+    p.updatedAt = now;
+    raceBoard.set(playerId, p);
+    scheduleSave();
+    sendSubmitResultBT(ws, true, 'rsc', {
+        score: p.score,
+        delta,
+        games: p.games,
+        wins: p.wins,
+        tier: raceTier(p.score).name
+    });
+}
 
 // IP 风控（辅助，非身份主键）：窗口内同一 IP 出现的"新 playerId"数量超阈值则降级
 const IP_WINDOW = 60 * 60 * 1000; // 60 分钟
@@ -581,7 +646,8 @@ function scheduleSave() {
         try {
             const data = {
                 savedAt: Date.now(),
-                elo: [...eloBoard.values()]
+                elo: [...eloBoard.values()],
+                race: [...raceBoard.values()]
             };
             for (const t of Object.keys(scoreBoards)) {
                 data[t] = [...scoreBoards[t].values()];
@@ -604,6 +670,8 @@ function loadLeaderboards() {
             const arr = Array.isArray(data[t]) ? data[t] : [];
             if (t === 'elo') {
                 for (const p of arr) if (p && p.playerId) eloBoard.set(String(p.playerId), p);
+            } else if (t === 'race') {
+                for (const p of arr) if (p && p.playerId) raceBoard.set(String(p.playerId), p);
             } else {
                 const m = ensureBoard(t);
                 for (const p of arr) if (p && p.playerId) m.set(String(p.playerId), p);
@@ -658,6 +726,12 @@ function handleSubmitScore(ws, msg) {
         const winner = (msg.winner === 'A' || msg.winner === 'B') ? msg.winner : 'draw';
         const opponentNickname = String(msg.opponentNickname || '棋手').trim().slice(0, 16) || '棋手';
         updateElo(playerId, nickname, opponentId, opponentNickname, winner);
+        return;
+    }
+
+    // ── 竞速对战积分 rsc：签名上报（服务端权威计分 + 按 roomKey:playerId 去重，防多端重复结算） ──
+    if (boardType === 'rsc') {
+        handleRaceScore(ws, msg);
         return;
     }
 
@@ -797,6 +871,33 @@ function handleQueryLeaderboard(ws, msg) {
         return;
     }
 
+    // 竞速对战积分榜 rsc：按竞速积分降序（含胜场/局数/段位）
+    if (boardType === 'rsc') {
+        const arr = [...raceBoard.values()].sort((a, b) => b.score - a.score || a.updatedAt - b.updatedAt);
+        const list = arr.slice(0, topFor('rsc')).map((p, i) => ({
+            rank: i + 1,
+            nickname: p.nickname,
+            score: p.score,
+            wins: p.wins,
+            games: p.games,
+            tier: raceTier(p.score).name,
+            isMe: String(p.playerId) === playerId
+        }));
+        const meIdx = arr.findIndex((p) => String(p.playerId) === playerId);
+        const inTop = meIdx >= 0 && meIdx < topFor('rsc');
+        send(ws, {
+            type: 'leaderboard_result',
+            id: String(msg.id || ''),
+            boardType,
+            list,
+            myRank: inTop ? meIdx + 1 : -1,
+            myScore: meIdx === -1 ? 0 : arr[meIdx].score,
+            myTier: meIdx === -1 ? raceTier(0).name : raceTier(arr[meIdx].score).name,
+            myGames: meIdx === -1 ? 0 : arr[meIdx].games
+        });
+        return;
+    }
+
     // 其余计分榜（lr / tt / rtN）：按 boardOrder 排序（rtN 升序 = 用时短者优）
     const map = scoreBoards[boardType];
     if (!map) {
@@ -838,13 +939,19 @@ function handleQueryLeaderboard(ws, msg) {
 function cleanupHost(ws) {
     for (const [code, room] of rooms) {
         if (room.hostWs === ws) {
-            if (room.guestWs) send(room.guestWs, { type: 'room_dissolved', code, reason: 'host_left' });
+            if (room.isRace && Array.isArray(room.guests)) {
+                for (const g of room.guests) {
+                    send(g.ws, { type: 'room_dissolved', code, reason: 'host_left' });
+                }
+            } else if (room.guestWs) {
+                send(room.guestWs, { type: 'room_dissolved', code, reason: 'host_left' });
+            }
             for (const sp of room.spectators) {
                 send(sp, { type: 'spectate_ended', code, reason: 'host_left' });
             }
             room.spectators.clear();
             rooms.delete(code);
-            console.log(`[Lobby] 房主断开，房间 ${code} 已清理`);
+            console.log(`[Lobby] 房主断开，房间 ${code} 已清理${room.isRace ? `（竞速房 ${room.guests.length} 访客已通知）` : ''}`);
         }
     }
 }
@@ -881,8 +988,13 @@ lobbyWss.on('connection', (ws, req) => {
                 const longLived = !!(msg.options && msg.options.longLived);
                 const code = genRoomCode(longLived);
                 const expiresAt = Date.now() + (longLived ? ROOM_TTL_LONG : ROOM_TTL_DEFAULT);
-                // 允许观战默认开启：仅当显式 allowSpectate === false 时关闭
-                const spectateEnabled = !(msg.options && msg.options.allowSpectate === false);
+                // 竞速对战房（2-4 人多人房）：独立模式标识，与 1v1 的 casual/ranked 完全隔离
+                const isRace = !!(msg.options && msg.options.mode === 'race');
+                const maxPlayers = isRace
+                    ? Math.min(4, Math.max(2, parseInt(msg.options && msg.options.maxPlayers, 10) || 4))
+                    : 2;
+                // 允许观战默认开启：仅当显式 allowSpectate === false 时关闭（竞速房强制关闭）
+                const spectateEnabled = isRace ? false : !(msg.options && msg.options.allowSpectate === false);
                 // 房主身份与 ELO：ELO 距离过滤以房主 ELO 为基准（从 eloBoard 实时取，最权威）
                 const hostPlayerId = String(msg.playerId || '').slice(0, 64);
                 const hostEloEntry = hostPlayerId ? eloBoard.get(hostPlayerId) : null;
@@ -895,6 +1007,10 @@ lobbyWss.on('connection', (ws, req) => {
                     options: msg.options || {},
                     hostWs: ws,
                     guestWs: null,
+                    isRace,
+                    maxPlayers,
+                    // 竞速房：多访客列表（每个元素 { ws, playerId, nickname }）；1v1 房保持 null 不动
+                    guests: isRace ? [] : null,
                     status: 'waiting',
                     spectateEnabled,
                     spectators: new Set(),
@@ -907,7 +1023,7 @@ lobbyWss.on('connection', (ws, req) => {
                     hostNickname: String(msg.nickname || '').slice(0, 32)
                 });
                 send(ws, { type: 'host_registered', code, expiresAt });
-                console.log(`[Lobby] 房主登记房间 ${code}（${longLived ? '长效 30 分钟' : '5 分钟'}, 观战${spectateEnabled ? '开启' : '关闭'}）`, msg.options || {});
+                console.log(`[Lobby] 房主登记房间 ${code}（${longLived ? '长效 30 分钟' : '5 分钟'}, 观战${spectateEnabled ? '开启' : '关闭'}${isRace ? `, 竞速 ${maxPlayers} 人房` : ''}）`, msg.options || {});
                 break;
             }
 
@@ -923,7 +1039,7 @@ lobbyWss.on('connection', (ws, req) => {
             // ELO 过滤：房主开启 ELO 距离过滤的房间，距房主 ELO 太远的访客不可见
             case 'list_rooms': {
                 const now = Date.now();
-                const modeFilter = msg.mode === 'casual' ? 'casual' : (msg.mode === 'ranked' ? 'ranked' : null);
+                const modeFilter = msg.mode === 'casual' ? 'casual' : (msg.mode === 'ranked' ? 'ranked' : (msg.mode === 'race' ? 'race' : null));
                 const visitorId = String(msg.playerId || '').slice(0, 64);
                 const visitorEloEntry = visitorId ? eloBoard.get(visitorId) : null;
                 const visitorElo = visitorEloEntry && visitorEloEntry.elo != null ? visitorEloEntry.elo : ELO_INIT;
@@ -948,6 +1064,7 @@ lobbyWss.on('connection', (ws, req) => {
                         if (!visitorId) continue; // 无法校验身份 → 保守隐藏
                         if (Math.abs(hostEloNow - visitorElo) > room.eloRange) continue;
                     }
+                    const guestCount = room.isRace && Array.isArray(room.guests) ? room.guests.length : (room.guestWs ? 1 : 0);
                     list.push({
                         code: room.code,
                         options: room.options,
@@ -956,7 +1073,10 @@ lobbyWss.on('connection', (ws, req) => {
                         status: room.status,
                         spectatorCount: room.spectators ? room.spectators.size : 0,
                         hostElo: hostEloNow,
-                        hostNickname: room.hostNickname || ''
+                        hostNickname: room.hostNickname || '',
+                        isRace: !!room.isRace,
+                        maxPlayers: room.maxPlayers || 2,
+                        currentPlayers: 1 + guestCount
                     });
                 }
                 send(ws, { type: 'rooms_list', rooms: list });
@@ -970,7 +1090,7 @@ lobbyWss.on('connection', (ws, req) => {
                     send(ws, { type: 'join_rejected', code: String(msg.code), reason: 'room_not_available' });
                     return;
                 }
-                if (msg.mode === 'casual' || msg.mode === 'ranked') {
+                if (msg.mode === 'casual' || msg.mode === 'ranked' || msg.mode === 'race') {
                     const roomMode = (room.options && room.options.mode) || 'ranked';
                     if (roomMode !== msg.mode) {
                         send(ws, { type: 'join_rejected', code: String(msg.code), reason: 'mode_mismatch' });
@@ -985,6 +1105,32 @@ lobbyWss.on('connection', (ws, req) => {
                 if (room.status !== 'waiting') {
                     send(ws, { type: 'join_rejected', code: String(msg.code), reason: 'room_not_available' });
                     return;
+                }
+                // 竞速房：多访客加入（满员校验、不锁状态，保持 waiting 以便继续加人）
+                if (room.isRace) {
+                    if (Array.isArray(room.guests) && room.guests.length >= room.maxPlayers - 1) {
+                        send(ws, { type: 'join_rejected', code: String(msg.code), reason: 'room_full' });
+                        return;
+                    }
+                    // 防重复：同一连接重复 join_request 视为重复加入
+                    if (room.guests && room.guests.some(g => g.ws === ws)) {
+                        send(ws, { type: 'join_rejected', code: String(msg.code), reason: 'already_joined' });
+                        return;
+                    }
+                    const guestPlayerId = String(msg.playerId || '').slice(0, 64);
+                    const guestNickname = String(msg.nickname || '').slice(0, 32);
+                    room.guests.push({ ws, playerId: guestPlayerId, nickname: guestNickname });
+                    send(room.hostWs, {
+                        type: 'guest_joining',
+                        code: room.code,
+                        playerId: guestPlayerId,
+                        nickname: guestNickname,
+                        currentPlayers: 1 + room.guests.length,
+                        maxPlayers: room.maxPlayers
+                    });
+                    send(ws, { type: 'join_accepted', code: room.code, maxPlayers: room.maxPlayers });
+                    console.log(`[Lobby] 竞速访客加入 ${room.code}（${1 + room.guests.length}/${room.maxPlayers} 人）`);
+                    break;
                 }
                 // ELO 距离过滤：房主开启过滤的房间，访客 ELO 距房主超过阈值 → 拒绝加入
                 if (room.eloRange) {
@@ -1010,7 +1156,22 @@ lobbyWss.on('connection', (ws, req) => {
             // 访客取消加入
             case 'join_cancel': {
                 const room = rooms.get(String(msg.code));
-                if (room && room.status === 'joining' && room.guestWs === ws) {
+                if (!room) break;
+                if (room.isRace && Array.isArray(room.guests)) {
+                    const idx = room.guests.findIndex(g => g.ws === ws);
+                    if (idx !== -1) {
+                        const removed = room.guests.splice(idx, 1)[0];
+                        send(room.hostWs, {
+                            type: 'guest_left',
+                            code: room.code,
+                            playerId: removed.playerId,
+                            nickname: removed.nickname,
+                            currentPlayers: 1 + room.guests.length,
+                            maxPlayers: room.maxPlayers
+                        });
+                        console.log(`[Lobby] 竞速访客取消加入 ${room.code}（${1 + room.guests.length}/${room.maxPlayers} 人）`);
+                    }
+                } else if (room.status === 'joining' && room.guestWs === ws) {
                     room.status = 'waiting';
                     room.guestWs = null;
                     console.log(`[Lobby] 访客取消加入 ${room.code}，恢复等待`);
@@ -1169,13 +1330,19 @@ lobbyWss.on('connection', (ws, req) => {
                 try {
                     for (const [code, room] of rooms) {
                         if (room.hostWs === ws) {
-                            if (room.guestWs) send(room.guestWs, { type: 'room_dissolved', code, reason: 'host_dissolved' });
+                            if (room.isRace && Array.isArray(room.guests)) {
+                                for (const g of room.guests) {
+                                    send(g.ws, { type: 'room_dissolved', code, reason: 'host_dissolved' });
+                                }
+                            } else if (room.guestWs) {
+                                send(room.guestWs, { type: 'room_dissolved', code, reason: 'host_dissolved' });
+                            }
                             for (const sp of room.spectators) {
                                 send(sp, { type: 'spectate_ended', code, reason: 'host_dissolved' });
                             }
                             room.spectators.clear();
                             rooms.delete(code);
-                            console.log(`[Lobby] 房主主动解散房间 ${code}`);
+                            console.log(`[Lobby] 房主主动解散房间 ${code}（${room.isRace ? `竞速房 ${room.guests.length} 访客已通知` : ''}）`);
                             break;
                         }
                     }
@@ -1216,6 +1383,22 @@ lobbyWss.on('connection', (ws, req) => {
                 room.status = 'waiting';
                 room.guestWs = null;
                 console.log(`[Lobby] 加入中的访客断开，房间 ${room.code} 恢复等待`);
+            }
+            // 竞速房：访客断开 → 从 guests 列表移除并通知房主
+            if (room.isRace && Array.isArray(room.guests)) {
+                const idx = room.guests.findIndex(g => g.ws === ws);
+                if (idx !== -1) {
+                    const removed = room.guests.splice(idx, 1)[0];
+                    send(room.hostWs, {
+                        type: 'guest_left',
+                        code: room.code,
+                        playerId: removed.playerId,
+                        nickname: removed.nickname,
+                        currentPlayers: 1 + room.guests.length,
+                        maxPlayers: room.maxPlayers
+                    });
+                    console.log(`[Lobby] 竞速访客断开，房间 ${room.code}（${1 + room.guests.length}/${room.maxPlayers} 人）`);
+                }
             }
         }
         cleanupHost(ws);

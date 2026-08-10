@@ -98,7 +98,9 @@ class GameController {
             roundSeed: null,
             solvedCount: 0,
             puzzlesPerLevel: 10,
-            fixedRange: 10 // 20x20范围：坐标从-10到9
+            fixedRange: 10, // 20x20范围：坐标从-10到9
+            // 多人竞速对战标记：true 时本局所有成绩不计入单人记录（最佳时间/进度/排行榜/解锁）
+            isMultiplayer: false
         };
         
         // P2P联机动作发送器
@@ -313,7 +315,7 @@ class GameController {
         return true;
     }
 
-    initRace(levelId = 1) {
+    initRace(levelId = 1, opts = {}) {
         const safeLevelId = Math.max(1, Math.min(30, Number(levelId) || 1));
         this.stopTimer();
         this.campaignState.active = false;
@@ -324,7 +326,9 @@ class GameController {
         this.raceState.currentLevelId = safeLevelId;
         this.raceState.startedAt = null;
         this.raceState.elapsedTimer = null;
-        this.raceState.roundSeed = null;
+        // 多人竞速：支持外部指定每关固定 seed（保证全员同一份卷子）与多人标记
+        this.raceState.roundSeed = (opts && opts.roundSeed != null) ? Number(opts.roundSeed) : null;
+        this.raceState.isMultiplayer = !!(opts && opts.isMultiplayer);
 
         this.gameMode = 'race';
         this.raceState.active = true;
@@ -388,6 +392,7 @@ class GameController {
         this.raceState.startedAt = null;
         this.raceState.elapsedTimer = null;
         this.raceState.roundSeed = null;
+        this.raceState.isMultiplayer = false;
     }
 
     pauseTimer() {
@@ -438,7 +443,14 @@ class GameController {
 
     buildRaceLevel() {
         const levelId = this.raceState.currentLevelId;
-        const seed = Date.now() + Math.floor(Math.random() * 1000000);
+        // 多人竞速：roundSeed 已指定时，用 roundSeed 派生本关内每题 seed（solvedCount 0~9），
+        // 保证全员同一关的 10 道谜题完全一致；单人模式沿用随机 seed
+        let seed;
+        if (this.raceState && this.raceState.roundSeed != null) {
+            seed = this.raceState.roundSeed * 10 + (this.raceState.solvedCount || 0);
+        } else {
+            seed = Date.now() + Math.floor(Math.random() * 1000000);
+        }
         const rand = this.createSeededRandom(seed);
         const used = new Set();
         const minCoord = -this.raceState.fixedRange;
@@ -1557,7 +1569,8 @@ class GameController {
                 if (completed >= total) {
                     const best = this.getRaceBestTime(this.currentRound);
                     const isNewBest = !Number.isFinite(best) || elapsed < best;
-                    if (isNewBest && !(this.raceState && this.raceState.isCustom)) this.setRaceBestTime(this.currentRound, elapsed);
+                    // 多人竞速对战不写单人最佳记录（成绩只影响对战积分）
+                    if (isNewBest && this.raceState && !this.raceState.isCustom && !this.raceState.isMultiplayer) this.setRaceBestTime(this.currentRound, elapsed);
                     const stars = this.getRaceStarsByElapsed(elapsed);
                     this.pauseTimer();
                     this.emit('raceLevelResult', {

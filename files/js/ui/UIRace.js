@@ -41,8 +41,9 @@ if (typeof UIController === 'undefined') {
             this.gridSystem.setRaceFixedRange(true);
         }
         if (this.gameController && typeof this.gameController.initRace === 'function') {
-            // 进入内置关卡前，先清除自定义关标记，避免污染内置 30 关进度
+            // 进入内置关卡前，先清除自定义/多人标记，避免污染内置 30 关进度
             this.raceIsCustom = false;
+            this.raceIsMultiplayer = false;
             if (this.gameController.raceState) {
                 this.gameController.raceState.isCustom = false;
                 this.gameController.raceState.customConfig = null;
@@ -58,6 +59,7 @@ if (typeof UIController === 'undefined') {
     UIController.prototype.closeRaceUI = function() {
         this.raceCurrentLevelId = null;
         this.raceIsCustom = false;
+        this.raceIsMultiplayer = false;
         // 退出竞速对局立即取消所有锁定（不影响文本框输入）
         this.clearAllLocks();
         if (this.gameController && this.gameController.raceState) {
@@ -382,8 +384,8 @@ if (typeof UIController === 'undefined') {
         if (nextBtn) nextBtn.textContent = this.raceIsCustom ? '返回选关' : '进入下一等级';
         this.renderRaceVictoryDetails(data, { levelId, elapsed, totalSolved, previousBestTime, hasPreviousBest, diff, isNewRecord });
         // 排行榜：竞速通关后把 TT∑ 星分累计写回本地进度（与竞速内部星级规则一致），
-        // 并自动上报该关最佳用时到「竞速分关榜」rt{level}（每关一张小榜，取更短者；自定义关不参与）
-        if (!this.raceIsCustom && this._leaderboardService && typeof PlayerProfile !== 'undefined') {
+        // 并自动上报该关最佳用时到「竞速分关榜」rt{level}（每关一张小榜，取更短者；自定义关/多人对战不参与）
+        if (!this.raceIsCustom && !this.raceIsMultiplayer && this._leaderboardService && typeof PlayerProfile !== 'undefined') {
             try {
                 const gc = this.gameController;
                 const lv = Number(data.levelId || this.raceCurrentLevelId || 1);

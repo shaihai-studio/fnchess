@@ -1,0 +1,22 @@
+{
+  "savedAt": 1786290871486,
+  "elo": [],
+  "race": [
+    {
+      "playerId": "rbP1",
+      "nickname": "玩家甲",
+      "score": 87,
+      "games": 3,
+      "wins": 3,
+      "updatedAt": 1786290869485
+    },
+    {
+      "playerId": "rbP4",
+      "nickname": "玩家丁",
+      "score": 0,
+      "games": 3,
+      "wins": 0,
+      "updatedAt": 1786290870995
+    }
+  ]
+}

@@ -150,10 +150,11 @@ if (typeof UIController === 'undefined') {
         const isCampaign = this.selectedMode === 'campaign';
         if (this.modeCampaignClassicBtn) this.modeCampaignClassicBtn.classList.toggle('active', isCampaign && this._campaignSubMode === 'classic');
         if (this.modeEditorBtn) this.modeEditorBtn.classList.toggle('active', isCampaign && this._campaignSubMode === 'editor');
-        // 竞速子菜单高亮：标准竞速 / 竞速试炼场
+        // 竞速子菜单高亮：标准竞速 / 竞速试炼场 / 联机竞速
         const isRace = this.selectedMode === 'race';
         if (this.modeRaceStandardBtn) this.modeRaceStandardBtn.classList.toggle('active', isRace && this._raceSubMode === 'standard');
         if (this.modeRaceCustomBtn) this.modeRaceCustomBtn.classList.toggle('active', isRace && this._raceSubMode === 'custom');
+        if (this.modeRaceBattleBtn) this.modeRaceBattleBtn.classList.toggle('active', isRace && this._raceSubMode === 'battle');
 
         if (this.modeAiBtn) {
             this.modeAiBtn.disabled = false;
@@ -328,7 +329,9 @@ if (typeof UIController === 'undefined') {
             // hint 按竞速子模式显示
             this.modeHint.textContent = this._raceSubMode === 'custom'
                 ? '竞速试炼场：自定义允许区/禁止区，打造专属竞速关卡'
-                : '标准竞速：通过 30 个关卡，追求更快速度';
+                : this._raceSubMode === 'battle'
+                    ? '联机竞速：2-4 人同场竞速，实时比拼速度与排名'
+                    : '标准竞速：通过 30 个关卡，追求更快速度';
             if (this.campaignPanel) this.campaignPanel.style.display = 'none';
             this.hideRaceUI();
             this.setStartSelectorsEnabled(false);
@@ -503,10 +506,12 @@ if (typeof UIController === 'undefined') {
             return;
         }
 
-        // 竞速子模式：标准竞速进入选关界面；竞速试炼场打开自定义弹窗
+        // 竞速子模式：标准竞速进入选关界面；竞速试炼场打开自定义弹窗；联机竞速打开房间弹窗
         if (this.selectedMode === 'race') {
             if (this._raceSubMode === 'custom') {
                 this.openRaceCustomModal();
+            } else if (this._raceSubMode === 'battle') {
+                this.openRaceBattleModal();
             } else {
                 this.openRaceUI();
             }

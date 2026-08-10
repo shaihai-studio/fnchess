@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="files/css/style.css">
     <link rel="stylesheet" href="files/css/shaihai-theme.css">
     <link rel="stylesheet" href="files/css/editor.css">
+    <link rel="stylesheet" href="files/css/race-battle.css">
     <link rel="stylesheet" href="files/vendor/katex/katex.min.css">
 </head>
 <body>
@@ -254,10 +255,11 @@
                                     <button class="mode-btn mode-btn-sub" id="mode-editor" data-mode="editor">关卡编辑器</button>
                                 </div>
                                 <button class="mode-btn" id="mode-race" data-mode="race">竞速模式</button>
-                                <!-- 竞速子菜单：标准竞速 / 竞速试炼场 -->
+                                <!-- 竞速子菜单：标准竞速 / 竞速试炼场 / 联机竞速 -->
                                 <div class="race-submenu" id="race-submenu" style="display:none;">
                                     <button class="mode-btn mode-btn-sub" id="mode-race-standard" data-mode="race">标准竞速</button>
                                     <button class="mode-btn mode-btn-sub" id="mode-race-custom" data-mode="race">竞速试炼场</button>
+                                    <button class="mode-btn mode-btn-sub" id="mode-race-battle" data-mode="race">联机竞速</button>
                                 </div>
                                 <button class="mode-btn" id="mode-test" data-mode="test">测试模式</button>
                             </div>
@@ -576,7 +578,143 @@
             </div>
         </div>
     </div>
-    
+
+    <!-- ══════════ 竞速对战（2-4 人联机竞速）══════════════ -->
+
+    <!-- 竞速对战房间弹窗：建房/加入 -->
+    <div class="modal" id="race-battle-modal" style="display:none;">
+        <div class="modal-content race-battle-room-content">
+            <h2 class="race-battle-modal-title">
+                <span class="race-battle-title-icon">⚡</span> 联机竞速
+                <span class="race-battle-rank-tag" id="race-battle-rank-tag">休闲局 · 不增减积分</span>
+            </h2>
+
+            <!-- 顶部状态条 -->
+            <div class="race-battle-statusbar">
+                <span class="race-battle-status-dot" id="race-battle-status-dot"></span>
+                <span id="race-battle-status-text">正在初始化…</span>
+                <span class="race-battle-roomcode" id="race-battle-roomcode">------</span>
+                <button class="race-battle-copy-btn" id="race-battle-copy-btn" type="button" title="复制房间码">复制</button>
+            </div>
+
+            <!-- 建房 / 加入 切换 -->
+            <div class="race-battle-tabs">
+                <button class="race-battle-tab-btn is-active" id="race-battle-tab-create" type="button">创建房间</button>
+                <button class="race-battle-tab-btn" id="race-battle-tab-join" type="button">加入房间</button>
+            </div>
+
+            <div class="race-battle-body">
+                <!-- 左：参数区（建房） -->
+                <div class="race-battle-params" id="race-battle-params">
+                    <!-- 耐力 -->
+                    <div class="race-battle-param-row">
+                        <div class="race-battle-param-label">耐力</div>
+                        <div class="race-battle-stepper">
+                            <button class="race-battle-stepper-btn" id="race-battle-stamina-minus" type="button">−</button>
+                            <div class="race-battle-dots" id="race-battle-stamina-dots" title="连跑关数"></div>
+                            <button class="race-battle-stepper-btn" id="race-battle-stamina-plus" type="button">+</button>
+                        </div>
+                    </div>
+                    <!-- 难度 -->
+                    <div class="race-battle-param-row">
+                        <div class="race-battle-param-label">难度</div>
+                        <div class="race-battle-stepper">
+                            <button class="race-battle-stepper-btn" id="race-battle-difficulty-minus" type="button">−</button>
+                            <span class="race-battle-difficulty-badge" id="race-battle-difficulty-badge">入门</span>
+                            <button class="race-battle-stepper-btn" id="race-battle-difficulty-plus" type="button">+</button>
+                        </div>
+                    </div>
+                    <!-- 排位开关 -->
+                    <div class="race-battle-param-row">
+                        <div class="race-battle-param-label">排位</div>
+                        <label class="race-battle-toggle">
+                            <input type="checkbox" id="race-battle-ranked-toggle" checked>
+                            <span class="race-battle-toggle-slider"></span>
+                        </label>
+                        <span class="race-battle-param-hint" id="race-battle-ranked-hint">对局结束后增减积分</span>
+                    </div>
+                    <!-- 强度预览 -->
+                    <div class="race-battle-intensity" id="race-battle-intensity">
+                        <div class="race-battle-intensity-bar"><div class="race-battle-intensity-fill" id="race-battle-intensity-fill"></div></div>
+                        <div class="race-battle-intensity-text" id="race-battle-intensity-text">30 题 · 高手局</div>
+                    </div>
+                    <button class="race-battle-create-btn" id="race-battle-create-btn" type="button">创建房间</button>
+                </div>
+
+                <!-- 中：加入区（访客） -->
+                <div class="race-battle-join" id="race-battle-join" style="display:none;">
+                    <div class="race-battle-join-label">输入 6 位房间码</div>
+                    <div class="race-battle-join-input-row">
+                        <input class="race-battle-join-input" id="race-battle-join-input" type="text" inputmode="numeric" maxlength="6" placeholder="------">
+                        <button class="btn btn-small" id="race-battle-join-btn" type="button">加入</button>
+                    </div>
+                    <div class="race-battle-join-error" id="race-battle-join-error"></div>
+                </div>
+
+                <!-- 右：成员列表 -->
+                <div class="race-battle-members-pane">
+                    <div class="race-battle-members-head">
+                        <span>房间成员</span>
+                        <span class="race-battle-members-count" id="race-battle-members-count">1/4</span>
+                    </div>
+                    <div class="race-battle-members" id="race-battle-members"></div>
+                </div>
+            </div>
+
+            <!-- 底部操作 -->
+            <div class="race-battle-footer">
+                <button class="btn btn-small btn-cancel" id="race-battle-leave-btn" type="button">离开房间</button>
+                <button class="btn race-battle-start-btn" id="race-battle-start-btn" type="button" disabled>开始竞速（等待更多玩家）</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 竞速对战结算弹窗 -->
+    <div class="modal" id="race-battle-result-modal" style="display:none;">
+        <div class="modal-content race-battle-result-content">
+            <h2 class="race-battle-result-title" id="race-battle-result-title">竞速完成</h2>
+            <div class="race-battle-result-ranklist" id="race-battle-result-ranklist"></div>
+            <div class="race-battle-result-self" id="race-battle-result-self"></div>
+            <div class="race-battle-result-buttons">
+                <button class="btn race-battle-rematch-btn" id="race-battle-rematch-btn" type="button">再来一局</button>
+                <button class="btn btn-small btn-cancel" id="race-battle-back-btn" type="button">返回竞速主菜单</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 竞速对战退出确认框 -->
+    <div class="modal" id="race-battle-exit-modal" style="display:none;">
+        <div class="modal-content" style="max-width:420px;text-align:center;">
+            <h2>退出对局</h2>
+            <p id="race-battle-exit-modal-text">确定要退出当前竞速对局吗？退出后本局判负并扣除积分。</p>
+            <div class="popover-buttons" style="justify-content:center;">
+                <button class="btn btn-small btn-confirm-exit" id="race-battle-exit-confirm-btn">确认退出</button>
+                <button class="btn btn-small btn-cancel" id="race-battle-exit-cancel-btn">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 竞速对战顶部进度面板 -->
+    <div class="race-battle-panel" id="race-battle-panel" style="display:none;">
+        <div class="race-battle-panel-head">
+            <span class="race-battle-panel-title">⚡ 竞速对战</span>
+            <span class="race-battle-panel-code" id="race-battle-panel-code">------</span>
+            <span class="race-battle-panel-timer" id="race-battle-panel-timer">0.00s</span>
+            <span class="race-battle-wait-hint" id="race-battle-wait-hint" style="display:none;">等待重连…</span>
+            <button class="race-battle-panel-exit" id="race-battle-panel-exit" type="button">退出</button>
+        </div>
+        <div class="race-battle-rows" id="race-battle-rows"></div>
+        <div class="race-battle-feature-line" id="race-battle-feature-line"></div>
+    </div>
+
+    <!-- 竞速对战全屏起跑倒计时 / 关卡特性卡 overlay -->
+    <div class="race-battle-overlay" id="race-battle-overlay" style="display:none;">
+        <div class="race-battle-overlay-card" id="race-battle-overlay-card"></div>
+    </div>
+
+    <!-- 竞速对战 toast 提示 -->
+    <div class="race-battle-toast" id="race-battle-toast" style="display:none;"></div>
+
     <!-- 选择联机对战模式：排位 / 休闲 -->
     <div class="modal" id="p2p-mode-select-modal" style="display:none;">
         <div class="modal-content" style="max-width:460px;text-align:center;">
@@ -1013,6 +1151,8 @@
     <script src="files/js/P2PController.js"></script>
     <!-- 匹配大厅控制器（依赖 P2PController.signaling 构建 WebSocket 地址） -->
     <script src="files/js/MatchLobby.js"></script>
+    <!-- 竞速对战多人房间控制器（2-4 人星型拓扑，独立于 1v1 的 P2PController，依赖 PeerJS） -->
+    <script src="files/js/RaceRoomController.js"></script>
     <script src="files/js/GameController.js"></script>
     <script src="files/js/campaignLevels.js"></script>
     <script src="files/js/RaceMode/RaceModeManager.js"></script>
@@ -1027,6 +1167,7 @@
     <script src="files/js/ui/UICampaign.js"></script>
     <script src="files/js/ui/UICampaignImport.js"></script>
     <script src="files/js/ui/UIRace.js"></script>
+    <script src="files/js/ui/UIRaceBattle.js"></script>
     <script src="files/js/ui/UIP2P.js"></script>
     <script src="files/js/ui/UILobby.js"></script>
     <!-- 排行榜：身份 + 数据服务 + UI（UILeaderboard 依赖 UIController 原型） -->

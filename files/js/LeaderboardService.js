@@ -16,6 +16,7 @@ class LeaderboardService {
         this.lobby = lobby || null;
         this._pendingQueries = new Map(); // id -> callback
         this._pendingSends = [];          // 连接建立前暂存的消息
+        this._raceScoreWaiters = [];      // 竞速积分上报等待队列（submit_result 分发）
         this._querySeq = 0;
         this._nonce = null;               // 当前可用的一次性 nonce
         this._nonceExp = 0;
@@ -30,6 +31,11 @@ class LeaderboardService {
                 // 失败原因控制台可见（之前只 setItem 成功路径，失败被吞，排障困难）
                 if (data && !data.ok) {
                     console.warn(`[LB] 上报被拒: code=${data.code || '?'} reason=${data.reason || '?'} level=${data.level || ''} waitMs=${data.waitMs || ''} boardType=${data.boardType || '?'}`);
+                }
+                // 竞速积分上报结果（submit_result）：按等待队列分发（服务器不回 id，按先进先出配对）
+                if (self._raceScoreWaiters && self._raceScoreWaiters.length && data && data.boardType === 'rsc') {
+                    const w = self._raceScoreWaiters.shift();
+                    try { w(data); } catch (e) { /* 忽略 */ }
                 }
                 if (self.onSubmitResult) { try { self.onSubmitResult(data); } catch (e) { /* 忽略 */ } }
                 // LR∑ 上报真正被服务器接受后，才把"已上报值"写回 localStorage
@@ -169,6 +175,49 @@ class LeaderboardService {
             solvedCount: Number(solvedCount) || 0,
             totalRounds: Number(totalRounds) || 0
         }, {});
+    }
+
+    /**
+     * 上报竞速对战积分（boardType: 'rsc'，签名版；服务端按 roomKey+playerId 去重权威计分）
+     * @param {Object} payload { roomCode, place, totalPlayers, nickname }
+     * 返回 Promise<{ ok, code, score, delta, tier, games, wins }>（服务器未连/验签失败时 ok=false）
+     */
+    submitRaceScore(payload) {
+        if (typeof VerifyCrypto === 'undefined') return Promise.resolve({ ok: false, code: 'no_crypto' });
+        const p = payload || {};
+        const playerId = typeof PlayerProfile !== 'undefined' ? PlayerProfile.getPlayerId() : '';
+        const self = this;
+        return this._requestNonce().then(() => {
+            if (!this._nonce || Date.now() >= this._nonceExp) {
+                console.warn('[LB] 竞速积分上报失败：无法获取签名 nonce（服务器未启动？）');
+                return { ok: false, code: 'no_nonce' };
+            }
+            const nonce = this._nonce;
+            this._nonce = null;
+            const sig = VerifyCrypto.sign(nonce, playerId, 'rsc', 0, p);
+            return new Promise((resolve) => {
+                this._raceScoreWaiters.push(resolve);
+                this._send({
+                    type: 'submit_score',
+                    boardType: 'rsc',
+                    value: 0,
+                    nickname: String(p.nickname || '') || '',
+                    playerId,
+                    nonce,
+                    sig,
+                    payload: p
+                });
+                setTimeout(() => {
+                    const i = this._raceScoreWaiters.indexOf(resolve);
+                    if (i >= 0) { this._raceScoreWaiters.splice(i, 1); resolve({ ok: false, code: 'timeout' }); }
+                }, 5000);
+            });
+        });
+    }
+
+    /** 查询竞速对战积分榜（boardType: 'rsc'）；回调收到 leaderboard_result（list 含 tier/games/wins，另有 myTier/myGames） */
+    queryRaceBoard(playerId, callback) {
+        this.query('rsc', String(playerId || ''), callback);
     }
 
     /** 玩家举报（90s 间隔由服务器控制；被举报者下次 lr 强制核验） */

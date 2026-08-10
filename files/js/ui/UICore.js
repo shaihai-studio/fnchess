@@ -123,6 +123,7 @@ if (typeof UIController === 'undefined') {
         this.modeCampaignClassicBtn = document.getElementById('mode-campaign-classic');
         this.modeRaceStandardBtn = document.getElementById('mode-race-standard');
         this.modeRaceCustomBtn = document.getElementById('mode-race-custom');
+        this.modeRaceBattleBtn = document.getElementById('mode-race-battle');
         this._battleSubmenu = document.getElementById('battle-submenu');
         this._campaignSubmenu = document.getElementById('campaign-submenu');
         this._raceSubmenu = document.getElementById('race-submenu');
@@ -130,7 +131,7 @@ if (typeof UIController === 'undefined') {
         this.selectedMode = 'battle'; // 默认对战模式
         this._battleSubMode = 'local'; // 默认子模式：本地对战
         this._campaignSubMode = 'classic'; // 闯关子模式：经典闯关（classic）/ 关卡编辑器（editor）
-        this._raceSubMode = 'standard'; // 竞速子模式：标准竞速（standard）/ 竞速试炼场（custom）
+        this._raceSubMode = 'standard'; // 竞速子模式：标准竞速（standard）/ 竞速试炼场（custom）/ 联机竞速（battle）
 
         // 闯关面板
         this.campaignPanel = document.getElementById('campaign-panel');
@@ -275,6 +276,13 @@ if (typeof UIController === 'undefined') {
                 this.modeHint.textContent = '竞速试炼场：自定义允许区/禁止区，打造专属竞速关卡';
             });
         }
+        if (this.modeRaceBattleBtn) {
+            this.modeRaceBattleBtn.addEventListener('click', () => {
+                this._raceSubMode = 'battle';
+                this.selectMode('race');
+                this.modeHint.textContent = '联机竞速：2-4 人同场竞速，实时比拼速度与排名';
+            });
+        }
         if (this.raceBackBtn) this.raceBackBtn.addEventListener('click', () => this.showRaceLevelList());
         if (this.raceCloseBtn) this.raceCloseBtn.addEventListener('click', () => this.closeRaceUI());
 
@@ -311,6 +319,7 @@ if (typeof UIController === 'undefined') {
         this.addCampaignDrawDelayToggle();
         this.updateCampaignDrawDelayToggleVisibility();
         this.initRaceCustom();
+        this.initRaceBattleUI();
         this.bindBackgroundMusicControls();
         this.initBackgroundMusic();
 
@@ -433,6 +442,12 @@ if (typeof UIController === 'undefined') {
                 this.hideBattleUI();
                 this.showMessage('闯关模式：请直接构造函数作答');
             } else if (data.gameMode === 'race') {
+                // 多人联机竞速对战：走专属对局流程（特性卡/进度广播/房主结算），不显示单人竞速 UI
+                if (this._rbMatchStarted && this.raceIsMultiplayer) {
+                    this.hideBattleUI();
+                    this._rbOnGameInit(data);
+                    return;
+                }
                 this.hideBattleUI();
                 this.showRaceBattleUI(data);
                 this.showMessage(`竞速模式：第 ${data.currentRound} 关开始`);
@@ -790,10 +805,7 @@ if (typeof UIController === 'undefined') {
 
         this.gameController.on('raceLevelLoaded', (data) => {
             try {
-                this.updateCampaignDrawDelayToggleVisibility();
-                this.roundElement.textContent = data.levelId;
-                this.totalRoundsElement.textContent = data.totalLevels || 30;
-                this.updateRaceBattleUI(data.levelId, data.elapsed || 0);
+                // 棋盘加载（单人/多人竞速共用）：换关必须重置棋盘
                 this.gridSystem.setRaceFixedRange(true);
                 this.gridSystem.clearAll();
                 this.clearExpression();
@@ -801,10 +813,16 @@ if (typeof UIController === 'undefined') {
                 this.gridSystem.forbiddenCells = data.roundState.forbiddenCells || [];
                 // 竞速每关独立，清空历史函数
                 this.gridSystem.functionHistory = [];
-                this.raceLiveTimeValue && (this.raceLiveTimeValue.style.display = 'block');
-                this.updateRacePuzzleProgress(data.solvedCount || 0, data.totalSolved || 10);
                 this.gridSystem.draw();
                 this.initDraggableElements();
+                // 多人联机竞速对战：不更新单人 HUD、不播单人倒计时（统一 goAt 起跑/特性卡由多人流程负责）
+                if (this._rbMatchStarted && this.raceIsMultiplayer) return;
+                this.updateCampaignDrawDelayToggleVisibility();
+                this.roundElement.textContent = data.levelId;
+                this.totalRoundsElement.textContent = data.totalLevels || 30;
+                this.updateRaceBattleUI(data.levelId, data.elapsed || 0);
+                this.raceLiveTimeValue && (this.raceLiveTimeValue.style.display = 'block');
+                this.updateRacePuzzleProgress(data.solvedCount || 0, data.totalSolved || 10);
                 this.startRaceCountdown();
                 this.showMessage(`竞速：第 ${data.levelId} 关`, 'info');
             } catch (e) {
@@ -828,6 +846,11 @@ if (typeof UIController === 'undefined') {
 
         this.gameController.on('racePuzzleCleared', (data) => {
             try {
+                // 多人联机竞速对战：只更新对战进度面板并广播，不展示单人 HUD 消息
+                if (this._rbMatchStarted && this.raceIsMultiplayer) {
+                    this._rbOnPuzzleCleared(data);
+                    return;
+                }
                 this.updateRacePuzzleProgress(data.solvedCount || 0, data.totalSolved || 10);
                 this.updateRaceBattleUI(data.levelId, data.elapsed || 0);
                 this.showMessage(`已完成 ${data.solvedCount}/${data.totalSolved} 个谜题`, 'info');
@@ -838,16 +861,21 @@ if (typeof UIController === 'undefined') {
 
         this.gameController.on('raceLevelResult', (data) => {
             try {
+                // 多人联机竞速对战：进入下一关或完赛，不展示单人胜利弹窗/记录
+                if (this._rbMatchStarted && this.raceIsMultiplayer) {
+                    this._rbOnLevelResult(data);
+                    return;
+                }
                 if (data.pass) {
                     this.clearRaceCountdown();
                     this.stopRaceElapsedTimer();
                     const afterWin = () => {
-                        // 自定义竞速关不解锁内置 30 关进度
-                        if (!this.raceIsCustom) this.unlockNextRaceLevel(data.levelId);
+                        // 自定义竞速关不解锁内置 30 关进度；多人竞速对战也不解锁/不写单人进度
+                        if (!this.raceIsCustom && !this.raceIsMultiplayer) this.unlockNextRaceLevel(data.levelId);
                         this.showRaceVictory(data);
                     };
-                    // 自定义关不记录最佳成绩，故不播放 NEW RECORD 过场
-                    if (data.isNewBest && !this.raceIsCustom) this.playRaceNewRecordIntro(() => { if (window.audioManager) window.audioManager.playRaceFanfare?.(); afterWin(); });
+                    // 自定义关/多人对战不记录最佳成绩，故不播放 NEW RECORD 过场
+                    if (data.isNewBest && !this.raceIsCustom && !this.raceIsMultiplayer) this.playRaceNewRecordIntro(() => { if (window.audioManager) window.audioManager.playRaceFanfare?.(); afterWin(); });
                     else { if (window.audioManager) window.audioManager.playRaceFinish?.(); afterWin(); }
                 } else {
                     this.showMessage('挑战失败，请重试本关', 'error');
