@@ -531,7 +531,7 @@
             </div>
             <div class="leaderboard-me">
                 <span class="leaderboard-me-label">我的昵称</span>
-                <input type="text" id="leaderboard-nickname-input" maxlength="16" placeholder="输入昵称后保存" autocomplete="off">
+                <input type="text" id="leaderboard-nickname-input" maxlength="10" placeholder="输入昵称后保存" autocomplete="off">
                 <button class="btn btn-small" id="leaderboard-nickname-save" type="button">保存</button>
             </div>
             <div id="leaderboard-list" class="leaderboard-list"></div>
@@ -546,7 +546,7 @@
         <div class="modal-content">
             <h2>设置昵称</h2>
             <p class="nickname-prompt-desc">首次进入游戏，给自己起个昵称吧！之后可在排行榜随时修改。</p>
-            <input type="text" id="nickname-input" class="nickname-prompt-input" maxlength="16" placeholder="输入昵称（留空使用默认昵称）" autocomplete="off">
+            <input type="text" id="nickname-input" class="nickname-prompt-input" maxlength="10" placeholder="输入昵称（留空使用默认昵称）" autocomplete="off">
             <div class="nickname-prompt-actions">
                 <button class="btn btn-secondary" id="nickname-cancel-btn" type="button">取消</button>
                 <button class="btn btn-primary" id="nickname-confirm-btn" type="button">确认</button>
@@ -581,90 +581,104 @@
 
     <!-- ══════════ 竞速对战（2-4 人联机竞速）══════════════ -->
 
-    <!-- 竞速对战房间弹窗：建房/加入 -->
+    <!-- 竞速对战：选择排位 / 休闲 前置模式 -->
+    <!-- 竞速对战房间弹窗：建房/加入（P2P 风格两栏布局） -->
     <div class="modal" id="race-battle-modal" style="display:none;">
-        <div class="modal-content race-battle-room-content">
-            <h2 class="race-battle-modal-title">
-                <span class="race-battle-title-icon">⚡</span> 联机竞速
-                <span class="race-battle-rank-tag" id="race-battle-rank-tag">休闲局 · 不增减积分</span>
-            </h2>
-
-            <!-- 顶部状态条 -->
-            <div class="race-battle-statusbar">
-                <span class="race-battle-status-dot" id="race-battle-status-dot"></span>
-                <span id="race-battle-status-text">正在初始化…</span>
-                <span class="race-battle-roomcode" id="race-battle-roomcode">------</span>
-                <button class="race-battle-copy-btn" id="race-battle-copy-btn" type="button" title="复制房间码">复制</button>
-            </div>
-
-            <!-- 建房 / 加入 切换 -->
-            <div class="race-battle-tabs">
-                <button class="race-battle-tab-btn is-active" id="race-battle-tab-create" type="button">创建房间</button>
-                <button class="race-battle-tab-btn" id="race-battle-tab-join" type="button">加入房间</button>
-            </div>
-
-            <div class="race-battle-body">
-                <!-- 左：参数区（建房） -->
-                <div class="race-battle-params" id="race-battle-params">
-                    <!-- 耐力 -->
-                    <div class="race-battle-param-row">
-                        <div class="race-battle-param-label">耐力</div>
-                        <div class="race-battle-stepper">
-                            <button class="race-battle-stepper-btn" id="race-battle-stamina-minus" type="button">−</button>
-                            <div class="race-battle-dots" id="race-battle-stamina-dots" title="连跑关数"></div>
-                            <button class="race-battle-stepper-btn" id="race-battle-stamina-plus" type="button">+</button>
+        <div class="modal-content p2p-room-content" style="max-width:760px;">
+            <h2>联机竞速 <span class="race-battle-rank-tag" id="race-battle-rank-tag">休闲局 · 不增减积分</span></h2>
+            <div class="p2p-content-layout" style="display:flex; gap:24px; align-items:flex-start; text-align:left;">
+                <!-- 左侧：耐力/难度/排位 参数栏 -->
+                <div class="p2p-selectors-left" style="flex:0 0 220px; display:flex; flex-direction:column; gap:14px; padding-right:16px; border-right:1px solid rgba(255,255,255,0.08);">
+                    <div class="selector-row">
+                        <div class="stepper-selector" id="race-battle-stamina-stepper">
+                            <button type="button" class="stepper-arrow" id="race-battle-stamina-minus" aria-label="切换耐力"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.125em"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg></button>
+                            <div class="stepper-value" id="race-battle-stamina-dots" title="连跑关数">1 关</div>
+                            <button type="button" class="stepper-arrow" id="race-battle-stamina-plus" aria-label="切换耐力"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.125em"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg></button>
                         </div>
                     </div>
-                    <!-- 难度 -->
-                    <div class="race-battle-param-row">
-                        <div class="race-battle-param-label">难度</div>
-                        <div class="race-battle-stepper">
-                            <button class="race-battle-stepper-btn" id="race-battle-difficulty-minus" type="button">−</button>
-                            <span class="race-battle-difficulty-badge" id="race-battle-difficulty-badge">入门</span>
-                            <button class="race-battle-stepper-btn" id="race-battle-difficulty-plus" type="button">+</button>
+                    <div class="selector-row">
+                        <div class="stepper-selector" id="race-battle-difficulty-stepper">
+                            <button type="button" class="stepper-arrow" id="race-battle-difficulty-minus" aria-label="切换难度"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.125em"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg></button>
+                            <div class="stepper-value" id="race-battle-difficulty-badge">入门</div>
+                            <button type="button" class="stepper-arrow" id="race-battle-difficulty-plus" aria-label="切换难度"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.125em"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg></button>
                         </div>
                     </div>
-                    <!-- 排位开关 -->
-                    <div class="race-battle-param-row">
-                        <div class="race-battle-param-label">排位</div>
-                        <label class="race-battle-toggle">
-                            <input type="checkbox" id="race-battle-ranked-toggle" checked>
-                            <span class="race-battle-toggle-slider"></span>
+                </div>
+
+                <!-- 右侧：房间区 -->
+                <div class="p2p-selectors-right" style="flex:1; min-width:0;">
+                    <div class="p2p-status" id="race-battle-statusbar">
+                        <span class="p2p-status-dot" id="race-battle-status-dot"></span>
+                        <span class="p2p-status-text" id="race-battle-status-text">正在初始化…</span>
+                    </div>
+                    <div class="p2p-tabs">
+                        <button class="p2p-tab active" id="race-battle-tab-create">创建房间</button>
+                        <button class="p2p-tab" id="race-battle-tab-join">加入房间</button>
+                        <button class="p2p-tab" id="race-battle-tab-lobby">匹配大厅</button>
+                    </div>
+                    <div class="p2p-tab-content" id="race-battle-tab-create-content">
+                        <p class="p2p-desc">创建房间后将获得一个6位数字房间码，分享给好友即可开始竞速</p>
+                        <div class="p2p-room-code-display" id="race-battle-room-code-display" style="display:none;">
+                            <span class="p2p-label">房间码</span>
+                            <span class="p2p-room-code" id="race-battle-roomcode">------</span>
+                            <button class="btn btn-small p2p-copy-btn" id="race-battle-copy-btn">复制</button>
+                        </div>
+                        <div class="lobby-actions">
+                            <button class="btn btn-primary p2p-action-btn" id="race-battle-create-btn">创建房间</button>
+                            <button class="btn btn-small lobby-delete-btn" id="race-battle-delete-btn" style="display:none;">删除房间</button>
+                        </div>
+                    </div>
+                    <div class="p2p-tab-content" id="race-battle-tab-join-content" style="display:none;">
+                        <p class="p2p-desc">输入好友分享的6位数字房间码加入竞速</p>
+                        <div class="p2p-input-group">
+                            <input type="text" id="race-battle-join-input" class="p2p-room-input" maxlength="6" placeholder="输入6位数字房间码" autocomplete="off">
+                        </div>
+                        <div class="race-battle-join-error" id="race-battle-join-error"></div>
+                        <button class="btn btn-primary p2p-action-btn" id="race-battle-join-btn">加入房间</button>
+                    </div>
+                    <div class="p2p-tab-content" id="race-battle-tab-lobby-content" style="display:none;">
+                        <div class="lobby-status" id="race-lobby-status">
+                            <span class="p2p-status-dot"></span>
+                            <span class="lobby-status-text">未连接</span>
+                        </div>
+                        <div class="lobby-actions">
+                            <button class="btn btn-primary" id="race-lobby-create-btn">创建房间（进大厅）</button>
+                            <button class="btn btn-small lobby-delete-btn" id="race-lobby-delete-btn" style="display:none;">删除</button>
+                        </div>
+                        <label class="lobby-long-lived-label">
+                            <input type="checkbox" id="race-lobby-long-lived-toggle">
+                            <span>长效模式（30分钟，房间号以00开头）</span>
                         </label>
-                        <span class="race-battle-param-hint" id="race-battle-ranked-hint">对局结束后增减积分</span>
+                        <label class="lobby-long-lived-label" id="race-lobby-spectate-wrap" style="display:none;" title="竞速房暂不支持观战">
+                            <input type="checkbox" id="race-lobby-spectate-toggle" checked>
+                            <span>允许观战（竞速房暂不支持）</span>
+                        </label>
+                        <div class="lobby-list" id="race-lobby-list"></div>
+                        <div class="p2p-battle-hint">
+                            <small>创建房间后进入大厅列表，其他玩家可点击你的房间加入</small><br>
+                            <small>加入后按房主配置的耐力与难度开局</small>
+                        </div>
                     </div>
-                    <!-- 强度预览 -->
-                    <div class="race-battle-intensity" id="race-battle-intensity">
-                        <div class="race-battle-intensity-bar"><div class="race-battle-intensity-fill" id="race-battle-intensity-fill"></div></div>
-                        <div class="race-battle-intensity-text" id="race-battle-intensity-text">30 题 · 高手局</div>
-                    </div>
-                    <button class="race-battle-create-btn" id="race-battle-create-btn" type="button">创建房间</button>
-                </div>
 
-                <!-- 中：加入区（访客） -->
-                <div class="race-battle-join" id="race-battle-join" style="display:none;">
-                    <div class="race-battle-join-label">输入 6 位房间码</div>
-                    <div class="race-battle-join-input-row">
-                        <input class="race-battle-join-input" id="race-battle-join-input" type="text" inputmode="numeric" maxlength="6" placeholder="------">
-                        <button class="btn btn-small" id="race-battle-join-btn" type="button">加入</button>
+                    <!-- 成员列表 -->
+                    <div class="race-battle-members-pane">
+                        <div class="race-battle-members-head">
+                            <span>房间成员</span>
+                            <span class="race-battle-members-count" id="race-battle-members-count">1/4</span>
+                        </div>
+                        <div class="race-battle-members" id="race-battle-members"></div>
                     </div>
-                    <div class="race-battle-join-error" id="race-battle-join-error"></div>
-                </div>
 
-                <!-- 右：成员列表 -->
-                <div class="race-battle-members-pane">
-                    <div class="race-battle-members-head">
-                        <span>房间成员</span>
-                        <span class="race-battle-members-count" id="race-battle-members-count">1/4</span>
+                    <div class="p2p-battle-hint">
+                        <small>房主为<strong>玩家A</strong>，最多 4 人同场竞速</small><br>
+                        <small>开局后按房主配置的耐力与难度进行</small>
                     </div>
-                    <div class="race-battle-members" id="race-battle-members"></div>
+                    <div class="lobby-actions" style="margin-top:8px;">
+                        <button class="btn btn-secondary p2p-back-btn" id="race-battle-leave-btn">离开房间</button>
+                        <button class="btn btn-primary p2p-action-btn race-battle-start-btn" id="race-battle-start-btn" disabled>开始竞速</button>
+                    </div>
+                    <button class="btn btn-secondary p2p-back-btn" id="race-battle-home-btn" style="width:100%;margin-top:8px;">返回主页面</button>
                 </div>
-            </div>
-
-            <!-- 底部操作 -->
-            <div class="race-battle-footer">
-                <button class="btn btn-small btn-cancel" id="race-battle-leave-btn" type="button">离开房间</button>
-                <button class="btn race-battle-start-btn" id="race-battle-start-btn" type="button" disabled>开始竞速（等待更多玩家）</button>
             </div>
         </div>
     </div>
@@ -792,7 +806,10 @@
                             <span class="p2p-room-code" id="p2p-room-code-text">------</span>
                             <button class="btn btn-small p2p-copy-btn" id="p2p-copy-btn">复制</button>
                         </div>
-                        <button class="btn btn-primary p2p-action-btn" id="p2p-create-btn">创建房间</button>
+                        <div class="lobby-actions">
+                            <button class="btn btn-primary p2p-action-btn" id="p2p-create-btn">创建房间</button>
+                            <button class="btn btn-small lobby-delete-btn" id="p2p-delete-btn" style="display:none;">删除房间</button>
+                        </div>
                     </div>
                     <div class="p2p-tab-content" id="p2p-tab-join-content" style="display:none;">
                         <p class="p2p-desc">输入对手分享的6位数字房间码加入对战</p>

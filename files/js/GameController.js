@@ -794,6 +794,20 @@ class GameController {
     }
     
     /**
+     * 更新测试模式函数（修改已绘制函数的表达式，保留原颜色）
+     * @param {number} index - 函数在列表中的索引
+     * @param {string} expression - 新的函数表达式
+     */
+    updateTestModeFunction(index, expression) {
+        if (!this.isTestMode()) return false;
+        if (index < 0 || index >= this.testModeFunctions.length) return false;
+        this.testModeFunctions[index].expression = expression;
+        this.testModeFunctions[index].timestamp = Date.now();
+        this.emit('testModeFunctionUpdated', { index, expression });
+        return true;
+    }
+    
+    /**
      * 清空测试模式函数
      */
     clearTestModeFunctions() {

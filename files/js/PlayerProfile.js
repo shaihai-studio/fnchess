@@ -53,10 +53,10 @@ class PlayerProfile {
     /** 是否已存在身份（用于判断是否首次进入游戏） */
     static hasProfile() { return !!this._read(); }
 
-    /** 设置昵称：清理空白、限长 16 字符；空输入保持原昵称 */
+    /** 设置昵称：清理空白、限长 10 字符；空输入保持原昵称 */
     static setNickname(name) {
         const p = this.ensure();
-        const clean = String(name == null ? '' : name).trim().slice(0, 16);
+        const clean = String(name == null ? '' : name).trim().slice(0, 10);
         if (!clean) return p.nickname;
         p.nickname = clean;
         this._write(p);

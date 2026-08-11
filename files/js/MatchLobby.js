@@ -51,7 +51,7 @@ class MatchLobbyController {
         return `${scheme}://${sig.host}${portStr}/lobby`;
     }
 
-    constructor() {
+    constructor(callbacks) {
         this.ws = null;
         this.isConnected = false;
         this.myRoomCode = null;   // 我作为房主登记的房间码
@@ -62,6 +62,9 @@ class MatchLobbyController {
         this._refreshTimer = null;
 
         // ── 回调 ──────────────────────────────────────────────
+        // 2026-08-11 修复：构造函数原本不接受参数，调用方传入的回调配置被静默丢弃，
+        // 导致 onConnectionChange 永远为 null → UI 一直显示"连接大厅中…"。
+        // 现在支持 new MatchLobbyController({ onConnectionChange: fn, ... })，无参时保持 null。
         this.onConnectionChange = null;   // (connected) => void
         this.onRoomsUpdate = null;        // (rooms) => void
         this.onHostRegistered = null;     // (code, expiresAt) => void
@@ -87,6 +90,21 @@ class MatchLobbyController {
 
         // ── 大厅模式过滤 ──────────────────────────────────────
         this.currentLobbyMode = null;     // 'ranked' | 'casual' | null（拉取/加入房间时按此过滤）
+
+        // 将调用方传入的回调配置合并到本实例
+        if (callbacks && typeof callbacks === 'object') {
+            const CALLBACK_KEYS = [
+                'onConnectionChange', 'onRoomsUpdate', 'onHostRegistered',
+                'onGuestJoining', 'onGuestLeft', 'onJoinAccepted', 'onJoinRejected',
+                'onHostRoomExpired', 'onSpectateState', 'onSpectateEnded',
+                'onSpectateJoined', 'onSpectateJoinRejected', 'onSpectateEmoji',
+                'onLeaderboardResult', 'onPlayerEloResult', 'onChallenge',
+                'onSubmitResult', 'onRoomDissolved'
+            ];
+            for (const k of CALLBACK_KEYS) {
+                if (typeof callbacks[k] === 'function') this[k] = callbacks[k];
+            }
+        }
     }
 
     // ─── 连接管理 ────────────────────────────────────────────

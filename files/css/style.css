@@ -2882,7 +2882,7 @@ body::before {
 /* 竞速模式子菜单（标准竞速 / 竞速试炼场） */
 .race-submenu {
     display: grid;
-    grid-template-columns: 1fr 1fr !important;
+    grid-template-columns: 1fr 1fr 1fr !important;
     align-items: stretch;
     width: 100% !important;
     box-sizing: border-box !important;
@@ -3037,6 +3037,8 @@ body::before {
 .lobby-status-text { font-size: 13px; color: #94a3b8; }
 .lobby-actions { display: flex; gap: 8px; margin-bottom: 12px; }
 .lobby-actions .btn { flex: 1; }
+/* 竞速大厅按钮：创建房间撑满整行，删除按钮出现后左右排布 */
+#race-battle-tab-lobby-content .lobby-actions .btn { flex: 1; }
 .lobby-refresh-btn { flex: 0 0 auto; width: auto !important; padding: 8px 14px; }
 .lobby-list { max-height: 260px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding: 4px; }
 .lobby-room-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; transition: border-color 0.2s, background 0.2s; }
@@ -6230,6 +6232,35 @@ body.float-keypad-mode #clear-btn { display: none !important; }
 .test-fp-delete:hover {
     color: #f87171;
     background: rgba(239, 68, 68, 0.15);
+}
+.test-fp-edit {
+    flex: 0 0 auto;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+}
+.test-fp-edit:hover {
+    color: #38bdf8;
+    background: rgba(56, 189, 248, 0.15);
+}
+.test-fp-item.editing {
+    border-color: rgba(56, 189, 248, 0.6);
+    background: rgba(56, 189, 248, 0.1);
+    box-shadow: 0 0 8px rgba(56, 189, 248, 0.25);
+}
+.test-fp-item.editing .test-fp-expr {
+    color: #7dd3fc;
 }
 .test-fp-empty {
     flex: 1 1 auto;

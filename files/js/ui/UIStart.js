@@ -676,6 +676,9 @@ if (typeof UIController === 'undefined') {
         // 修改提示
         this.showMessage('测试模式：自由构造函数，点击函数表达式可编辑或删除');
         
+        // 重置编辑状态，避免上次会话残留
+        this._editingTestFunctionIndex = null;
+        
         // 添加缩放按钮
         this.addZoomButtons();
         

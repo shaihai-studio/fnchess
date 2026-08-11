@@ -180,7 +180,7 @@ function raceDelta(place, totalPlayers, games) {
 function handleRaceScore(ws, msg) {
     if (!verifySig(ws, msg)) { sendSubmitResultBT(ws, false, 'rsc', { code: 'invalid_signature' }); return; }
     const playerId = String(msg.playerId || '').slice(0, 64);
-    const nickname = String(msg.nickname || '棋手').trim().slice(0, 16) || '棋手';
+    const nickname = String(msg.nickname || '棋手').trim().slice(0, 10) || '棋手';
     if (!playerId) return;
     const payload = msg.payload || {};
     const roomKey = String(payload.roomCode || '').slice(0, 64);
@@ -704,7 +704,7 @@ function recordVerify(ip) {
 function handleSubmitScore(ws, msg) {
     const boardType = String(msg.boardType || '');
     const playerId = String(msg.playerId || '').slice(0, 64);
-    const nickname = String(msg.nickname || '棋手').trim().slice(0, 16) || '棋手';
+    const nickname = String(msg.nickname || '棋手').trim().slice(0, 10) || '棋手';
     if (!playerId) return;
     const ip = ws && ws._ip ? ws._ip : '';
     const now = Date.now();
@@ -724,7 +724,7 @@ function handleSubmitScore(ws, msg) {
             }
         }
         const winner = (msg.winner === 'A' || msg.winner === 'B') ? msg.winner : 'draw';
-        const opponentNickname = String(msg.opponentNickname || '棋手').trim().slice(0, 16) || '棋手';
+        const opponentNickname = String(msg.opponentNickname || '棋手').trim().slice(0, 10) || '棋手';
         updateElo(playerId, nickname, opponentId, opponentNickname, winner);
         return;
     }
@@ -986,7 +986,10 @@ lobbyWss.on('connection', (ws, req) => {
             case 'host_register': {
                 cleanupHost(ws); // 同一连接重复登记时，先清旧房
                 const longLived = !!(msg.options && msg.options.longLived);
-                const code = genRoomCode(longLived);
+                // 允许客户端指定房间码（竞速房 PeerJS 码即 Lobby 码）
+                const clientCode = msg.options && msg.options.roomCode ? String(msg.options.roomCode) : '';
+                const isValidClientCode = /^\d{6}$/.test(clientCode) && !rooms.has(clientCode);
+                const code = isValidClientCode ? clientCode : genRoomCode(longLived);
                 const expiresAt = Date.now() + (longLived ? ROOM_TTL_LONG : ROOM_TTL_DEFAULT);
                 // 竞速对战房（2-4 人多人房）：独立模式标识，与 1v1 的 casual/ranked 完全隔离
                 const isRace = !!(msg.options && msg.options.mode === 'race');
@@ -1020,7 +1023,7 @@ lobbyWss.on('connection', (ws, req) => {
                     hostPlayerId,
                     hostElo,
                     eloRange,
-                    hostNickname: String(msg.nickname || '').slice(0, 32)
+                    hostNickname: String(msg.nickname || '').slice(0, 10)
                 });
                 send(ws, { type: 'host_registered', code, expiresAt });
                 console.log(`[Lobby] 房主登记房间 ${code}（${longLived ? '长效 30 分钟' : '5 分钟'}, 观战${spectateEnabled ? '开启' : '关闭'}${isRace ? `, 竞速 ${maxPlayers} 人房` : ''}）`, msg.options || {});
@@ -1118,7 +1121,7 @@ lobbyWss.on('connection', (ws, req) => {
                         return;
                     }
                     const guestPlayerId = String(msg.playerId || '').slice(0, 64);
-                    const guestNickname = String(msg.nickname || '').slice(0, 32);
+                    const guestNickname = String(msg.nickname || '').slice(0, 10);
                     room.guests.push({ ws, playerId: guestPlayerId, nickname: guestNickname });
                     send(room.hostWs, {
                         type: 'guest_joining',

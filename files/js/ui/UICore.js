@@ -961,10 +961,11 @@ if (typeof UIController === 'undefined') {
             finishGameOver();
         });
 
-        // 测试模式函数面板：函数新增/删除/清空时自动刷新列表
+        // 测试模式函数面板：函数新增/删除/清空/更新时自动刷新列表
         this.gameController.on('testModeFunctionAdded', () => this.renderTestFunctionPanel());
         this.gameController.on('testModeFunctionRemoved', () => this.renderTestFunctionPanel());
         this.gameController.on('testModeFunctionsCleared', () => this.renderTestFunctionPanel());
+        this.gameController.on('testModeFunctionUpdated', () => this.renderTestFunctionPanel());
     }
 ;
 
@@ -1082,6 +1083,12 @@ if (typeof UIController === 'undefined') {
         const fpList = document.getElementById('test-fp-list');
         if (fpList) {
             fpList.addEventListener('click', (e) => {
+                const editBtn = e.target.closest('.test-fp-edit');
+                if (editBtn) {
+                    const editIndex = parseInt(editBtn.dataset.index, 10);
+                    if (!isNaN(editIndex)) this._handleTestFunctionEdit(editIndex);
+                    return;
+                }
                 const delBtn = e.target.closest('.test-fp-delete');
                 if (!delBtn) return;
                 const index = parseInt(delBtn.dataset.index, 10);
@@ -1105,6 +1112,7 @@ if (typeof UIController === 'undefined') {
         if (!functions || functions.length === 0) {
             if (emptyEl) emptyEl.style.display = '';
             if (clearAllBtn) clearAllBtn.disabled = true;
+            this._syncTestModeSubmitLabel();
             return;
         }
 
@@ -1114,6 +1122,9 @@ if (typeof UIController === 'undefined') {
         functions.forEach((func, index) => {
             const item = document.createElement('div');
             item.className = 'test-fp-item';
+            if (this._editingTestFunctionIndex === index) {
+                item.classList.add('editing');
+            }
 
             const colorDot = document.createElement('span');
             colorDot.className = 'test-fp-color';
@@ -1128,6 +1139,14 @@ if (typeof UIController === 'undefined') {
             exprEl.innerHTML = exprHtml;
             item.appendChild(exprEl);
 
+            const editBtn = document.createElement('button');
+            editBtn.type = 'button';
+            editBtn.className = 'test-fp-edit';
+            editBtn.dataset.index = String(index);
+            editBtn.title = '修改此函数';
+            editBtn.textContent = '✎';
+            item.appendChild(editBtn);
+
             const delBtn = document.createElement('button');
             delBtn.type = 'button';
             delBtn.className = 'test-fp-delete';
@@ -1138,6 +1157,18 @@ if (typeof UIController === 'undefined') {
 
             listEl.appendChild(item);
         });
+
+        // 编辑模式下同步确认按钮文案
+        this._syncTestModeSubmitLabel();
+    }
+;
+
+// _syncTestModeSubmitLabel
+    UIController.prototype._syncTestModeSubmitLabel = function() {
+        if (this.confirmBtn && this.gameController && this.gameController.isTestMode()) {
+            const isEditing = this._editingTestFunctionIndex != null && this._editingTestFunctionIndex >= 0;
+            this.confirmBtn.textContent = isEditing ? '更新函数' : '绘制函数';
+        }
     }
 ;
 
@@ -1161,9 +1192,49 @@ if (typeof UIController === 'undefined') {
     }
 ;
 
+// _handleTestFunctionEdit
+    UIController.prototype._handleTestFunctionEdit = function(index) {
+        if (window.audioManager) window.audioManager.playClick();
+        const functions = this.gameController.getTestModeFunctions();
+        if (!functions || index < 0 || index >= functions.length) return;
+        const fn = functions[index];
+
+        // 进入编辑模式（记录被编辑的函数索引）
+        this._editingTestFunctionIndex = index;
+
+        // 回填表达式到输入框，光标置于末尾
+        this.currentExpression = fn.expression;
+        this.expressionElements = this.tokenizeExpression(fn.expression);
+        this.cursorIndex = this.expressionElements.length;
+        this.updateExpressionDisplay();
+
+        // 刷新面板（高亮被编辑项 + 确认按钮变「更新函数」）
+        this.renderTestFunctionPanel();
+
+        this.showMessage(`正在修改函数 ${fn.expression}，改完点击「更新函数」`, 'info');
+    }
+;
+
+// _cancelTestFunctionEdit
+    UIController.prototype._cancelTestFunctionEdit = function() {
+        if (this._editingTestFunctionIndex == null) return;
+        this._editingTestFunctionIndex = null;
+        // 刷新面板（去掉高亮 + 确认按钮恢复「绘制函数」）
+        this.renderTestFunctionPanel();
+    }
+;
+
 // _handleTestFunctionDelete
     UIController.prototype._handleTestFunctionDelete = function(index) {
         if (window.audioManager) window.audioManager.playClick();
+        // 删除正在编辑的函数则退出编辑；删除其前的函数则编辑索引前移
+        if (this._editingTestFunctionIndex != null) {
+            if (this._editingTestFunctionIndex === index) {
+                this._editingTestFunctionIndex = null;
+            } else if (index < this._editingTestFunctionIndex) {
+                this._editingTestFunctionIndex--;
+            }
+        }
         this.gameController.removeTestModeFunction(index);
         this.redrawTestModeFunctions();
     }
@@ -1174,6 +1245,8 @@ if (typeof UIController === 'undefined') {
         if (window.audioManager) window.audioManager.playClick();
         const functions = this.gameController.getTestModeFunctions();
         if (!functions || functions.length === 0) return;
+        // 清空全部时退出编辑模式
+        this._cancelTestFunctionEdit();
         this.gameController.clearTestModeFunctions();
         this.gridSystem.clearAll();
         this.redrawTestModeFunctions();

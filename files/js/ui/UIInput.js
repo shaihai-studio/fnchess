@@ -1103,6 +1103,10 @@ if (typeof UIController === 'undefined') {
         this.expressionElements = [];
         this.currentExpression = '';
         this.updateExpressionDisplay();
+        // 编辑模式下清空输入 = 取消编辑（幂等：未处于编辑时直接跳过）
+        if (this._editingTestFunctionIndex != null) {
+            this._cancelTestFunctionEdit();
+        }
     }
 ;
 

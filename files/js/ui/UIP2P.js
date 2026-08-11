@@ -54,6 +54,7 @@ if (typeof UIController === 'undefined') {
         const $ = id => document.getElementById(id);
         const cb = $('p2p-create-btn'); if (cb) cb.disabled = false;
         const jb = $('p2p-join-btn'); if (jb) jb.disabled = false;
+        const del = $('p2p-delete-btn'); if (del) del.style.display = 'none';
         const d = $('p2p-room-code-display'); if (d) d.style.display = 'none';
         const inp = $('p2p-room-input'); if (inp) inp.value = '';
         this._updateP2PStatus('idle', '准备就绪');
@@ -281,6 +282,7 @@ if (typeof UIController === 'undefined') {
             // 失败后恢复创建/加入按钮，避免永久卡死（需手动关闭弹窗才能重试）
             const cb = document.getElementById('p2p-create-btn'); if (cb) cb.disabled = false;
             const jb = document.getElementById('p2p-join-btn'); if (jb) jb.disabled = false;
+            const del = document.getElementById('p2p-delete-btn'); if (del) del.style.display = 'none';
         };
         // 游戏数据接收
         p2p.onGameAction = (action, payload) => {
@@ -361,6 +363,7 @@ if (typeof UIController === 'undefined') {
             createBtn.onclick = () => {
                 if (window.audioManager) window.audioManager.playClick();
                 createBtn.disabled = true;
+                const del = $('p2p-delete-btn'); if (del) del.style.display = '';
                 this._updateP2PStatus('creating', '正在创建房间...');
                 this.p2pController?.createRoom();
                 // 延迟读取 roomCode
@@ -381,6 +384,30 @@ if (typeof UIController === 'undefined') {
                     clearInterval(checkCode);
                     if (this._p2pCheckCodeInterval === checkCode) this._p2pCheckCodeInterval = null;
                 }, 15000);
+            };
+        }
+        // 删除房间（创建后裂分出现的按钮：销毁建房连接并恢复创建按钮）
+        const delBtn = $('p2p-delete-btn');
+        if (delBtn) {
+            delBtn.onclick = () => {
+                if (window.audioManager) window.audioManager.playClick();
+                // 对局已开始：走完整清理流程（含 ELO 结算），否则静默销毁建房连接
+                if (this._p2pMatchStarted) {
+                    this._cleanupP2P();
+                } else {
+                    if (this.p2pController) {
+                        try { this.p2pController.disconnect(); } catch (e) {}
+                        this.p2pController = null;
+                    }
+                    if (this._p2pCheckCodeInterval) {
+                        clearInterval(this._p2pCheckCodeInterval);
+                        this._p2pCheckCodeInterval = null;
+                    }
+                    const d = $('p2p-room-code-display'); if (d) d.style.display = 'none';
+                    this._updateP2PStatus('idle', '房间已删除');
+                }
+                createBtn.disabled = false;
+                delBtn.style.display = 'none';
             };
         }
         // 加入房间

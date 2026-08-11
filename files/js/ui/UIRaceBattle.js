@@ -45,8 +45,6 @@ UIController.prototype._ensureRaceBattleFields = function() {
     this.raceBattleDifficultyBadge = document.getElementById('race-battle-difficulty-badge');
     this.raceBattleRankedToggle = document.getElementById('race-battle-ranked-toggle');
     this.raceBattleRankedHint = document.getElementById('race-battle-ranked-hint');
-    this.raceBattleIntensityFill = document.getElementById('race-battle-intensity-fill');
-    this.raceBattleIntensityText = document.getElementById('race-battle-intensity-text');
     this.raceBattleMembers = document.getElementById('race-battle-members');
     this.raceBattleMembersCount = document.getElementById('race-battle-members-count');
     this.raceBattleStartBtn = document.getElementById('race-battle-start-btn');
@@ -56,8 +54,21 @@ UIController.prototype._ensureRaceBattleFields = function() {
     this.raceBattleJoinError = document.getElementById('race-battle-join-error');
     this.raceBattleTabs = {
         create: document.getElementById('race-battle-tab-create'),
-        join: document.getElementById('race-battle-tab-join')
+        join: document.getElementById('race-battle-tab-join'),
+        lobby: document.getElementById('race-battle-tab-lobby')
     };
+
+    // 匹配大厅字段
+    this.raceLobbyStatus = document.getElementById('race-lobby-status');
+    this.raceLobbyStatusText = document.getElementById('race-lobby-status');
+    this.raceLobbyList = document.getElementById('race-lobby-list');
+    this.raceLobbyCreateBtn = document.getElementById('race-lobby-create-btn');
+    this.raceLobbyDeleteBtn = document.getElementById('race-lobby-delete-btn');
+    this.raceLobbyLongLivedToggle = document.getElementById('race-lobby-long-lived-toggle');
+    this.raceLobbySpectateToggle = document.getElementById('race-lobby-spectate-toggle');
+    this.raceLobbyEloRangeWrap = document.getElementById('race-lobby-elo-range-wrap');
+    this.raceLobbyEloRangeToggle = document.getElementById('race-lobby-elo-range-toggle');
+    this.raceLobbyEloRangeInput = document.getElementById('race-lobby-elo-range-input');
 
     this.raceBattlePanel = document.getElementById('race-battle-panel');
     this.raceBattlePanelCode = document.getElementById('race-battle-panel-code');
@@ -79,7 +90,14 @@ UIController.prototype._ensureRaceBattleFields = function() {
     // 参数状态（建房）
     this._rbStamina = 1;      // 1..3
     this._rbDifficulty = 1;   // 1..7（受耐力上限联动）
-    this._rbRanked = true;
+    this._rbRanked = false;   // 竞速排位/休闲局（由打开弹窗前的模式选择决定）
+    // 大厅状态（竞速房大厅）
+    this._rbLobby = null;          // MatchLobbyController 实例
+    this._rbLobbyConnected = false;
+    this._rbLobbyRooms = [];
+    this._rbLobbyOpen = false;     // 本端是否在大厅登记了房间
+    this._rbCreateViaLobby = false; // 从大厅 tab 创建房间的标记（创建后停留在大厅 tab）
+    this._rbPendingLobbyHost = null; // 大厅 WS 未连接时暂存登记请求
     // 房间状态
     this._rbTab = 'create';
     this._rbMembers = [];
@@ -103,11 +121,40 @@ UIController.prototype._ensureRaceBattleFields = function() {
 
 UIController.prototype.openRaceBattleModal = function() {
     this._ensureRaceBattleFields();
+    // 竞速联机：先选排位/休闲模式
+    const sel = document.getElementById('p2p-mode-select-modal');
+    if (sel) {
+        sel._dismissBound = true;
+        sel._onEscDismiss = function() { this.hideModal(sel); }.bind(this);
+        const pick = (mode) => {
+            this._rbRanked = (mode === 'ranked');
+            this.hideModal(sel);
+            this._proceedRaceBattleModal();
+        };
+        const btnR = document.getElementById('p2p-mode-select-ranked');
+        const btnC = document.getElementById('p2p-mode-select-casual');
+        if (btnR) btnR.onclick = function() { if (window.audioManager) window.audioManager.playClick(); pick('ranked'); };
+        if (btnC) btnC.onclick = function() { if (window.audioManager) window.audioManager.playClick(); pick('casual'); };
+        this.showModal(sel);
+        return;
+    }
+    // fallback：弹窗不存在则跳过直接进
+    this._rbRanked = false;
+    this._proceedRaceBattleModal();
+};
+
+UIController.prototype._proceedRaceBattleModal = function() {
+    this._ensureRaceBattleFields();
     this._rbTab = 'create';
     this._rbMatchStarted = false;
     this._rbMembers = [];
     this._rbReadyMap = {};
     if (this._rbRoom) { try { this._rbRoom.disconnect(); } catch (e) {} this._rbRoom = null; }
+    // 重置创建/删除按钮：重新打开弹窗时旧房间已断开，创建按钮恢复可点、删除按钮隐藏
+    const rbCreateBtn = document.getElementById('race-battle-create-btn');
+    const rbDeleteBtn = document.getElementById('race-battle-delete-btn');
+    if (rbCreateBtn) rbCreateBtn.disabled = false;
+    if (rbDeleteBtn) rbDeleteBtn.style.display = 'none';
 
     this.hideRaceUI();
     if (this._raceSubmenu) this._raceSubmenu.style.display = '';
@@ -147,36 +194,48 @@ UIController.prototype.closeRaceBattleModal = function() {
         return;
     }
     this.hideModal('race-battle-modal');
+    this._closeRaceLobby();
 };
 
 UIController.prototype.raceBattleSwitchTab = function(tab) {
     this._ensureRaceBattleFields();
-    this._rbTab = (tab === 'join') ? 'join' : 'create';
-    const params = document.getElementById('race-battle-params');
-    const join = document.getElementById('race-battle-join');
+    if (tab === 'lobby') this._rbTab = 'lobby';
+    else if (tab === 'join') this._rbTab = 'join';
+    else this._rbTab = 'create';
+    const createContent = document.getElementById('race-battle-tab-create-content');
+    const joinContent = document.getElementById('race-battle-tab-join-content');
+    const lobbyContent = document.getElementById('race-battle-tab-lobby-content');
+    if (createContent) createContent.style.display = (this._rbTab === 'create') ? '' : 'none';
+    if (joinContent) joinContent.style.display = (this._rbTab === 'join') ? '' : 'none';
+    if (lobbyContent) lobbyContent.style.display = (this._rbTab === 'lobby') ? '' : 'none';
+    for (const key of ['create', 'join', 'lobby']) {
+        const b = this.raceBattleTabs[key];
+        if (b) b.classList.toggle('active', this._rbTab === key);
+    }
     if (this._rbTab === 'create') {
-        if (params) params.style.display = '';
-        if (join) join.style.display = 'none';
-        this.raceBattleTabs.create.classList.add('is-active');
-        this.raceBattleTabs.join.classList.remove('is-active');
-        this.raceBattleRoomCode.textContent = '------';
-        this._raceBattleSetStatus('idle', '请创建房间或输入房间码加入');
-    } else {
-        if (params) params.style.display = 'none';
-        if (join) join.style.display = '';
-        this.raceBattleTabs.join.classList.add('is-active');
-        this.raceBattleTabs.create.classList.remove('is-active');
+        if (!this._rbRoomOpen) {
+            this.raceBattleRoomCode.textContent = '------';
+            this._raceBattleSetStatus('idle', '请创建房间或输入房间码加入');
+        } else {
+            this._raceBattleSetStatus('connected', '房间已创建，等待其他玩家加入');
+        }
+    } else if (this._rbTab === 'join') {
         this._raceBattleSetStatus('idle', '输入 6 位房间码加入好友房间');
         if (this.raceBattleJoinInput) { this.raceBattleJoinInput.value = ''; this.raceBattleJoinInput.focus(); }
+    } else {
+        this._raceBattleSetStatus('idle', '匹配大厅：创建房间或从列表加入');
+        this._openRaceLobby();
     }
 };
 
 UIController.prototype._raceBattleSetStatus = function(kind, msg) {
     if (!this._rbReady) return;
     this.raceBattleStatusText.textContent = msg;
-    this.raceBattleStatusDot.classList.remove('is-connected', 'is-error');
-    if (kind === 'connected') this.raceBattleStatusDot.classList.add('is-connected');
-    if (kind === 'error') this.raceBattleStatusDot.classList.add('is-error');
+    this.raceBattleStatusDot.classList.remove('idle', 'connected', 'waiting', 'error', 'creating', 'joining', 'disconnected');
+    if (kind === 'connected') this.raceBattleStatusDot.classList.add('connected');
+    else if (kind === 'error') this.raceBattleStatusDot.classList.add('error');
+    else if (kind === 'connecting') this.raceBattleStatusDot.classList.add('waiting');
+    else this.raceBattleStatusDot.classList.add('idle');
 };
 
 // ─── 参数：耐力 / 难度 / 排位 / 强度预览 ────────────────────────
@@ -197,40 +256,26 @@ UIController.prototype.raceBattleStepDifficulty = function(delta) {
     this.raceBattleRenderParams();
 };
 
-UIController.prototype.raceBattleToggleRanked = function() {
-    this._ensureRaceBattleFields();
-    this._rbRanked = !!this.raceBattleRankedToggle.checked;
-    this.raceBattleRenderParams();
-};
-
 UIController.prototype.raceBattleRenderParams = function() {
     this._ensureRaceBattleFields();
     const n = RACE_BATTLE_STAMINA[this._rbStamina - 1].levels;
-    this.raceBattleStaminaDots.innerHTML = '';
-    for (let i = 0; i < 10; i++) {
-        const d = document.createElement('span');
-        d.className = 'race-battle-dot' + (i < n ? ' is-on' : '');
-        this.raceBattleStaminaDots.appendChild(d);
-    }
+    this.raceBattleStaminaDots.textContent = n + ' 关';
     const df = RACE_BATTLE_DIFFICULTIES[this._rbDifficulty - 1];
     this.raceBattleDifficultyBadge.textContent = df.name;
-    this.raceBattleDifficultyBadge.className = 'race-battle-difficulty-badge ' + df.cls;
-    this.raceBattleRankedToggle.checked = this._rbRanked;
-    this.raceBattleRankedHint.textContent = this._rbRanked ? '对局结束后增减积分' : '休闲对局，不增减积分';
-    this.raceBattleRankTag.classList.toggle('is-ranked', this._rbRanked);
-    this.raceBattleRankTag.textContent = this._rbRanked ? '排位局 · 增减积分' : '休闲局 · 不增减积分';
+    this.raceBattleDifficultyBadge.className = 'stepper-value';
+    // 竞速排位/休闲局：段位标签按选中模式动态显示
+    if (this.raceBattleRankTag) {
+        if (this._rbRanked) {
+            this.raceBattleRankTag.classList.add('is-ranked');
+            this.raceBattleRankTag.textContent = '排位局 · 计竞速积分';
+        } else {
+            this.raceBattleRankTag.classList.remove('is-ranked');
+            this.raceBattleRankTag.textContent = '休闲局 · 不增减积分';
+        }
+    }
     // 访客只读：房间已开且非房主时禁用参数操作
-    const params = document.getElementById('race-battle-params');
+    const params = document.querySelector('.p2p-selectors-left');
     if (params) params.classList.toggle('is-readonly', !this._rbIsHost && this._rbRoomOpen);
-    this.raceBattleRenderIntensity();
-};
-
-UIController.prototype.raceBattleRenderIntensity = function() {
-    if (!this._rbReady || !this.raceBattleIntensityText) return;
-    const levels = RACE_BATTLE_STAMINA[this._rbStamina - 1].levels;
-    const df = RACE_BATTLE_DIFFICULTIES[this._rbDifficulty - 1];
-    this.raceBattleIntensityText.textContent = (levels * 10) + ' 题 · ' + df.name + '局';
-    this.raceBattleIntensityFill.style.width = (this._rbDifficulty / 7 * 100) + '%';
 };
 
 UIController.prototype.raceBattleCopyCode = function() {
@@ -250,11 +295,15 @@ UIController.prototype.raceBattleCopyCode = function() {
 };
 // ─── 建房 / 加入 ────────────────────────────────────────────────
 
-UIController.prototype.raceBattleCreateRoom = function() {
+UIController.prototype.raceBattleCreateRoom = function(optCode) {
     this._ensureRaceBattleFields();
+    const createBtn = document.getElementById('race-battle-create-btn');
+    const deleteBtn = document.getElementById('race-battle-delete-btn');
+    if (createBtn) createBtn.disabled = true;
+    if (deleteBtn) deleteBtn.style.display = '';
     if (this._rbRoom && this._rbRoom.isHost && this._rbRoomOpen) return;
-    const code = String(Math.floor(100000 + Math.random() * 900000));
-    const nickname = (this.getPlayerNickname && this.getPlayerNickname()) || '玩家';
+    const code = optCode || String(Math.floor(100000 + Math.random() * 900000));
+    const nickname = (typeof PlayerProfile !== 'undefined' && PlayerProfile.getNickname ? (PlayerProfile.getNickname() || '') : '') || '玩家';
     this.raceBattleRoomCode.textContent = code;
     this._raceBattleSetStatus('connecting', '正在创建房间…');
     this._rbIsHost = true;
@@ -263,8 +312,15 @@ UIController.prototype.raceBattleCreateRoom = function() {
     if (!this._rbRoom) this._rbRoom = new RaceRoomController();
     const room = this._rbRoom;
     this._bindRaceBattleRoomCallbacks(room);
-    room.createRoom({ roomCode: code, maxPlayers: 4, playerId: this._rbMyId, nickname }).then((ok) => {
-        if (!ok) this._raceBattleSetStatus('error', '房间创建失败，请检查网络后重试');
+    return room.createRoom({ roomCode: code, maxPlayers: 4, playerId: this._rbMyId, nickname }).then((ok) => {
+        if (!ok) {
+            if (createBtn) createBtn.disabled = false;
+            if (deleteBtn) deleteBtn.style.display = 'none';
+            if (this.raceLobbyCreateBtn) { this.raceLobbyCreateBtn.disabled = false; this.raceLobbyCreateBtn.style.display = ''; }
+            if (this.raceLobbyDeleteBtn) this.raceLobbyDeleteBtn.style.display = 'none';
+            this._raceBattleSetStatus('error', '房间创建失败，请检查网络后重试');
+        }
+        return ok;
     });
 };
 
@@ -280,7 +336,7 @@ UIController.prototype.raceBattleJoinRoom = function() {
     this._raceBattleSetStatus('connecting', '正在连接房间…');
     this._rbIsHost = false;
     this._rbMyId = 'raceguest_' + Math.random().toString(36).substr(2, 9);
-    const nickname = (this.getPlayerNickname && this.getPlayerNickname()) || '玩家';
+    const nickname = (typeof PlayerProfile !== 'undefined' && PlayerProfile.getNickname ? (PlayerProfile.getNickname() || '') : '') || '玩家';
 
     if (!this._rbRoom) this._rbRoom = new RaceRoomController();
     const room = this._rbRoom;
@@ -298,7 +354,15 @@ UIController.prototype._bindRaceBattleRoomCallbacks = function(room) {
             this._rbRoomOpen = true;
             this._raceBattleSetStatus('connected', msg || '已连接');
             if (this._rbIsHost) {
-                this.raceBattleSwitchTab('create');
+                if (this._rbCreateViaLobby) {
+                    // 从大厅创建：留在大厅 tab（可立即看到"删除"按钮）
+                    this._rbCreateViaLobby = false;
+                } else {
+                    this.raceBattleSwitchTab('create');
+                }
+                // 始终显示六位房间码
+                const disp = document.getElementById('race-battle-room-code-display');
+                if (disp) disp.style.display = '';
                 this.raceBattleMembersCount.textContent = '1/4';
             }
         } else if (status === 'error') {
@@ -309,10 +373,17 @@ UIController.prototype._bindRaceBattleRoomCallbacks = function(room) {
     };
     room.onMembersUpdate = (members) => {
         this._rbMembers = members.slice();
+        // 同步 _rbReadyMap：继承已有就绪状态，新增成员默认 false
+        const prev = this._rbReadyMap || {};
+        this._rbReadyMap = {};
+        members.forEach((m) => {
+            this._rbReadyMap[m.playerId] = m.isHost ? true : !!prev[m.playerId];
+        });
         this.raceBattleRenderMembers();
     };
     room.onMemberJoined = (member) => {
         this._rbMembers.push(member);
+        this._rbReadyMap[member.playerId] = false;
         this.raceBattleRenderMembers();
         if (this.playUIButtonSound) this.playUIButtonSound();
         this.raceBattleToast(member.nickname + ' 加入了房间');
@@ -374,10 +445,10 @@ UIController.prototype.raceBattleRenderMembers = function() {
     const list = this._rbMembers;
     this.raceBattleMembersCount.textContent = list.length + '/4';
 
-    const allReady = list.length >= 2 && list.every((m) => this._rbReadyMap[m.playerId]);
+    const allReady = list.length >= 2 && list.every((m) => m.isHost || this._rbReadyMap[m.playerId]);
     this.raceBattleStartBtn.disabled = this._rbMatchStarted || !allReady;
-    if (list.length < 2) this.raceBattleStartBtn.textContent = '开始竞速（等待更多玩家）';
-    else if (!allReady) this.raceBattleStartBtn.textContent = '开始竞速（等待全员就绪）';
+    if (list.length < 2) this.raceBattleStartBtn.textContent = '等待玩家...';
+    else if (!allReady) this.raceBattleStartBtn.textContent = '等待就绪...';
     else this.raceBattleStartBtn.textContent = '开始竞速';
 
     if (list.length === 0) return;
@@ -450,15 +521,19 @@ UIController.prototype.raceBattleToggleReady = function() {
 
 UIController.prototype.raceBattleKickMember = function(playerId) {
     if (!this._rbRoom || !this._rbIsHost) return;
-    this._rbRoom.send({ type: 'race_battle_kick', targetId: playerId }, false);
-    const member = this._rbMembers.find((m) => m.playerId === playerId);
-    if (member) this.raceBattleToast(member.nickname + ' 已被移出房间');
+    var member = this._rbMembers.find(function(m) { return m.playerId === playerId; });
+    if (member) {
+        this.raceBattleToast(member.nickname + ' 已被移出房间');
+    }
+    // RaceRoomController 负责关闭连接 + 广播 + 禁止重入
+    this._rbRoom.kickMember(playerId);
+    // onMemberLeft 回调会自动更新 _rbMembers 与 DOM，此处不需要手动操作
 };
 
 UIController.prototype.raceBattleStart = function() {
     if (!this._rbRoom || !this._rbIsHost) return;
     const list = this._rbMembers;
-    if (list.length < 2 || !list.every((m) => this._rbReadyMap[m.playerId])) return;
+    if (list.length < 2 || !list.every((m) => m.isHost || this._rbReadyMap[m.playerId])) return;
     const levels = RACE_BATTLE_STAMINA[this._rbStamina - 1].levels;
     const params = {
         type: 'race_battle_params',
@@ -472,6 +547,13 @@ UIController.prototype.raceBattleStart = function() {
     };
     this._rbGameParams = params;
     this._rbRoom.send(params, true);
+    // 竞速房开局：通知大厅移除房间（竞速房暂不支持观战，不保留在大厅）
+    if (this._rbLobby && this._rbLobbyOpen) {
+        try { this._rbLobby.notifyStarted(this._rbLobby.myRoomCode, false); } catch (e) {}
+        this._rbLobbyOpen = false;
+        if (this.raceLobbyCreateBtn) this.raceLobbyCreateBtn.style.display = '';
+        if (this.raceLobbyDeleteBtn) this.raceLobbyDeleteBtn.style.display = 'none';
+    }
     this.raceBattleStartMatch(params);
 };
 
@@ -488,11 +570,14 @@ UIController.prototype._raceBattleBuildSeeds = function(startLevel, levels) {
 
 UIController.prototype.raceBattleConfirmLeave = function() {
     this._ensureRaceBattleFields();
+    if (!this.raceBattleExitModal) return;
     const isRanked = this._rbRanked && this._rbMatchStarted;
     const p = this.raceBattleExitModal.querySelector('p');
-    p.textContent = isRanked
-        ? '确定要退出当前竞速对局吗？退出后本局判负并扣除积分。'
-        : '确定要离开房间吗？';
+    if (p) {
+        p.textContent = isRanked
+            ? '确定要退出当前竞速对局吗？退出后本局判负并扣除积分。'
+            : '确定要离开房间吗？';
+    }
     this.raceBattleExitModal.style.display = 'flex';
 };
 
@@ -515,9 +600,50 @@ UIController.prototype.raceBattleDoLeave = function() {
     this._rbMembers = [];
     this._rbReadyMap = {};
     this.raceIsMultiplayer = false; // 离开多人模式，恢复单人竞速记录
+    this._closeRaceLobby();
     this.raceBattleStopMatchUI();
     this.raceBattleHidePanel();
     this.hideModal('race-battle-modal');
+    // 房主退出对战 → 必须返回主菜单，否则停留在棋盘界面卡死
+    this.hideModal('race-mode-select-modal');
+    this.showModal('start-modal');
+    const createBtn = document.getElementById('race-battle-create-btn');
+    const deleteBtn = document.getElementById('race-battle-delete-btn');
+    if (createBtn) createBtn.disabled = false;
+    if (deleteBtn) deleteBtn.style.display = 'none';
+};
+/** 创建tab上的"删除房间"按钮：只清理房间连接 + 恢复UI，不离屏不回主页 */
+UIController.prototype.raceBattleDeleteRoom = function() {
+    this._ensureRaceBattleFields();
+    if (this._rbRoom) {
+        try {
+            if (this._rbIsHost) this._rbRoom.send({ type: 'race_battle_dissolve' }, true);
+            this._rbRoom.disconnect();
+        } catch (e) {}
+        this._rbRoom = null;
+    }
+    this._rbRoomOpen = false;
+    this._rbMatchStarted = false;
+    this._rbMembers = [];
+    this._rbReadyMap = {};
+    this.raceIsMultiplayer = false;
+    this.raceBattleStopMatchUI();
+    this.raceBattleHidePanel();
+    // 2026-08-11 修复：清空 _rbMembers 后必须重渲染成员列表 DOM，
+    // 否则删除房间后成员列表仍残留"房主自己"的行
+    this.raceBattleRenderMembers();
+    // 恢复状态提示
+    this._raceBattleSetStatus('idle', '未连接');
+    // 恢复创建/删除按钮
+    const createBtn = document.getElementById('race-battle-create-btn');
+    const deleteBtn = document.getElementById('race-battle-delete-btn');
+    if (createBtn) createBtn.disabled = false;
+    if (deleteBtn) deleteBtn.style.display = 'none';
+    // 隐藏房间码展示区（如果可见）
+    const codeDisplay = document.getElementById('race-battle-room-code-display');
+    if (codeDisplay) codeDisplay.style.display = 'none';
+    // 如果同时在大厅也创建了房间，也给清理掉
+    this._closeRaceLobby();
 };
 // ─── 对局进度面板 ───────────────────────────────────────────────
 
@@ -569,8 +695,10 @@ UIController.prototype.raceBattleRenderProgress = function(progressMap) {
     });
 
     const times = list.map((item) => item.data.times || []);
+    // 时间列数 = 耐力对应关卡数（耐力1级=3、2级=5、3级=10），不写死 10
+    const totalLevels = (this._rbGameParams && this._rbGameParams.levels) || 3;
     const bestPerLevel = [];
-    for (let lv = 0; lv < 10; lv++) {
+    for (let lv = 0; lv < totalLevels; lv++) {
         let best = Infinity;
         times.forEach((t) => { if (t[lv] && t[lv] < best) best = t[lv]; });
         bestPerLevel.push(best);
@@ -610,17 +738,16 @@ UIController.prototype.raceBattleRenderProgress = function(progressMap) {
             state.textContent = '已完成 · ' + this._raceBattleFmtTime(d.finishTime);
             state.classList.add('is-green');
         } else {
-            const totalLevels = (this._rbGameParams && this._rbGameParams.levels) || d.totalLevels || 3;
             state.textContent = '第' + (d.level || 1) + '/' + totalLevels + '关 第' + (d.puzzle || 0) + '/10题';
             state.classList.add('is-green');
         }
         row.appendChild(state);
 
-        // 10 关时间列
+        // 时间列（按耐力关卡数）
         const timesWrap = document.createElement('span');
         timesWrap.className = 'race-battle-times';
         const t = d.times || [];
-        for (let lv = 0; lv < 10; lv++) {
+        for (let lv = 0; lv < totalLevels; lv++) {
             const cell = document.createElement('span');
             cell.className = 'race-battle-time';
             const v = t[lv];
@@ -771,23 +898,10 @@ UIController.prototype.raceBattleToast = function(text) {
     }, 2200);
 };
 
-// ─── 对局背景：光带 + 速度线 ────────────────────────────────────
+// ─── 对局背景：光带 + 速度线（2026-08-11 用户要求移除：全屏特效遮挡棋盘视线）──
 
 UIController.prototype.raceBattleShowBackground = function() {
-    if (!this._rbReady) return;
-    if (document.getElementById('race-battle-bg')) return;
-    const bg = document.createElement('div');
-    bg.className = 'race-battle-bg';
-    bg.id = 'race-battle-bg';
-    for (let i = 0; i < 7; i++) {
-        const line = document.createElement('span');
-        line.className = 'rb-speed-line';
-        line.style.top = (8 + Math.random() * 84) + '%';
-        line.style.animationDuration = (3 + Math.random() * 4) + 's';
-        line.style.animationDelay = (Math.random() * 4) + 's';
-        bg.appendChild(line);
-    }
-    document.body.appendChild(bg);
+    // 已按用户要求移除全屏场地特效（深色渐变光带 + 速度线），不再创建。
 };
 
 UIController.prototype.raceBattleHideBackground = function() {
@@ -904,8 +1018,11 @@ UIController.prototype.raceBattleBackToMenu = function() {
     this._rbMembers = [];
     this._rbReadyMap = {};
     this.raceIsMultiplayer = false; // 返回主菜单，恢复单人竞速记录
+    this._closeRaceLobby();
     this.raceBattleHidePanel();
-    // 返回竞速主菜单（重新打开模式选择弹窗，落主界面）
+    // 返回主界面：先关闭竞速弹窗再打开主菜单（start-modal 常驻显示，showModal 对已显示弹窗会直接忽略）
+    this.hideModal('race-battle-modal');
+    this.hideModal('race-mode-select-modal');
     this.showModal('start-modal');
 };
 
@@ -1059,8 +1176,8 @@ UIController.prototype.initRaceBattleUI = function() {
     bind('race-battle-stamina-plus', () => this.raceBattleStepStamina(1));
     bind('race-battle-difficulty-minus', () => this.raceBattleStepDifficulty(-1));
     bind('race-battle-difficulty-plus', () => this.raceBattleStepDifficulty(1));
-    bind('race-battle-ranked-toggle', () => this.raceBattleToggleRanked());
     bind('race-battle-create-btn', () => this.raceBattleCreateRoom());
+    bind('race-battle-delete-btn', () => this.raceBattleDeleteRoom());
     bind('race-battle-join-btn', () => this.raceBattleJoinRoom());
     bind('race-battle-start-btn', () => this.raceBattleStart());
     bind('race-battle-leave-btn', () => this.raceBattleConfirmLeave());
@@ -1069,6 +1186,10 @@ UIController.prototype.initRaceBattleUI = function() {
     bind('race-battle-panel-exit', () => this.raceBattleConfirmLeave());
     bind('race-battle-rematch-btn', () => this.raceBattleRematch());
     bind('race-battle-back-btn', () => this.raceBattleBackToMenu());
+    bind('race-battle-tab-lobby', () => this.raceBattleSwitchTab('lobby'));
+    bind('race-lobby-create-btn', () => this._createRaceLobbyRoom());
+    bind('race-lobby-delete-btn', () => this._deleteRaceLobbyRoom());
+    bind('race-battle-home-btn', () => this.raceBattleBackToMenu());
 
     const joinInput = document.getElementById('race-battle-join-input');
     if (joinInput) {
@@ -1231,7 +1352,7 @@ UIController.prototype._rbUpdateSelfProgress = function() {
         finished: this._rbFinished,
         finishTime: this._rbFinishTime,
         disconnected: false,
-        nickname: (this.getPlayerNickname && this.getPlayerNickname()) || '玩家'
+        nickname: (typeof PlayerProfile !== 'undefined' && PlayerProfile.getNickname ? (PlayerProfile.getNickname() || '') : '') || '玩家'
     };
     this.raceBattleRenderProgress();
 };
@@ -1242,7 +1363,8 @@ UIController.prototype._rbBroadcastProgress = function() {
     this._rbRoom.send({
         type: 'race_battle_progress',
         level: p.level, puzzle: p.puzzle,
-        times: p.times, elapsed: this._rbMyElapsed
+        times: p.times, elapsed: this._rbMyElapsed,
+        finished: p.finished, disconnected: p.disconnected
     }, false);
 };
 
@@ -1258,6 +1380,8 @@ UIController.prototype._rbHandleProgressMsg = function(payload, fromPlayerId) {
     if (payload.puzzle != null) p.puzzle = payload.puzzle;
     if (payload.times) p.times = payload.times.slice();
     if (payload.elapsed != null) p.elapsed = payload.elapsed;
+    if (payload.finished != null) p.finished = payload.finished;
+    if (payload.disconnected != null) p.disconnected = payload.disconnected;
     const member = this._rbMembers.find((m) => m.playerId === fromPlayerId);
     if (member) p.nickname = member.nickname;
     this.raceBattleRenderProgress();
@@ -1433,5 +1557,232 @@ UIController.prototype._rbHandleMemberLeftInMatch = function(member) {
 UIController.prototype._rbHandleReconnected = function() {
     this._rbBroadcastProgress();
     this.raceBattleToast('已重新连接');
+};
+
+// ═══════════════ 匹配大厅（竞速房大厅列表）════════════════════════
+
+/** 确保 MatchLobbyController 存在并绑定回调（currentLobbyMode='race' 只显示竞速房） */
+UIController.prototype._ensureRaceLobby = function() {
+    if (this._rbLobby) return this._rbLobby;
+    const lobby = new MatchLobbyController({
+        onConnectionChange: (connected) => {
+            this._rbLobbyConnected = connected;
+            if (connected) {
+                this._raceLobbySetStatus('connected', '已连接大厅');
+                // 处理挂起的大厅登记请求（WS 刚连上时补发）
+                if (this._rbPendingLobbyHost) {
+                    const pending = this._rbPendingLobbyHost;
+                    this._rbPendingLobbyHost = null;
+                    pending.lobby.hostRegister(pending.opts);
+                }
+            } else {
+                this._raceLobbySetStatus('idle', '未连接');
+            }
+        },
+        onRoomsUpdate: (rooms) => {
+            this._rbLobbyRooms = Array.isArray(rooms) ? rooms.filter((r) => r && r.isRace) : [];
+            this._renderRaceLobbyRooms();
+        },
+        onHostRegistered: (code) => {
+            this._rbLobbyOpen = true;
+            this._raceLobbySetStatus('connected', '房间已创建，等待玩家加入');
+            if (this.raceLobbyCreateBtn) this.raceLobbyCreateBtn.disabled = true;
+            if (this.raceLobbyDeleteBtn) this.raceLobbyDeleteBtn.style.display = '';
+            if (this.raceBattleRoomCode) this.raceBattleRoomCode.textContent = code;
+            const disp = document.getElementById('race-battle-room-code-display');
+            if (disp) disp.style.display = '';
+            this._renderRaceLobbyRooms();
+        },
+        onGuestJoining: (code, info) => {
+            if (info && info.nickname) {
+                this._raceLobbySetStatus('connected', `${info.nickname} 加入房间（${info.currentPlayers}/${info.maxPlayers}）`);
+            }
+        },
+        onGuestLeft: (code, info) => {
+            if (info && info.nickname) this._raceLobbySetStatus('connected', `${info.nickname} 离开房间`);
+        },
+        onJoinAccepted: (code) => {
+            // 竞速房先到先得：服务器已放行 → 走常规加入流程建立 PeerJS 连接
+            this._raceLobbySetStatus('connected', '已获准加入，正在建立连接…');
+            if (this.raceBattleJoinInput) this.raceBattleJoinInput.value = String(code);
+            this.raceBattleJoinRoom();
+        },
+        onJoinRejected: (code, reason) => {
+            this._raceLobbySetStatus('error', this._raceLobbyReasonText(reason));
+            this._renderRaceLobbyRooms();
+        },
+        onHostRoomExpired: () => {
+            this._rbLobbyOpen = false;
+            if (this.raceLobbyCreateBtn) { this.raceLobbyCreateBtn.disabled = false; this.raceLobbyCreateBtn.style.display = ''; }
+            if (this.raceLobbyDeleteBtn) this.raceLobbyDeleteBtn.style.display = 'none';
+            this._raceLobbySetStatus('idle', '房间已到期，请重新创建');
+            this._renderRaceLobbyRooms();
+        }
+    });
+    lobby.currentLobbyMode = 'race';
+    this._rbLobby = lobby;
+    return lobby;
+};
+
+/** 打开大厅 tab：连接大厅并刷新房间列表 */
+UIController.prototype._openRaceLobby = function() {
+    this._ensureRaceBattleFields();
+    const lobby = this._ensureRaceLobby();
+    if (this._rbLobbyOpen) {
+        if (this.raceLobbyCreateBtn) this.raceLobbyCreateBtn.disabled = true;
+        if (this.raceLobbyDeleteBtn) this.raceLobbyDeleteBtn.style.display = '';
+    }
+    if (!this._rbLobbyConnected) {
+        this._raceLobbySetStatus('connecting', '连接大厅中…');
+        lobby.connect();
+    } else {
+        lobby.fetchRooms();
+    }
+};
+
+/** 关闭大厅：取消登记并断开连接 */
+UIController.prototype._closeRaceLobby = function() {
+    if (!this._rbLobby) return;
+    try {
+        if (this._rbLobbyOpen) this._rbLobby.cancelHost(this._rbLobby.myRoomCode);
+        this._rbLobby.disconnect();
+    } catch (e) {}
+    this._rbLobby = null;
+    this._rbLobbyConnected = false;
+    this._rbLobbyOpen = false;
+    this._rbLobbyRooms = [];
+    this._renderRaceLobbyRooms();
+    if (this.raceLobbyCreateBtn) { this.raceLobbyCreateBtn.disabled = false; this.raceLobbyCreateBtn.style.display = ''; }
+    if (this.raceLobbyDeleteBtn) this.raceLobbyDeleteBtn.style.display = 'none';
+    this._raceLobbySetStatus('idle', '未连接');
+};
+
+/** 状态条（颜色用内联样式，不依赖外部 CSS 类） */
+UIController.prototype._raceLobbySetStatus = function(kind, text) {
+    if (!this.raceLobbyStatus) return;
+    const txt = this.raceLobbyStatus.querySelector('.lobby-status-text');
+    if (!txt) return;
+    txt.textContent = text || '';
+    const colors = { connected: '#2ecc71', connecting: '#f1c40f', error: '#e74c3c' };
+    txt.style.color = colors[kind] || '';
+};
+
+/** 拒绝原因文案 */
+UIController.prototype._raceLobbyReasonText = function(reason) {
+    const map = {
+        room_not_available: '房间不可用或已开局',
+        room_expired: '房间已过期',
+        room_full: '房间已满员',
+        already_joined: '你已在该房间中',
+        mode_mismatch: '模式不匹配',
+        elo_range: '段位差距超出房间限制'
+    };
+    return map[reason] || ('加入失败：' + (reason || '未知原因'));
+};
+
+/** HTML 转义 */
+UIController.prototype._rbEscapeHtml = function(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    })[c]);
+};
+
+/** 渲染大厅房间列表 */
+UIController.prototype._renderRaceLobbyRooms = function() {
+    const el = this.raceLobbyList;
+    if (!el) return;
+    const rooms = this._rbLobbyRooms || [];
+    if (!this._rbLobbyConnected) {
+        el.innerHTML = '<div class="lobby-empty">大厅未连接</div>';
+        return;
+    }
+    if (!rooms.length) {
+        el.innerHTML = '<div class="lobby-empty">暂无等待中的竞速房间<br>点击上方「创建房间（进大厅）」登记你的房间</div>';
+        return;
+    }
+    const diffNames = ['简单', '普通', '困难', '极难', '地狱', '噩梦', '深渊'];
+    const items = rooms.map((r) => {
+        const opts = r.options || {};
+        const st = opts.stamina || 1;
+        const df = opts.difficulty || 1;
+        const diffName = diffNames[df - 1] || ('Lv.' + df);
+        const players = `${r.currentPlayers}/${r.maxPlayers}`;
+        const host = this._rbEscapeHtml(r.hostNickname || '房主');
+        return `<div class="lobby-room-row">
+            <div class="lobby-room-info">
+                <span class="lobby-room-code">${r.code}</span>
+                <span class="lobby-room-desc">${players} 人 · 耐力 ${st} · ${diffName}</span>
+                <span class="lobby-room-host">${host}</span>
+            </div>
+            <button class="btn btn-small lobby-join-btn" data-code="${r.code}">加入</button>
+        </div>`;
+    }).join('');
+    el.innerHTML = items;
+    el.querySelectorAll('.lobby-join-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            if (window.audioManager) window.audioManager.playClick();
+            const code = btn.getAttribute('data-code');
+            if (code) this._joinRaceLobbyRoom(code);
+        });
+    });
+};
+
+/** 房主：创建房间并登记进大厅 */
+UIController.prototype._createRaceLobbyRoom = function() {
+    this._ensureRaceBattleFields();
+    if (this.raceLobbyCreateBtn) this.raceLobbyCreateBtn.disabled = true;
+    if (this.raceLobbyDeleteBtn) this.raceLobbyDeleteBtn.style.display = '';
+    var self = this;
+    var doRegister = function(roomCode) {
+        var lobby = self._ensureRaceLobby();
+        var opts = {
+            mode: 'race',
+            maxPlayers: 4,
+            roomCode: roomCode,
+            longLived: !!(self.raceLobbyLongLivedToggle && self.raceLobbyLongLivedToggle.checked),
+            stamina: self._rbStamina,
+            difficulty: self._rbDifficulty
+        };
+        if (lobby.isConnected) {
+            lobby.hostRegister(opts);
+        } else {
+            self._raceLobbySetStatus('connecting', '等待大厅连接…');
+            self._rbPendingLobbyHost = { lobby: lobby, opts: opts };
+            lobby.connect(); // 主动发起大厅 WS 连接，避免登记请求永久挂起
+        }
+    };
+    var roomCode;
+    if (this._rbRoom && this._rbRoom.isHost && this._rbRoomOpen) {
+        this._raceLobbySetStatus('connecting', '已在房间中，正在登记大厅…');
+        doRegister(this._rbRoom.roomCode);
+    } else {
+        this._rbCreateViaLobby = true;
+        roomCode = String(Math.floor(100000 + Math.random() * 900000));
+        var ready = this.raceBattleCreateRoom(roomCode);
+        if (ready && ready.then) {
+            ready.then(function(ok) {
+                if (ok) doRegister(roomCode);
+            });
+        }
+    }
+};
+
+/** 房主：删除登记的房间（从大厅移除） */
+UIController.prototype._deleteRaceLobbyRoom = function() {
+    if (!this._rbLobby || !this._rbLobbyOpen) return;
+    this._rbLobby.cancelHost(this._rbLobby.myRoomCode);
+    this._rbLobbyOpen = false;
+    if (this.raceLobbyCreateBtn) { this.raceLobbyCreateBtn.disabled = false; this.raceLobbyCreateBtn.style.display = ''; }
+    if (this.raceLobbyDeleteBtn) this.raceLobbyDeleteBtn.style.display = 'none';
+    this._raceLobbySetStatus('idle', '已从大厅移除房间');
+    this._renderRaceLobbyRooms();
+};
+
+/** 访客：从大厅列表加入房间 */
+UIController.prototype._joinRaceLobbyRoom = function(code) {
+    this._ensureRaceBattleFields();
+    if (!this._rbLobby) return;
+    this._raceLobbySetStatus('connecting', '正在申请加入…');
+    this._rbLobby.joinRoom(code);
 };
 

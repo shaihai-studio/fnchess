@@ -347,37 +347,71 @@ if (typeof UIController === 'undefined') {
         this.lockZoomButtons();
 
         try {
-            // 检查是否已存在相同的函数
             const existingFunctions = this.gameController.getTestModeFunctions();
-            if (existingFunctions.some(f => f.expression === expression)) {
+            const editingIndex = (this._editingTestFunctionIndex != null) ? this._editingTestFunctionIndex : -1;
+            const isEditing = editingIndex >= 0 && editingIndex < existingFunctions.length;
+
+            // 编辑模式：表达式未变化时直接退出编辑
+            if (isEditing && existingFunctions[editingIndex].expression === expression) {
+                this._cancelTestFunctionEdit();
+                this.clearExpression();
+                this.showMessage('函数未修改', 'info');
+                return;
+            }
+
+            // 检查是否已存在相同的函数（编辑模式排除被编辑项本身）
+            if (existingFunctions.some((f, i) => i !== editingIndex && f.expression === expression)) {
                 this.showMessage('该函数已存在', 'error');
-                this.isRenderingTestFunction = false;
-                this.unlockZoomButtons();
                 return;
             }
 
             await this.prepareRenderCanvas();
 
-            // 绘制函数（使用不同颜色，测试模式无光晕）
-            const color = this.getTestModeColor();
-            const points = await this.renderer.drawFunction(expression, true, color, true);
+            if (isEditing) {
+                // 编辑模式：用原函数颜色绘制新表达式
+                const color = existingFunctions[editingIndex].color || this.getTestModeColor();
+                const points = await this.renderer.drawFunction(expression, true, color, true);
 
-            if (points && points.length > 0) {
-                // 保存函数
-                this.gameController.addTestModeFunction(expression, color);
+                if (points && points.length > 0) {
+                    // 更新函数（保留原颜色）
+                    this.gameController.updateTestModeFunction(editingIndex, expression);
 
-                // 清空当前表达式
-                this.clearExpression();
+                    // 退出编辑模式并清空表达式
+                    this._cancelTestFunctionEdit();
+                    this.clearExpression();
 
-                // 重新绘制所有测试模式函数，避免新函数绘制时把旧函数覆盖掉
-                await this.redrawTestModeFunctions();
+                    // 重新绘制所有测试模式函数，避免新函数绘制时把旧函数覆盖掉
+                    await this.redrawTestModeFunctions();
 
-                // 渲染后再刷新一次，确保调试层/曲线层都稳定显示
-                await this.postRenderRefresh();
+                    // 渲染后再刷新一次，确保调试层/曲线层都稳定显示
+                    await this.postRenderRefresh();
 
-                this.showMessage(`函数已绘制: ${expression}`, 'success');
+                    this.showMessage(`函数已更新: ${expression}`, 'success');
+                } else {
+                    this.showMessage('函数绘制失败，请检查表达式', 'error');
+                }
             } else {
-                this.showMessage('函数绘制失败，请检查表达式', 'error');
+                // 新增函数（使用不同颜色，测试模式无光晕）
+                const color = this.getTestModeColor();
+                const points = await this.renderer.drawFunction(expression, true, color, true);
+
+                if (points && points.length > 0) {
+                    // 保存函数
+                    this.gameController.addTestModeFunction(expression, color);
+
+                    // 清空当前表达式
+                    this.clearExpression();
+
+                    // 重新绘制所有测试模式函数，避免新函数绘制时把旧函数覆盖掉
+                    await this.redrawTestModeFunctions();
+
+                    // 渲染后再刷新一次，确保调试层/曲线层都稳定显示
+                    await this.postRenderRefresh();
+
+                    this.showMessage(`函数已绘制: ${expression}`, 'success');
+                } else {
+                    this.showMessage('函数绘制失败，请检查表达式', 'error');
+                }
             }
         } catch (error) {
             this.showMessage('函数计算错误: ' + error.message, 'error');

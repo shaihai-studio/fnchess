@@ -116,6 +116,9 @@ class RaceRoomController {
         // ── 房间解散标记 ─────────────────────────────────────
         this._roomClosed = false;
 
+        // ── 已踢出玩家 ID 集合（host only，防止重入） ──────────
+        this._kickedPlayerIds = new Set();
+
         // ── 回调（由上层 UI 注入） ───────────────────────────
         this.onStatusChange = null;        // (status, msg) => void  status: connecting/connected/disconnected/error
         this.onConnected = null;           // () => void 握手完成、members 就绪
@@ -182,6 +185,9 @@ class RaceRoomController {
                 this.isConnecting = false;
                 this._notifyStatus('connected', '房间已创建，等待玩家加入...');
                 this._handleReconnectSuccess();
+                // 房主创建房间成功即同步成员快照（与访客端 joinRoom 收到 welcome 后一致），
+                // 否则房主端成员列表永远为空、看不到自己也看不到昵称
+                if (this.onMembersUpdate) this.onMembersUpdate(this._membersSnapshot());
                 if (this.onConnected) this.onConnected();
             });
             this.peer.on('connection', (conn) => this._setupGuestConn(conn));
@@ -276,6 +282,14 @@ class RaceRoomController {
         switch (data.type) {
             case 'race_hello': {
                 const playerId = String(data.playerId || '');
+                // 已被踢出的玩家禁止重入
+                if (this._kickedPlayerIds && this._kickedPlayerIds.has(playerId)) {
+                    try {
+                        conn.send({ type: 'race_hello_ack', ok: false, reason: 'kicked' });
+                    } catch (e) {}
+                    setTimeout(function() { try { conn.close(); } catch (e) {} }, 300);
+                    return;
+                }
                 const nickname = String(data.nickname || '玩家');
                 if (!playerId) return;
                 const peerId = conn.peer;
@@ -356,6 +370,36 @@ class RaceRoomController {
         this._scheduleGuestReconnectTimer(playerId);
     }
 
+    /** 房主踢出指定玩家（彻底关闭连接 + 广播 member_left + 禁止重入） */
+    kickMember(playerId) {
+        if (!this.isHost) return;
+        var member = this.members.find(function(m) { return m.playerId === playerId; });
+        if (!member) return;
+        this._kickedPlayerIds.add(playerId);
+        // 找到对应连接，先发踢出通知再关闭
+        var kickConn = null;
+        this._guestPlayerId.forEach(function(pid, peerId) {
+            if (pid === playerId) {
+                kickConn = this._guestConns.get(peerId);
+                this._guestConns.delete(peerId);
+                this._guestPlayerId.delete(peerId);
+            }
+        }, this);
+        if (kickConn) {
+            try { kickConn.send({ type: 'race_member_left', member: member, kicked: true }); } catch (e) {}
+            var connRef = kickConn;
+            setTimeout(function() { try { connRef.close(); } catch (e) {} }, 100);
+        }
+        // 从成员列表移除
+        var idx = this.members.indexOf(member);
+        if (idx !== -1) this.members.splice(idx, 1);
+        this._clearGuestReconnectTimer(playerId);
+        // 广播给剩余成员
+        this._broadcast({ type: 'race_member_left', member: member }, null);
+        if (this.onMemberLeft) this.onMemberLeft(member);
+        if (this.onMembersUpdate) this.onMembersUpdate(this._membersSnapshot());
+    }
+
     /** 访客侧：连接到房主 */
     _setupHostConn(conn) {
         this._hostConn = conn;
@@ -398,6 +442,17 @@ class RaceRoomController {
                 if (this.onConnected) this.onConnected();
                 break;
             }
+            case 'race_hello_ack':
+                if (data.ok === false) {
+                    var reason = data.reason || '';
+                    var ackMsg = '加入失败';
+                    if (reason === 'room_full') ackMsg = '房间已满员';
+                    else if (reason === 'kicked') ackMsg = '你已被房主移出房间';
+                    this._notifyStatus('error', ackMsg);
+                    var self = this;
+                    setTimeout(function() { self.disconnect(); }, 100);
+                }
+                break;
             case 'race_msg':
                 if (this.onMessage) {
                     try { this.onMessage(data.payload || {}, data.from || ''); } catch (e) { console.error(e); }
@@ -480,10 +535,14 @@ class RaceRoomController {
         return true;
     }
 
-    /** 房主：广播消息给全部访客（不含发送者 fromPeerId） */
+    /** 房主：广播消息给全部访客（不含发送者 fromPeerId，支持 peerId 或 playerId 排除） */
     _broadcast(obj, fromPeerId) {
         for (const [peerId, conn] of this._guestConns) {
-            if (fromPeerId && peerId === fromPeerId) continue;
+            if (fromPeerId) {
+                if (peerId === fromPeerId) continue;
+                // 调用方可能传的是 playerId：同时也按 playerId 排除
+                if (this._guestPlayerId.get(peerId) === fromPeerId) continue;
+            }
             if (!conn.open) continue;
             try { conn.send(obj); } catch (e) { /* 忽略 */ }
         }
