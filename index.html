@@ -173,6 +173,8 @@
     </div>
     <!-- 收起后的圆形按钮：点击展开输入栏，可拖动 -->
     <button class="float-keypad-fab" id="float-keypad-fab" type="button" title="展开输入栏" hidden><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.125em"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h.01M18 14h.01M9 14h6"/></svg></button>
+    <!-- 悬浮键盘收起后的 y= 表达式预览（显示在圆形按钮右侧，随按钮拖动移动） -->
+    <div class="float-keypad-fab-preview" id="float-keypad-fab-preview" hidden></div>
 
     <!-- 开始界面模态框 -->
     <div class="modal" id="start-modal" style="display:none;">
@@ -336,7 +338,9 @@
                 <div id="race-victory-best" class="race-victory-best"></div>
             </div>
             <div class="race-victory-actions">
-                <button class="btn btn-secondary race-victory-left-btn" id="race-victory-level-select-btn">返回等级选择</button>
+                <button class="btn-back-circle race-victory-left-btn" id="race-victory-level-select-btn" type="button" title="返回等级选择" aria-label="返回等级选择">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+                </button>
                 <button class="btn btn-secondary race-victory-mid-btn" id="race-victory-retry-btn">再次尝试</button>
                 <button class="btn btn-primary race-victory-right-btn" id="race-victory-next-btn">进入下一等级</button>
             </div>
@@ -518,9 +522,10 @@
             <h2>在线排行榜</h2>
             <div class="leaderboard-tabs">
                 <button class="leaderboard-tab active" data-board="lr">LR∑ 闯关</button>
-                <button class="leaderboard-tab" data-board="tt">竞速分关榜</button>
                 <button class="leaderboard-tab" data-board="comet">彗星榜</button>
                 <button class="leaderboard-tab" data-board="elo">ELO 联机</button>
+                <button class="leaderboard-tab" data-board="rsc">竞速段位</button>
+                <button class="leaderboard-tab" data-board="tt">竞速分关榜</button>
             </div>
             <div class="leaderboard-race-selector" id="leaderboard-race-selector" style="display:none;">
                 <span>查看关卡：</span>
@@ -674,7 +679,6 @@
                         <small>开局后按房主配置的耐力与难度进行</small>
                     </div>
                     <div class="lobby-actions" style="margin-top:8px;">
-                        <button class="btn btn-secondary p2p-back-btn" id="race-battle-leave-btn">离开房间</button>
                         <button class="btn btn-primary p2p-action-btn race-battle-start-btn" id="race-battle-start-btn" disabled>开始竞速</button>
                     </div>
                     <button class="btn btn-secondary p2p-back-btn" id="race-battle-home-btn" style="width:100%;margin-top:8px;">返回主页面</button>
@@ -691,7 +695,9 @@
             <div class="race-battle-result-self" id="race-battle-result-self"></div>
             <div class="race-battle-result-buttons">
                 <button class="btn race-battle-rematch-btn" id="race-battle-rematch-btn" type="button">再来一局</button>
-                <button class="btn btn-small btn-cancel" id="race-battle-back-btn" type="button">返回竞速主菜单</button>
+                <button class="btn-back-circle" id="race-battle-back-btn" type="button" title="返回竞速主菜单" aria-label="返回竞速主菜单">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+                </button>
             </div>
         </div>
     </div>
@@ -712,10 +718,13 @@
     <div class="race-battle-panel" id="race-battle-panel" style="display:none;">
         <div class="race-battle-panel-head">
             <span class="race-battle-panel-title">⚡ 竞速对战</span>
+            <button class="race-battle-panel-collapse" id="race-battle-panel-collapse" type="button" title="收起/展开进度面板">▾</button>
             <span class="race-battle-panel-code" id="race-battle-panel-code">------</span>
             <span class="race-battle-panel-timer" id="race-battle-panel-timer">0.00s</span>
             <span class="race-battle-wait-hint" id="race-battle-wait-hint" style="display:none;">等待重连…</span>
             <button class="race-battle-panel-exit" id="race-battle-panel-exit" type="button">退出</button>
+            <button class="race-battle-panel-exit rb-finish-exit-btn" id="race-battle-finish-exit-btn" type="button" style="display:none;">退出结算</button>
+            <button class="race-battle-panel-exit rb-finish-watch-btn" id="race-battle-finish-watch-btn" type="button" style="display:none;">继续观战</button>
         </div>
         <div class="race-battle-rows" id="race-battle-rows"></div>
         <div class="race-battle-feature-line" id="race-battle-feature-line"></div>
@@ -744,7 +753,9 @@
                     <span class="p2p-mode-select-sub">不计 ELO · 娱乐对局</span>
                 </button>
             </div>
-            <button class="p2p-mode-select-back" id="p2p-mode-select-back" type="button">返回主菜单</button>
+            <button class="btn-back-circle" id="p2p-mode-select-back" type="button" title="返回主菜单" aria-label="返回主菜单">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+            </button>
         </div>
     </div>
 

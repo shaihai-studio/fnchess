@@ -3046,6 +3046,9 @@ body::before {
 .lobby-room-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .lobby-room-code { font-family: monospace; font-size: 16px; font-weight: bold; color: #eab308; letter-spacing: 2px; }
 .lobby-room-desc { font-size: 12px; color: #94a3b8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lobby-room-mode { display: inline-block; margin-right: 6px; padding: 1px 6px; font-size: 11px; line-height: 16px; border-radius: 4px; border: 1px solid; vertical-align: 1px; }
+.lobby-room-mode-ranked { color: #fbbf24; border-color: rgba(245,158,11,0.5); background: rgba(245,158,11,0.12); }
+.lobby-room-mode-casual { color: #34d399; border-color: rgba(52,211,153,0.5); background: rgba(52,211,153,0.12); }
 .lobby-join-btn { flex-shrink: 0; }
 .lobby-empty { padding: 20px; text-align: center; color: #64748b; font-size: 13px; border: 1px dashed rgba(255,255,255,0.1); border-radius: 10px; }
 .lobby-delete-btn { flex: 0 0 auto; width: auto !important; padding: 8px 14px; background: rgba(239,68,68,0.15); color: #f87171; border-color: rgba(239,68,68,0.4); }
@@ -4889,6 +4892,68 @@ body.device-mobile {
     transform: rotate(30deg);
 }
 #race-close-btn.race-back-circle svg { display: block; }
+
+/* 通用圆形左箭头返回按钮（需求12：所有「返回」类按钮统一为圆形左箭头样式） */
+button.btn-back-circle {
+    width: 40px;
+    height: 40px;
+    min-height: 40px;
+    padding: 0;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    background: rgba(255, 255, 255, 0.10);
+    color: #f1f5f9;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    cursor: pointer;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    transition: background .2s, border-color .2s, transform .2s;
+}
+button.btn-back-circle svg { display: block; }
+button.btn-back-circle:hover {
+    background: rgba(255, 255, 255, 0.18);
+    border-color: rgba(255, 255, 255, 0.6);
+    transform: rotate(30deg);
+}
+/* 各弹窗内返回按钮的位置微调（覆盖各自原全宽/网格按钮规则） */
+#p2p-mode-select-back.btn-back-circle { margin: 14px auto 0; }
+#race-victory-level-select-btn.btn-back-circle {
+    width: 40px;
+    height: 40px;
+    min-height: 40px;
+    justify-self: center;
+    align-self: center;
+}
+#race-battle-back-btn.btn-back-circle {
+    width: 40px;
+    height: 40px;
+    min-height: 40px;
+    align-self: center;
+}
+
+/* 悬浮键盘收起后的 y= 表达式预览（位于圆形按钮右侧，随拖动移动） */
+.float-keypad-fab-preview {
+    position: fixed;
+    z-index: 2147480004;
+    max-width: min(52vw, 320px);
+    padding: 6px 12px;
+    border-radius: 14px;
+    background: rgba(15, 23, 42, 0.86);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #e2e8f0;
+    font-size: 13px;
+    line-height: 1.35;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+    pointer-events: none;
+    user-select: none;
+    -webkit-user-select: none;
+}
 
 /* 闯关难度选择界面：右下角「导入 .js 关卡」与「粘贴文本」按钮文字改为白色 */
 #campaign-import-slot .btn,

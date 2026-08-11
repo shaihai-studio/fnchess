@@ -482,6 +482,18 @@ if (typeof UIController === 'undefined') {
         // 返回开始界面
         this.showModal(this.startModal);
         this.showMessage('');
+        
+        // ★ 修复需求 13：退出测试模式后恢复主菜单布局。
+        // 进入测试模式时 selectMode('test') 会把 selectedMode 置为 'test'、隐藏所有子菜单、
+        // 禁用 steppers；此处必须全部复位，否则回到开始界面排版错乱。
+        this.selectedMode = 'battle';
+        this._battleSubMode = 'local';
+        if (this._battleSubmenu) this._battleSubmenu.style.display = '';
+        if (this._campaignSubmenu) this._campaignSubmenu.style.display = 'none';
+        if (this._raceSubmenu) this._raceSubmenu.style.display = 'none';
+        if (this.campaignPanel) this.campaignPanel.style.display = 'none';
+        if (this.modeHint) this.modeHint.textContent = '本地对战：两位玩家轮流操作';
+        this.syncStartSelectionState();
         this.refreshStartSelectorDisplay();
     }
 ;

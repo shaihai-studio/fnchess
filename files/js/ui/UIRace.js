@@ -348,6 +348,7 @@ if (typeof UIController === 'undefined') {
 // showRaceVictory
     UIController.prototype.showRaceVictory = function(data) {
         if (!this.raceVictoryModal) return;
+        if (window.audioManager) window.audioManager.playSuccess();
         const levelId = Number(data?.levelId || this.raceCurrentLevelId || 1);
         const elapsed = Number(data?.elapsed || 0);
         const totalSolved = Number(data?.totalSolved || 10) || 10;
@@ -381,7 +382,10 @@ if (typeof UIController === 'undefined') {
         }
 
         const nextBtn = document.getElementById('race-victory-next-btn');
-        if (nextBtn) nextBtn.textContent = this.raceIsCustom ? '返回选关' : '进入下一等级';
+        if (nextBtn) nextBtn.textContent = this.raceIsCustom ? '返回主菜单' : '进入下一等级';
+        // 试炼场（自定义关）：结算弹窗左侧按钮改为「返回主菜单」
+        const selectBtn = document.getElementById('race-victory-level-select-btn');
+        if (selectBtn) selectBtn.textContent = this.raceIsCustom ? '返回主菜单' : '返回等级选择';
         this.renderRaceVictoryDetails(data, { levelId, elapsed, totalSolved, previousBestTime, hasPreviousBest, diff, isNewRecord });
         // 排行榜：竞速通关后把 TT∑ 星分累计写回本地进度（与竞速内部星级规则一致），
         // 并自动上报该关最佳用时到「竞速分关榜」rt{level}（每关一张小榜，取更短者；自定义关/多人对战不参与）
@@ -724,6 +728,11 @@ if (typeof UIController === 'undefined') {
 // backToRaceLevelListFromVictory
     UIController.prototype.backToRaceLevelListFromVictory = function() {
         this.hideRaceVictory();
+        if (this.raceIsCustom) {
+            // 试炼场（自定义关）：无内置等级列表可回，直接返回主页面
+            this.closeRaceUI();
+            return;
+        }
         this.showRaceLevelList();
     }
 ;

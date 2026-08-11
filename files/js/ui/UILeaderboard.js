@@ -140,7 +140,7 @@ if (typeof UIController === 'undefined') {
 
 // _switchLeaderboardTab
     UIController.prototype._switchLeaderboardTab = function(board) {
-        if (board !== 'lr' && board !== 'tt' && board !== 'elo' && board !== 'comet') return;
+        if (board !== 'lr' && board !== 'tt' && board !== 'rsc' && board !== 'elo' && board !== 'comet') return;
         this._leaderboardBoard = board;
         document.querySelectorAll('.leaderboard-tab').forEach((t) => {
             t.classList.toggle('active', t.dataset.board === board);
@@ -225,6 +225,8 @@ if (typeof UIController === 'undefined') {
         // 竞速分关榜 rtN：用时越短越好，分数后缀带 s
         const isRaceBoard = (typeof boardType === 'string' && boardType.indexOf('rt') === 0 && /^\d+$/.test(boardType.slice(2)));
         const raceLevel = isRaceBoard ? Number(boardType.slice(2)) : 0;
+        // 竞速段位榜 rsc：按积分降序，显示天体段位名
+        const isRscBoard = boardType === 'rsc';
         // 彗星分关榜 plN（含分数关 pl1/2）：直接比"该关最短 token"，越少越优
         const isCometBoard = (typeof boardType === 'string' && /^pl\d+(?:\/\d+)?$/.test(boardType));
         const cometLevel = isCometBoard ? boardType.slice(2) : '';
@@ -240,10 +242,13 @@ if (typeof UIController === 'undefined') {
                 else if (isRaceBoard) scoreText = `${Number(row.score).toFixed(2)}s`;
                 else if (isCometBoard) scoreText = `${row.score} token`;   // 彗星：显示该关最短 token
                 else if (boardType === 'tt') scoreText = `${row.score} 速度`;
+                else if (isRscBoard) scoreText = `${row.tier || ''} ${row.score}分`;   // 竞速段位：段位名+积分
                 else scoreText = String(row.score);
                 const sub = (boardType === 'elo')
                     ? `${row.wins}胜 ${row.losses}负 ${row.draws}平`
-                    : '';
+                    : (isRscBoard)
+                        ? `${row.wins}胜 ${row.games}局`
+                        : '';
                 // 举报按钮：LR∑ 榜 / 彗星分关榜 显示，且不能举报自己
                 const reportBtn = ((boardType === 'lr' || isCometBoard) && !row.isMe)
                     ? `<button class="leaderboard-report-btn" data-action="report" data-target="${this._escapeHtml(row.playerId || '')}" data-name="${this._escapeHtml(row.nickname || '')}">举报</button>`
@@ -269,6 +274,7 @@ if (typeof UIController === 'undefined') {
             else if (boardType === 'elo') label = 'ELO';
             else if (isRaceBoard) label = `第 ${raceLevel} 关 用时`;
             else if (isCometBoard) label = `彗星 第 ${cometLevel} 关 最短 token`;
+            else if (isRscBoard) label = `竞速段位 ${data.myTier || ''}`;
             else label = null; // [P6] 不再使用误导性的"竞速速度值"；解析不出榜类型时不显示标签
             if (myRank > 0) {
                 const myScoreText = isRaceBoard ? `${Number(myScore).toFixed(2)}s`

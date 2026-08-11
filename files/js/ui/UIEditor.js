@@ -891,7 +891,8 @@ ${exportAll()}
     window.addEventListener('keydown', (e) => {
         if (editorView.style.display === 'none') return;
         if (e.ctrlKey && e.key.toLowerCase() === 's') { e.preventDefault(); exportAll(); }
-        if (e.ctrlKey && e.key.toLowerCase() === 'z') { e.preventDefault(); doUndo(); }
+        // 撤销：同时支持 Ctrl+Z 与 Command+Z（macOS）
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); doUndo(); }
         // 在输入框/文本域/下拉框内时，移动与删除键交给输入控件（如 fx 表达式、JSON 文本域），不劫持
         const t = e.target;
         const editable = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);

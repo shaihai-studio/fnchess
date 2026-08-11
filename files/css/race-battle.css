@@ -98,20 +98,31 @@
 
 /* ── 对局进度面板 ── */
 .race-battle-panel {
-    position:fixed; top:50%; left:8px; transform:translateY(-50%);
-    width:min(350px, calc(100vw - 16px)); z-index:1200;
+    position:fixed; top:8px; left:50%; transform:translateX(-50%);
+    width:min(620px, calc(100vw - 16px)); z-index:1200;
     background:linear-gradient(180deg, rgba(7,13,26,.92), rgba(15,23,42,.85));
     border:1px solid rgba(34,211,238,.35); border-radius:14px;
     backdrop-filter:blur(10px); padding:8px 12px;
     box-shadow:0 4px 30px rgba(0,0,0,.5), 0 0 20px rgba(34,211,238,.12);
     animation:rb-panel-in .35s ease;
 }
-@keyframes rb-panel-in { from{opacity:0; transform:translateY(calc(-50% - 16px))} to{opacity:1; transform:translateY(-50%)} }
+@keyframes rb-panel-in { from{opacity:0; transform:translateX(-50%) translateY(-14px)} to{opacity:1; transform:translateX(-50%) translateY(0)} }
 .race-battle-panel-head {
     display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding-bottom:6px; margin-bottom:6px;
     border-bottom:1px solid rgba(148,163,184,.15);
 }
 .race-battle-panel-title { font-size:13px; font-weight:700; color:var(--rb-primary); text-shadow:0 0 8px rgba(34,211,238,.5); }
+.race-battle-panel-collapse {
+    font-size:12px; line-height:1; padding:3px 7px; border-radius:6px; cursor:pointer;
+    color:var(--rb-dim); background:var(--rb-panel2); border:1px solid rgba(148,163,184,.3); transition:all .15s;
+}
+.race-battle-panel-collapse:hover { color:var(--rb-primary); border-color:var(--rb-primary); }
+/* 折叠态：只留标题栏一条，最大限度让出棋盘空间（2026-08-11 新增） */
+.race-battle-panel.is-collapsed { padding:4px 10px; }
+.race-battle-panel.is-collapsed .race-battle-panel-head { padding-bottom:0; margin-bottom:0; border-bottom:none; }
+.race-battle-panel.is-collapsed .race-battle-rows,
+.race-battle-panel.is-collapsed .race-battle-feature-line,
+.race-battle-panel.is-collapsed .race-battle-wait-hint { display:none; }
 .race-battle-panel-code { font-family:Consolas,monospace; font-size:12px; color:var(--rb-dim); letter-spacing:2px; }
 .race-battle-panel-timer { font-size:15px; font-weight:700; color:var(--rb-blue); font-family:Consolas,monospace; margin-left:auto; }
 .race-battle-wait-hint {
@@ -123,7 +134,12 @@
     color:var(--rb-dim); background:var(--rb-panel2); border:1px solid rgba(148,163,184,.3); transition:all .15s;
 }
 .race-battle-panel-exit:hover { color:var(--rb-red); border-color:var(--rb-red); }
-.race-battle-rows { display:flex; flex-direction:column; gap:6px; max-height:62vh; overflow-y:auto; }
+/* 完成后"退出结算 / 继续观战"按钮（2026-08-11 新增） */
+.rb-finish-exit-btn { color:var(--rb-amber); border-color:rgba(245,158,11,.45); }
+.rb-finish-exit-btn:hover { color:var(--rb-red); border-color:var(--rb-red); }
+.rb-finish-watch-btn { color:var(--rb-blue); border-color:rgba(34,211,238,.45); }
+.rb-finish-watch-btn:hover { color:var(--rb-green); border-color:var(--rb-green); }
+.race-battle-rows { display:flex; flex-direction:column; gap:6px; max-height:42vh; overflow-y:auto; }
 
 .race-battle-row {
     display:grid; grid-template-columns:22px minmax(48px,1fr) minmax(62px,1.2fr) minmax(78px,1.6fr) 56px;

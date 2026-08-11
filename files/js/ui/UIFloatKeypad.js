@@ -100,6 +100,8 @@ if (typeof UIController === 'undefined') {
                 this.floatKeypadFab.style.top = r.top + 'px';
             }
             this._applyFloatKeypadVisibility();
+            // 收起后立即刷新 y= 预览（定位到按钮右侧）
+            this._updateFloatKeypadFabPreview();
         });
 
         // —— 圆形按钮：点击展开 / 可拖动 ——
@@ -147,6 +149,8 @@ if (typeof UIController === 'undefined') {
                 fab.style.left = (fabDrag.left + e.clientX - fabDrag.sx) + 'px';
                 fab.style.top = (fabDrag.top + e.clientY - fabDrag.sy) + 'px';
                 this._clampFloatKeypadFab();
+                // 拖动时 y= 表达式预览跟随按钮移动
+                this._updateFloatKeypadFabPreview();
             });
             const endFabDrag = () => { fabDrag = null; };
             fab.addEventListener('pointerup', endFabDrag);
@@ -359,8 +363,30 @@ if (typeof UIController === 'undefined') {
         }
         if (showFab) {
             // 圆形按钮显示时也夹回屏幕内（任何界面/模式下均不越界，与输入栏一致）
-            requestAnimationFrame(() => this._clampFloatKeypadFab());
+            requestAnimationFrame(() => {
+                this._clampFloatKeypadFab();
+                // 收起状态：y= 表达式预览显示在按钮右侧并随拖动移动
+                this._updateFloatKeypadFabPreview();
+            });
         }
+    }
+;
+
+// _updateFloatKeypadFabPreview — 悬浮键盘收起为圆形按钮时，y= 表达式预览显示在按钮右侧并随拖动移动
+    UIController.prototype._updateFloatKeypadFabPreview = function() {
+        const fab = this.floatKeypadFab;
+        const preview = document.getElementById('float-keypad-fab-preview');
+        if (!fab || !preview) return;
+        if (!this._floatKeypadCollapsed) { preview.hidden = true; return; }
+        const text = this.expressionDisplay ? (this.expressionDisplay.textContent || '').trim() : '';
+        const hasExpr = !!text && text !== '点击元素构建表达式...' && text.indexOf('点击') !== 0;
+        if (!hasExpr) { preview.hidden = true; return; }
+        preview.textContent = 'y = ' + text;
+        preview.hidden = false;
+        const fr = fab.getBoundingClientRect();
+        const ph = preview.offsetHeight;
+        preview.style.left = (fr.right + 10) + 'px';
+        preview.style.top = (fr.top + fr.height / 2 - ph / 2) + 'px';
     }
 ;
 
@@ -819,5 +845,7 @@ if (typeof UIController === 'undefined') {
             // 待布局完成后重算位置：高度变化时保持底边界不动
             requestAnimationFrame(() => this._clampFloatKeypad());
         }
+        // 收起状态下表达式变化时同步刷新 y= 预览
+        if (this._floatKeypadCollapsed) this._updateFloatKeypadFabPreview();
     }
 ;

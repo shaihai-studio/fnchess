@@ -96,6 +96,29 @@ if (typeof UIController === 'undefined') {
             return;
         }
         
+        // 撤销：同时支持 Ctrl+Z 与 Command+Z（macOS），等价于 Backspace 删除光标前元素
+        if ((e.ctrlKey || e.metaKey) && (key === 'z' || key === 'Z')) {
+            if (phase === 'input_function' && !(this.isP2PMode && !this._isMyTurn())) {
+                e.preventDefault();
+                if (this.cursorIndex > 0) {
+                    if (window.audioManager) window.audioManager.playElementClick();
+                    this.expressionElements.splice(this.cursorIndex - 1, 1);
+                    this.cursorIndex--;
+                    this.updateExpressionDisplay();
+                }
+            }
+            return;
+        }
+
+        // Q 键：仅 AI 人机对战模式呼出 Summa 面板，其他模式禁用（放行，不拦截）
+        if (key === 'q' || key === 'Q') {
+            if (this.gameController.gameMode === 'ai' && window.summaTrainer && window.summaTrainer.showPanel) {
+                e.preventDefault();
+                window.summaTrainer.showPanel();
+            }
+            return;
+        }
+
         // 以下键盘输入只在 input_function 阶段响应
         if (phase !== 'input_function') {
             return;

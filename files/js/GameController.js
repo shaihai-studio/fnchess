@@ -46,11 +46,12 @@ class GameController {
         this.remainingTime = 40;
         this.timerInterval = null;
 
-        // 选格子倒计时（消极比赛判定）：首次 40s，超时后重新计时 20s；同阶段连续 3 次超时直接判负
-        this.TARGET_TIMEOUT = 40;
+        // 选格子倒计时（消极比赛判定）：首次 30s×时间倍率，超时后重新计时 20s；同阶段连续 3 次超时直接判负
+        // 需求9/10：选目标格超时不再重试，直接推进到对方输入回合；重试(20s)仅用于禁止区/锁定区
+        this.TARGET_TIMEOUT = 30;
         this.TARGET_TIMEOUT_RETRY = 20;
-        this.targetRemaining = 40;
-        this.targetCountdownTotal = 40;
+        this.targetRemaining = 30;
+        this.targetCountdownTotal = 30;
         this.targetConsecutiveTimeouts = 0;
         this.targetTimerInterval = null;
         this.forcedWinner = null;   // 判负强制的胜者（endGame 优先使用，之后复位）
@@ -966,7 +967,7 @@ class GameController {
         // 根据阶段执行相应逻辑
         switch (phase) {
             case this.phases.SELECT_TARGET:
-                // 选格子倒计时（选允许格）：首次 40s，超时扣分重新 20s，同阶段连续 3 次判负
+                // 选格子倒计时（选允许格）：首次 30s×倍率，超时扣分重新 20s×倍率，同阶段连续 3 次判负
                 this.stopTimer();
                 this.startTargetTimer();
                 break;
@@ -1105,14 +1106,14 @@ class GameController {
     }
     
     /**
-     * 启动选格子倒计时（选允许格/禁止格/锁定元素）：首次 40s，超时扣分后重新 20s；
-     * 同阶段连续 3 次超时判负"消极比赛"。
+     * 启动选格子倒计时（选允许格/禁止格/锁定元素）：首次 30s×倍率，超时扣分后重新 20s；
+     * 同阶段连续 3 次超时判负"消极比赛"（选目标格超时不再重试，直接进入对方输入回合）。
      * 本地对战 / AI 对战 / P2P 启用；闯关 / 竞速 / 测试模式不启用（保持原静态显示）。
      */
     startTargetTimer() {
         this.stopTargetTimer();
         // 观战/只读端（p2p 模式但无 p2pActionSender）：纯被动接收快照，
-        // 不启动本地倒计时、不扣分、不判负（否则观战 40s 后会自动触发超时/判负弹窗）
+        // 不启动本地倒计时、不扣分、不判负（否则观战超时后会自动触发超时/判负弹窗）
         if (this.gameMode === 'p2p' && !this.p2pActionSender) {
             this.remainingTime = this.timeLimit;
             this.emit('timerUpdate', { remainingTime: this.remainingTime });
@@ -1124,12 +1125,12 @@ class GameController {
             this.emit('timerUpdate', { remainingTime: this.remainingTime });
             return;
         }
-        // 进入新的选格子子阶段（允许格/禁止格/锁定元素），重置连续超时计数，首次给 40s
+        // 进入新的选格子子阶段（允许格/禁止格/锁定元素），重置连续超时计数，首次给 30s×时间倍率
         this.targetConsecutiveTimeouts = 0;
-        this._startTargetCountdown(this.TARGET_TIMEOUT);
+        this._startTargetCountdown(Math.round(this.TARGET_TIMEOUT * this.timeLimitMultiplier));
     }
     
-    /** 开始一轮递减（默认 40s；超时后传 TARGET_TIMEOUT_RETRY=20s 重新计时）；不清连续超时计数 */
+    /** 开始一轮递减（默认 30s×倍率；超时后传 TARGET_TIMEOUT_RETRY=20s 重新计时）；不清连续超时计数 */
     _startTargetCountdown(seconds) {
         this.stopTargetTimer();
         this.targetRemaining = (typeof seconds === 'number' && seconds > 0) ? seconds : this.TARGET_TIMEOUT;
@@ -1166,11 +1167,50 @@ class GameController {
     }
     
     /**
-     * 选格子超时：扣 1 分并重新计时 20s；连续 3 次 → 消极比赛判负。
+     * 选格子超时。
+     * - SELECT_TARGET（选目标格）：不再重试/累计判负，直接推进到对面玩家的输入回合（需求9/10）——
+     *   未选目标格 → 扣 1 分；已选（含未确认）→ 不扣分。
+     * - SET_FORBIDDEN / SET_LOCKS：扣 1 分并重新计时 20s×倍率；连续 3 次 → 消极比赛判负。
      */
     handleTargetTimeout() {
         this.stopTargetTimer();
-        
+
+        // 选目标格超时：直接进入对面玩家（构造方）的输入回合
+        if (this.currentPhase === this.phases.SELECT_TARGET) {
+            const hasSelected = !!(this.roundState.targetCells && this.roundState.targetCells.length > 0);
+            if (!hasSelected) {
+                this.players[this.currentPlayer].score -= 1;
+                this.emit('targetTimeout', {
+                    player: this.currentPlayer,
+                    selected: false,
+                    consecutive: this.targetConsecutiveTimeouts,
+                    score: this.players[this.currentPlayer].score
+                });
+                // 复用超时提示（UI 显示"xx超时！扣1分"）
+                this.emit('timeout', { player: this.currentPlayer, reason: 'select_target', consecutive: this.targetConsecutiveTimeouts });
+            } else {
+                // 已选目标格（未确认）：不扣分，直接推进
+                this.emit('targetTimeout', {
+                    player: this.currentPlayer,
+                    selected: true,
+                    consecutive: this.targetConsecutiveTimeouts
+                });
+                this.emit('timeout', { player: this.currentPlayer, reason: 'select_target_selected' });
+            }
+            this.targetConsecutiveTimeouts = 0;
+            // P2P：通知对手超时（对方显示提示；倒计时由操作方驱动，无需对手本地计时）
+            if (this.gameMode === 'p2p' && this.p2pActionSender && this.p2pActionSender.sendTimeout) {
+                this.p2pActionSender.sendTimeout(this.currentPlayer);
+            }
+            // P2P：扣分后立即同步分数给对手（否则被动方看不到本次扣分，只能等后续 state_sync）
+            this.bumpStateVersion();
+            this._maybeSync();
+            // 跳过禁止区/锁定区设置，直接进入对面玩家（A）的输入回合
+            this.switchToInputPhase();
+            return;
+        }
+
+        // 禁止区 / 锁定区超时：保持原逻辑
         this.targetConsecutiveTimeouts++;
         this.players[this.currentPlayer].score -= 1;
         this.emit('targetTimeout', {
@@ -1195,8 +1235,8 @@ class GameController {
             return;
         }
         
-        // 重新计时 20 秒（不清连续超时计数）
-        this._startTargetCountdown(this.TARGET_TIMEOUT_RETRY);
+        // 重新计时 20 秒×倍率（不清连续超时计数）
+        this._startTargetCountdown(Math.round(this.TARGET_TIMEOUT_RETRY * this.timeLimitMultiplier));
     }
     
     /**
@@ -1587,6 +1627,13 @@ class GameController {
                     if (isNewBest && this.raceState && !this.raceState.isCustom && !this.raceState.isMultiplayer) this.setRaceBestTime(this.currentRound, elapsed);
                     const stars = this.getRaceStarsByElapsed(elapsed);
                     this.pauseTimer();
+                    // 2026-08-11 修复竞速对战换关卡死：必须先 setPhase(INIT) 再 emit。
+                    // 原顺序 emit 在前的危害：emit 同步触发多人分支 _rbLoadLevel → initRace 已把
+                    // phase 切到 INPUT_FUNCTION，随后这里又 setPhase(INIT) 覆盖回去，导致第二关起
+                    // 一直卡在 INIT（键盘消失、无法输入、底部一直显示"正在评估…"）。
+                    // 先 setPhase(INIT) 后 emit：单人路径最终停在 INIT 不变，多人路径由 initRace
+                    // 最后切到 INPUT_FUNCTION，行为正确。
+                    this.setPhase(this.phases.INIT);
                     this.emit('raceLevelResult', {
                         levelId: this.currentRound,
                         pass,
@@ -1601,7 +1648,6 @@ class GameController {
                         expression: this.roundState.functionExpression,
                         roundState: { ...this.roundState }
                     });
-                    this.setPhase(this.phases.INIT);
                     return;
                 }
 

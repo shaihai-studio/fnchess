@@ -153,14 +153,18 @@ const eloSettled = new Set();  // 已结算的房间码（ELO 去重：防 A/B �
 // 结构：Map(playerId, { playerId, nickname, score, games, wins, updatedAt })
 const raceBoard = new Map();
 const raceSettled = new Set();  // 已结算的竞速房间码（按 roomKey:playerId 去重，防多端重复上报）
-// 竞速段位区间（分数越高段位越高）
+// 竞速段位区间（分数越高段位越高）——10 级天体段位
 const RACE_TIERS = [
-    { name: '青铜', min: 0 },
-    { name: '白银', min: 400 },
-    { name: '黄金', min: 800 },
-    { name: '铂金', min: 1200 },
-    { name: '钻石', min: 1600 },
-    { name: '大师', min: 2000 }
+    { name: '流星体', min: 0 },
+    { name: '小行星', min: 300 },
+    { name: '矮行星', min: 600 },
+    { name: '行星', min: 900 },
+    { name: '恒星', min: 1200 },
+    { name: '星团', min: 1500 },
+    { name: '星系', min: 1800 },
+    { name: '星系团', min: 2100 },
+    { name: '超星系团', min: 2400 },
+    { name: '宇宙', min: 2700 }
 ];
 function raceTier(score) {
     let t = RACE_TIERS[0];
@@ -991,8 +995,9 @@ lobbyWss.on('connection', (ws, req) => {
                 const isValidClientCode = /^\d{6}$/.test(clientCode) && !rooms.has(clientCode);
                 const code = isValidClientCode ? clientCode : genRoomCode(longLived);
                 const expiresAt = Date.now() + (longLived ? ROOM_TTL_LONG : ROOM_TTL_DEFAULT);
-                // 竞速对战房（2-4 人多人房）：独立模式标识，与 1v1 的 casual/ranked 完全隔离
-                const isRace = !!(msg.options && msg.options.mode === 'race');
+                // 竞速对战房（2-4 人多人房）：mode 以 'race' 开头（race / race_ranked / race_casual），
+                // 与 1v1 的 casual/ranked 完全隔离，且排位/休闲竞速房互不可见
+                const isRace = !!(msg.options && typeof msg.options.mode === 'string' && msg.options.mode.indexOf('race') === 0);
                 const maxPlayers = isRace
                     ? Math.min(4, Math.max(2, parseInt(msg.options && msg.options.maxPlayers, 10) || 4))
                     : 2;
@@ -1042,7 +1047,8 @@ lobbyWss.on('connection', (ws, req) => {
             // ELO 过滤：房主开启 ELO 距离过滤的房间，距房主 ELO 太远的访客不可见
             case 'list_rooms': {
                 const now = Date.now();
-                const modeFilter = msg.mode === 'casual' ? 'casual' : (msg.mode === 'ranked' ? 'ranked' : (msg.mode === 'race' ? 'race' : null));
+                const modeFilter = (msg.mode === 'casual' || msg.mode === 'ranked' || msg.mode === 'race' ||
+                    msg.mode === 'race_ranked' || msg.mode === 'race_casual') ? msg.mode : null;
                 const visitorId = String(msg.playerId || '').slice(0, 64);
                 const visitorEloEntry = visitorId ? eloBoard.get(visitorId) : null;
                 const visitorElo = visitorEloEntry && visitorEloEntry.elo != null ? visitorEloEntry.elo : ELO_INIT;
@@ -1093,7 +1099,8 @@ lobbyWss.on('connection', (ws, req) => {
                     send(ws, { type: 'join_rejected', code: String(msg.code), reason: 'room_not_available' });
                     return;
                 }
-                if (msg.mode === 'casual' || msg.mode === 'ranked' || msg.mode === 'race') {
+                if (msg.mode === 'casual' || msg.mode === 'ranked' || msg.mode === 'race' ||
+                    msg.mode === 'race_ranked' || msg.mode === 'race_casual') {
                     const roomMode = (room.options && room.options.mode) || 'ranked';
                     if (roomMode !== msg.mode) {
                         send(ws, { type: 'join_rejected', code: String(msg.code), reason: 'mode_mismatch' });

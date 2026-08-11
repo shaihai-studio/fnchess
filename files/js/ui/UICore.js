@@ -530,8 +530,17 @@ if (typeof UIController === 'undefined') {
         this.gameController.on('timeout', (data) => {
             if (window.audioManager) window.audioManager.playError();
             if (data && data.reason === 'select_target') {
-                const n = Number(data.consecutive) || 1;
-                this.showMessage(`${this.getPlayerDisplayName(data.player)}选格子超时！扣1分（第${n}/3次，再超时${Math.max(0, 3 - n)}次判负）`, 'error');
+                const n = Number(data.consecutive) || 0;
+                if (n > 0) {
+                    // 禁止区/锁定区超时：扣 1 分并重试 20s，累计 3 次判负
+                    this.showMessage(`${this.getPlayerDisplayName(data.player)}选格子超时！扣1分（第${n}/3次，再超时${Math.max(0, 3 - n)}次判负）`, 'error');
+                } else {
+                    // 选目标格超时（未选）：扣 1 分，直接进入对手输入回合
+                    this.showMessage(`${this.getPlayerDisplayName(data.player)}选目标格超时！扣1分，直接进入对手回合`, 'error');
+                }
+            } else if (data && data.reason === 'select_target_selected') {
+                // 选目标格超时但已选（含未确认）：不扣分，直接进入对手输入回合
+                this.showMessage(`${this.getPlayerDisplayName(data.player)}选目标格超时，已选目标格不扣分，直接进入对手回合`, 'warning');
             } else {
                 this.showMessage(`${this.getPlayerDisplayName(data.player)}超时！扣1分`, 'error');
             }
@@ -816,7 +825,14 @@ if (typeof UIController === 'undefined') {
                 this.gridSystem.draw();
                 this.initDraggableElements();
                 // 多人联机竞速对战：不更新单人 HUD、不播单人倒计时（统一 goAt 起跑/特性卡由多人流程负责）
-                if (this._rbMatchStarted && this.raceIsMultiplayer) return;
+                if (this._rbMatchStarted && this.raceIsMultiplayer) {
+                    // 2026-08-11 修复：换第二关卡死——多人分支提前 return，跳过下方单人 HUD，
+                    // 但悬浮键盘/圆形按钮必须按当前阶段（INPUT_FUNCTION）恢复显示，否则输入区被隐藏无法输入
+                    if (typeof this._applyFloatKeypadVisibility === 'function') {
+                        try { this._applyFloatKeypadVisibility(); } catch (e) {}
+                    }
+                    return;
+                }
                 this.updateCampaignDrawDelayToggleVisibility();
                 this.roundElement.textContent = data.levelId;
                 this.totalRoundsElement.textContent = data.totalLevels || 30;
@@ -1605,6 +1621,7 @@ if (typeof UIController === 'undefined') {
     UIController.prototype.submitFunction = function() {
         if (this.expressionElements.length === 0) {
             this.showMessage('请输入函数表达式', 'error');
+            if (window.audioManager) window.audioManager.playError();
             return;
         }
         
@@ -1614,6 +1631,7 @@ if (typeof UIController === 'undefined') {
         const validation = this.parser.validateSyntax(expression);
         if (!validation.valid) {
             this.showMessage(validation.error, 'error');
+            if (window.audioManager) window.audioManager.playError();
             return;
         }
         
@@ -1627,6 +1645,7 @@ if (typeof UIController === 'undefined') {
         const lockCheck = this.parser.validateExpressionForLocks(expression);
         if (!lockCheck.valid) {
             this.showMessage(`表达式包含被锁定的元素: ${lockCheck.lockedElement}`, 'error');
+            if (window.audioManager) window.audioManager.playError();
             return;
         }
         
@@ -1830,7 +1849,12 @@ if (typeof UIController === 'undefined') {
             this.resetBattleGrid();
             this.hideModal(this.gameOverModal);
             this.hideModal(this.startModal);
-            this.showRaceUI();
+            if (this.raceIsCustom) {
+                // 试炼场（自定义关）：对局中退出直接返回主页面（无内置等级列表可回）
+                this.closeRaceUI();
+            } else {
+                this.showRaceUI();
+            }
             return;
         }
 
