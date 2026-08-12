@@ -54,11 +54,16 @@ const peerServer = ExpressPeerServer(server, {
 });
 app.use('/', peerServer);
 
+// 在线 PeerJS id 集合：房主建房后其 Peer id 即「裸房间码」（1v1）或「race_房间码」（竞速）。
+// 用于 room_lookup 判断输入的房间码属于对战房还是竞速房（即使未登记大厅也能识别）。
+const onlinePeerIds = new Set();
 peerServer.on('connection', (client) => {
+    if (client && typeof client.getId === 'function') onlinePeerIds.add(client.getId());
     console.log(`[P2P] 客户端已连接: ${client.getId()}`);
 });
 
 peerServer.on('disconnect', (client) => {
+    if (client && typeof client.getId === 'function') onlinePeerIds.delete(client.getId());
     console.log(`[P2P] 客户端已断开: ${client.getId()}`);
 });
 
@@ -171,14 +176,23 @@ function raceTier(score) {
     for (const x of RACE_TIERS) if (score >= x.min) t = x;
     return t;
 }
-// 按名次固定加减分（人数不同分值不同）：place 1 为第一名；局数越多变化越小（抑制刷分），衰减下限 40%
-function raceDelta(place, totalPlayers, games) {
+// 难度倍率（1~7 入门~传说）：难度越高，胜负增减越多
+const RACE_DIFF_MULT = [0.6, 0.7, 0.8, 0.95, 1.1, 1.3, 1.5];
+// 耐力倍率（1~4：1/3/5/10关）：连跑越长，胜负增减越多
+const RACE_STAMINA_MULT = [0.6, 0.9, 1.2, 1.5];
+// 低段位保护线：积分低于 900（未达「行星」段，即前三个段位）时输不扣分
+const RACE_PROTECT_SCORE = 900;
+// 按名次固定加减分（人数不同分值不同）× 难度/耐力倍率：place 1 为第一名；
+// 局数越多变化越小（抑制刷分），衰减下限 40%
+function raceDelta(place, totalPlayers, games, difficulty, stamina) {
     const base = totalPlayers <= 2 ? [20, -20]
         : totalPlayers === 3 ? [25, 5, -25]
         : [30, 10, -10, -30];
     const idx = Math.max(0, Math.min((place | 0) - 1, base.length - 1));
     const scale = Math.max(0.4, 1 - (games | 0) * 0.03);
-    return Math.round(base[idx] * scale);
+    const dIdx = Math.max(0, Math.min((difficulty | 0) - 1, RACE_DIFF_MULT.length - 1));
+    const sIdx = Math.max(0, Math.min((stamina | 0) - 1, RACE_STAMINA_MULT.length - 1));
+    return Math.round(base[idx] * scale * RACE_DIFF_MULT[dIdx] * RACE_STAMINA_MULT[sIdx]);
 }
 // 竞速对战积分结算（服务端权威计算 delta，不信任客户端上报的数值，防伪造刷分）
 function handleRaceScore(ws, msg) {
@@ -198,9 +212,14 @@ function handleRaceScore(ws, msg) {
     }
     const place = Math.max(1, parseInt(payload.place, 10) || 1);
     const totalPlayers = Math.min(4, Math.max(2, parseInt(payload.totalPlayers, 10) || 2));
+    const difficulty = Math.max(1, parseInt(payload.difficulty, 10) || 1);
+    const stamina = Math.max(1, parseInt(payload.stamina, 10) || 1);
     const now = Date.now();
+    const abandoned = !!payload.abandoned; // 弃权/退出：强制按最后一名扣分，不受低段位保护
     const p = raceBoard.get(playerId) || { playerId, nickname, score: 0, games: 0, wins: 0, updatedAt: now };
-    const delta = raceDelta(place, totalPlayers, p.games);
+    let delta = raceDelta(place, totalPlayers, p.games, difficulty, stamina);
+    // 低段位保护：前几个等级（积分 < 900 未达「行星」段）正常输/垫底不扣分；弃权/退出例外，必须扣
+    if (delta < 0 && p.score < RACE_PROTECT_SCORE && !abandoned) delta = 0;
     p.score = Math.max(0, p.score + delta);
     p.nickname = nickname;
     p.games++;
@@ -1092,6 +1111,27 @@ lobbyWss.on('connection', (ws, req) => {
                 break;
             }
 
+            // 房间码查询：返回该房间是否存在及其模式（isRace 竞速联机房）。
+            // 同时查「大厅登记表 rooms」与「在线 PeerJS id」：
+            //   - 裸房间码在线 = 1v1 对战房（P2PController 房主 id = 房间码）
+            //   - race_<房间码> 在线 = 竞速房（RaceRoomController 房主 id = race_<房间码>）
+            // 供联机对战访客在输入房间码时校验是否误连竞速房间 → 客户端提示模式不对
+            case 'room_lookup': {
+                const code = String(msg.code || '');
+                const room = rooms.get(code);
+                const p2pOnline = onlinePeerIds.has(code);
+                const raceOnline = onlinePeerIds.has('race_' + code);
+                send(ws, {
+                    type: 'room_lookup_result',
+                    code,
+                    found: !!room || p2pOnline || raceOnline,
+                    isRace: !!(room && room.isRace) || raceOnline,
+                    isP2P: p2pOnline,
+                    mode: room ? ((room.options && room.options.mode) || 'ranked') : null
+                });
+                break;
+            }
+
             // 访客申请加入（校验模式匹配：休闲/排位不能混搭）
             case 'join_request': {
                 const room = rooms.get(String(msg.code));
@@ -1206,6 +1246,25 @@ lobbyWss.on('connection', (ws, req) => {
                     }
                     console.log(`[Lobby] 房间 ${room.code} 开局，观战${room.spectateEnabled ? '开启（保留在大厅）' : '关闭（已隐藏）'}`);
                 }
+                break;
+            }
+
+            // 房主迁移：新房主接管房间，移交 hostWs（防止旧房主断开时误删房间）
+            case 'host_transfer': {
+                const room = rooms.get(String(msg.code));
+                if (!room) break;
+                if (!room.isRace || !Array.isArray(room.guests)) break; // 仅竞速房
+                const gi = room.guests.findIndex(g => g.ws === ws);
+                if (gi === -1) break; // 仅限当前房间的访客升级
+                const oldHostWs = room.hostWs;
+                room.hostWs = ws;
+                room.hostPlayerId = msg.playerId ? String(msg.playerId) : room.hostPlayerId;
+                room.hostNickname = msg.nickname ? String(msg.nickname).slice(0, 10) : room.hostNickname;
+                room.guests.splice(gi, 1); // 新房主不再是访客
+                // 清理旧房主残留在访客列表中的连接（重入被拒后已断开）
+                room.guests = room.guests.filter(g => g.ws !== oldHostWs);
+                console.log(`[Lobby] 房主迁移 ${room.code}：${room.hostNickname} 接管房间（${1 + room.guests.length}/${room.maxPlayers} 人）`);
+                send(ws, { type: 'host_transferred', code: room.code });
                 break;
             }
 

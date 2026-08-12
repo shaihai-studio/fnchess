@@ -55,8 +55,8 @@ if (typeof UIController === 'undefined') {
     }
 ;
 
-// closeRaceUI
-    UIController.prototype.closeRaceUI = function() {
+// closeRaceUI — backToCustom=true 时返回竞速试炼场自定义弹窗（2026-08-12）
+    UIController.prototype.closeRaceUI = function(backToCustom) {
         this.raceCurrentLevelId = null;
         this.raceIsCustom = false;
         this.raceIsMultiplayer = false;
@@ -72,7 +72,11 @@ if (typeof UIController === 'undefined') {
             this._raceElapsedTimer = null;
         }
         this.hideModal(this.raceModal, () => {
-            this.showModal(this.startModal);
+            if (backToCustom) {
+                this.openRaceCustomModal();
+            } else {
+                this.showModal(this.startModal);
+            }
         });
         if (this.gameController && typeof this.gameController.cleanupRaceState === 'function') {
             this.gameController.cleanupRaceState();
@@ -729,8 +733,8 @@ if (typeof UIController === 'undefined') {
     UIController.prototype.backToRaceLevelListFromVictory = function() {
         this.hideRaceVictory();
         if (this.raceIsCustom) {
-            // 试炼场（自定义关）：无内置等级列表可回，直接返回主页面
-            this.closeRaceUI();
+            // 试炼场（自定义关）：无内置等级列表可回，返回试炼场自定义弹窗（保留上次配置）
+            this.closeRaceUI(true);
             return;
         }
         this.showRaceLevelList();

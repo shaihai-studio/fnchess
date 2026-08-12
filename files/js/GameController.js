@@ -1205,8 +1205,15 @@ class GameController {
             // P2P：扣分后立即同步分数给对手（否则被动方看不到本次扣分，只能等后续 state_sync）
             this.bumpStateVersion();
             this._maybeSync();
-            // 跳过禁止区/锁定区设置，直接进入对面玩家（A）的输入回合
-            this.switchToInputPhase();
+            if (!hasSelected) {
+                // 2026-08-12 需求：B 超时未选目标格 → 扣分后进入 A 的回合让 A 选格子，
+                //（而不是直接让 A 输入函数，因为对面根本没选，无从针对构造）
+                this.currentPlayer = 'A';
+                this.setPhase(this.phases.SELECT_TARGET);
+            } else {
+                // 已选目标格（未确认）：跳过禁止区/锁定区设置，直接进入对面玩家（A）的输入回合
+                this.switchToInputPhase();
+            }
             return;
         }
 

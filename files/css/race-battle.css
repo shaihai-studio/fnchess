@@ -207,7 +207,7 @@
 
 /* ── 全屏倒计时 / 特性卡 overlay ── */
 .race-battle-overlay {
-    position:fixed; inset:0; z-index:1300;
+    position:fixed; inset:0; z-index:6000; /* 高于悬浮键盘(5000)，避免开始倒计时被键盘遮挡 */
     background:rgba(7,13,26,.72); backdrop-filter:blur(6px);
     display:flex; align-items:center; justify-content:center;
 }
@@ -242,6 +242,50 @@
 .rb-feature-chip.forbidden { background:rgba(239,68,68,.15); border:1px solid var(--rb-red); }
 .rb-feature-chip.lock { background:rgba(245,158,11,.15); border:1px solid var(--rb-amber); }
 .rb-feature-chip.symbol { background:rgba(99,102,241,.15); border:1px solid #a5b4fc; }
+
+/* ── 房主迁移弹窗（房主退出自动重排新房主并重连同步）── */
+.race-migration-modal {
+    z-index: 11000; /* 高于 showModal 动态层级(10000+栈深)，确保盖过对局面板与确认框 */
+    background: rgba(4, 8, 16, .72);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+}
+#race-migration-modal .modal-content.race-migration-content {
+    max-width: 420px; max-height: 90vh; text-align: center;
+    overflow-y: auto !important; /* 规避 shaihai-theme 全局 overflow:hidden */
+    background: linear-gradient(160deg, rgba(15,23,42,.96), rgba(7,13,26,.98));
+    border: 1px solid rgba(245,158,11,.45); border-radius: 18px;
+    box-shadow: 0 0 40px rgba(245,158,11,.22);
+}
+.race-migration-icon {
+    width: 52px; height: 52px; margin: 0 auto 14px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 26px; color: #f59e0b;
+    background: rgba(245,158,11,.14); border: 1px solid rgba(245,158,11,.5);
+    animation: rb-migration-glow 1.4s ease-in-out infinite;
+}
+.race-migration-title { font-size: 22px; font-weight: 800; color: var(--rb-text); margin: 0 0 12px; letter-spacing: .5px; }
+.race-migration-status { font-size: 14px; line-height: 1.6; color: var(--rb-dim); min-height: 22px; }
+.race-migration-spinner { display: flex; gap: 8px; justify-content: center; margin: 16px 0 4px; }
+.race-migration-spinner i {
+    width: 9px; height: 9px; border-radius: 50%;
+    background: #f59e0b;
+    animation: rb-migration-bounce 1s ease-in-out infinite;
+    box-shadow: 0 0 10px rgba(245,158,11,.7);
+}
+.race-migration-spinner i:nth-child(2) { animation-delay: .18s; }
+.race-migration-spinner i:nth-child(3) { animation-delay: .36s; }
+.race-migration-hint { font-size: 12px; color: rgba(148,163,184,.7); margin: 10px 0 0; }
+/* U7: 迁移弹窗 10s 后出现的「放弃对局」按钮 */
+.race-migration-abort-btn { margin-top: 18px; }
+@keyframes rb-migration-glow {
+    0%, 100% { box-shadow: 0 0 16px rgba(245,158,11,.25); }
+    50% { box-shadow: 0 0 30px rgba(245,158,11,.55); }
+}
+@keyframes rb-migration-bounce {
+    0%, 60%, 100% { transform: translateY(0); opacity: .5; }
+    30% { transform: translateY(-8px); opacity: 1; }
+}
 
 /* ── 结算弹窗 ── */
 #race-battle-result-modal .modal-content.race-battle-result-content {

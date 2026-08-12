@@ -72,6 +72,7 @@ class MatchLobbyController {
         this.onGuestLeft = null;          // (code, info) => void（房主收到：竞速访客离开/断开）
         this.onJoinAccepted = null;       // (code, maxPlayers) => void（访客收到：服务器放行）
         this.onJoinRejected = null;       // (code, reason) => void
+        this.onRoomLookupResult = null;   // (data) => void（房间码查询结果：{ code, found, isRace, mode }）
         this.onHostRoomExpired = null;    // (code) => void（房主收到：房间到期被服务器清理）
         // ── 观战回调 ─────────────────────────────────────────
         this.onSpectateState = null;      // (payload, code) => void（观众收到状态快照）
@@ -95,7 +96,7 @@ class MatchLobbyController {
         if (callbacks && typeof callbacks === 'object') {
             const CALLBACK_KEYS = [
                 'onConnectionChange', 'onRoomsUpdate', 'onHostRegistered',
-                'onGuestJoining', 'onGuestLeft', 'onJoinAccepted', 'onJoinRejected',
+                'onGuestJoining', 'onGuestLeft', 'onJoinAccepted', 'onJoinRejected', 'onRoomLookupResult',
                 'onHostRoomExpired', 'onSpectateState', 'onSpectateEnded',
                 'onSpectateJoined', 'onSpectateJoinRejected', 'onSpectateEmoji',
                 'onLeaderboardResult', 'onPlayerEloResult', 'onChallenge',
@@ -237,6 +238,9 @@ class MatchLobbyController {
             case 'join_rejected':
                 if (this.onJoinRejected) this.onJoinRejected(String(data.code), data.reason);
                 break;
+            case 'room_lookup_result':
+                if (this.onRoomLookupResult) this.onRoomLookupResult(data);
+                break;
             case 'spectate_state':
                 if (this.onSpectateState) this.onSpectateState(data.payload, String(data.code));
                 break;
@@ -336,6 +340,11 @@ class MatchLobbyController {
         });
     }
 
+    /** 查询房间码类型（是否竞速联机房）：服务器回 room_lookup_result { code, found, isRace, mode } */
+    lookupRoom(code) {
+        this._send({ type: 'room_lookup', code: String(code) });
+    }
+
     /** 访客取消加入 */
     cancelJoin(code) {
         this._send({ type: 'join_cancel', code: String(code) });
@@ -402,5 +411,15 @@ class MatchLobbyController {
     /** 房主主动解散房间（对局中/等待中退出），服务器会通知对战方与观众 */
     notifyRoomDissolve() {
         this._send({ type: 'room_dissolve' });
+    }
+
+    /** 房主迁移：新房主接管房间后通知服务器移交 hostWs（竞速房掉线迁移） */
+    notifyHostTransfer(code, playerId, nickname) {
+        this._send({
+            type: 'host_transfer',
+            code: String(code || this.myRoomCode || ''),
+            playerId: String(playerId || ''),
+            nickname: String(nickname || '').slice(0, 10)
+        });
     }
 }

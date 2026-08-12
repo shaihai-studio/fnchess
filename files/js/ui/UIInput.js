@@ -110,9 +110,9 @@ if (typeof UIController === 'undefined') {
             return;
         }
 
-        // Q 键：仅 AI 人机对战模式呼出 Summa 面板，其他模式禁用（放行，不拦截）
+        // Q 键：呼出 Summa 训练器面板（放行，不拦截）
         if (key === 'q' || key === 'Q') {
-            if (this.gameController.gameMode === 'ai' && window.summaTrainer && window.summaTrainer.showPanel) {
+            if (window.summaTrainer && window.summaTrainer.showPanel) {
                 e.preventDefault();
                 window.summaTrainer.showPanel();
             }
@@ -216,6 +216,11 @@ if (typeof UIController === 'undefined') {
             this.cursorIndex = this.expressionElements.length;
             this.updateExpressionDisplay();
         } else if (key === 'Escape') {
+            // U2: 栈顶有可见弹窗（非 startModal）时，ESC 交还给 bindGlobalEsc 只关弹窗，
+            // 避免「清空表达式 + 关闭弹窗」双重触发（handleKeyboardInput 在 window 捕获阶段，
+            // 原先 preventDefault 后事件仍冒泡到 document 的 bindGlobalEsc）
+            const topModal = this._modalStackTopVisible();
+            if (topModal && topModal !== this.startModal) return;
             e.preventDefault();
             // 清除表达式
             this.handleClear();

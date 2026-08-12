@@ -257,7 +257,7 @@ if (typeof UIController === 'undefined') {
         let waitTimeout = 60000;
         const exp = Number(expiresAt) || 0;
         if (exp > 0) waitTimeout = Math.max(0, exp - Date.now());
-        if (this.p2pController) this.p2pController.createRoomWithCode(code, waitTimeout);
+        if (this.p2pController) this.p2pController.createRoomWithCode(code, waitTimeout, this._getP2PMode());
         this._updateLobbyStatus('waiting', `房间 ${code} 已登记，等待对手加入...`);
         this.showMessage(`房间 ${code} 已创建，等待对手加入`);
         // 常驻顶部状态条 + 显示删除房间按钮
@@ -285,8 +285,8 @@ if (typeof UIController === 'undefined') {
 
 // _onLobbyJoinAccepted
     UIController.prototype._onLobbyJoinAccepted = function(code) {
-        // 服务器放行：用房间码加入房主创建的 P2P 房间
-        if (this.p2pController) this.p2pController.joinRoom(code);
+        // 服务器放行：用房间码加入房主创建的 P2P 房间（mode 由本人选择决定，房主侧 hello 会校验）
+        if (this.p2pController) this.p2pController.joinRoom(code, this._getP2PMode());
         this._updateLobbyStatus('joining', `加入请求已通过，正在连接房间 ${code}...`);
     }
 ;

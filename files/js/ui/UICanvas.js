@@ -552,23 +552,30 @@ if (typeof UIController === 'undefined') {
         }
         
         // 绑定事件
-        document.getElementById('zoom-out-btn').addEventListener('click', () => {
-            // 如果正在绘制，不响应
-            if (this.renderer.isDrawing) return;
-            
-            const newRange = this.adjustRange(5); // 按钮步长为 5
+        // V6 修复：缩放节流改为「累积 + trailing 合并」——连点期间累加步数，
+        // 最后一次点击后 120ms 内无新点击则统一执行一次缩放+重绘。
+        // 既保证连点全部生效（原 leading-drop 会丢弃 300ms 内的点击），
+        // 又避免多条 async 重绘链交错闪帧（原 U9 的防并发目的）。
+        let pendingZoomSteps = 0;
+        let zoomTrailingTimer = null;
+        const applyZoom = () => {
+            const steps = pendingZoomSteps;
+            pendingZoomSteps = 0;
+            zoomTrailingTimer = null;
+            if (steps === 0) return;
+            const newRange = this.adjustRange(steps);
             this.updateZoomDisplay(newRange);
             this.redrawAllTestFunctions();
-        });
-        
-        document.getElementById('zoom-in-btn').addEventListener('click', () => {
+        };
+        const queueZoom = (delta) => {
             // 如果正在绘制，不响应
             if (this.renderer.isDrawing) return;
-            
-            const newRange = this.adjustRange(-5); // 按钮步长为 5
-            this.updateZoomDisplay(newRange);
-            this.redrawAllTestFunctions();
-        });
+            pendingZoomSteps += delta;
+            if (zoomTrailingTimer) return;
+            zoomTrailingTimer = setTimeout(applyZoom, 120);
+        };
+        document.getElementById('zoom-out-btn').addEventListener('click', () => queueZoom(5));
+        document.getElementById('zoom-in-btn').addEventListener('click', () => queueZoom(-5));
     }
 ;
 

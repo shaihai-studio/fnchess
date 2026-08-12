@@ -541,7 +541,7 @@
             </div>
             <div id="leaderboard-list" class="leaderboard-list"></div>
             <div id="leaderboard-myrank" class="leaderboard-myrank"></div>
-            <div class="leaderboard-tip">闯关通关自动上报 LR∑ · 竞速通关自动上报 该关最佳用时（竞速分关榜，比单关最快）· 联机对局房主自动上报 ELO</div>
+            <div class="leaderboard-tip" id="leaderboard-tip">闯关通关自动上报 LR∑ · 竞速通关自动上报 该关最佳用时（竞速分关榜，比单关最快）· 联机对局房主自动上报 ELO</div>
             <button class="btn btn-secondary" id="leaderboard-close-btn" style="width: 100%; margin-top: 16px;">关闭</button>
         </div>
     </div>
@@ -592,8 +592,8 @@
         <div class="modal-content p2p-room-content" style="max-width:760px;">
             <h2>联机竞速 <span class="race-battle-rank-tag" id="race-battle-rank-tag">休闲局 · 不增减积分</span></h2>
             <div class="p2p-content-layout" style="display:flex; gap:24px; align-items:flex-start; text-align:left;">
-                <!-- 左侧：耐力/难度/排位 参数栏 -->
-                <div class="p2p-selectors-left" style="flex:0 0 220px; display:flex; flex-direction:column; gap:14px; padding-right:16px; border-right:1px solid rgba(255,255,255,0.08);">
+                <!-- 左侧：耐力/难度/排位 参数栏（加入房间 tab 时隐藏） -->
+                <div class="p2p-selectors-left" id="race-battle-selectors-left" style="flex:0 0 220px; display:flex; flex-direction:column; gap:14px; padding-right:16px; border-right:1px solid rgba(255,255,255,0.08);">
                     <div class="selector-row">
                         <div class="stepper-selector" id="race-battle-stamina-stepper">
                             <button type="button" class="stepper-arrow" id="race-battle-stamina-minus" aria-label="切换耐力"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.125em"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg></button>
@@ -699,6 +699,18 @@
                     <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
                 </button>
             </div>
+        </div>
+    </div>
+
+    <!-- 竞速对战·房主迁移弹窗（房主退出时自动重排新房主并重连同步） -->
+    <div class="modal race-migration-modal" id="race-migration-modal" style="display:none;">
+        <div class="modal-content race-migration-content">
+            <div class="race-migration-icon">⚠</div>
+            <h2 class="race-migration-title">房主已退出</h2>
+            <div class="race-migration-status" id="race-migration-status">正在重新安排新房主并进行重连与同步…</div>
+            <div class="race-migration-spinner"><i></i><i></i><i></i></div>
+            <p class="race-migration-hint">请勿关闭页面，全员重连完成后将自动继续对局</p>
+            <button class="btn btn-small btn-cancel race-migration-abort-btn" id="race-migration-abort-btn" style="display:none;">放弃对局</button>
         </div>
     </div>
 
@@ -918,6 +930,19 @@
             <div style="display:flex;flex-direction:column;gap:10px;margin-top:16px;">
                 <button class="btn btn-primary" id="p2p-resume-btn" onclick="uiController.confirmP2PResume()">恢复对局</button>
                 <button class="btn btn-secondary" id="p2p-resume-cancel-btn" onclick="uiController.cancelP2PResume()">放弃（返回主菜单）</button>
+            </div>
+            <p class="p2p-resume-tip" style="margin-top:12px;font-size:12px;color:#888;">提示：房主端仅在断开后 60 秒内等待重连，请尽快恢复。</p>
+        </div>
+    </div>
+
+    <!-- 竞速联机大退后重开页面：检测到未结束的排位对局，询问是否恢复 -->
+    <div class="modal" id="race-resume-modal" style="display:none;">
+        <div class="modal-content" style="max-width:380px;text-align:center;">
+            <h2>检测到未结束的竞速对局</h2>
+            <p class="p2p-resume-text" id="race-resume-detail">你有一局竞速排位对局因断线未结束，是否恢复？</p>
+            <div style="display:flex;flex-direction:column;gap:10px;margin-top:16px;">
+                <button class="btn btn-primary" id="race-resume-btn" onclick="uiController.confirmRaceBattleResume()">恢复对局</button>
+                <button class="btn btn-secondary" id="race-resume-cancel-btn" onclick="uiController.cancelRaceBattleResume()">放弃（返回主菜单）</button>
             </div>
             <p class="p2p-resume-tip" style="margin-top:12px;font-size:12px;color:#888;">提示：房主端仅在断开后 60 秒内等待重连，请尽快恢复。</p>
         </div>
@@ -1267,8 +1292,9 @@
             const splash = document.getElementById('splash-screen');
             if (splash) {
                 uiController.showSplash();   // 绑定「点击 + 键盘」进入监听
-                // 启动后检测访客大退未结束的排位对局，弹窗询问是否恢复
+                // 启动后检测访客大退未结束的排位对局，弹窗询问是否恢复（对战/竞速分别检测）
                 uiController._checkP2PResume();
+                uiController._checkRaceBattleResume();
             } else {
                 uiController.showModal(document.getElementById('start-modal'));
             }

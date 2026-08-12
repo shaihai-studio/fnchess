@@ -449,12 +449,15 @@ if (typeof UIController === 'undefined') {
         modal._onMaskDismiss = typeof onDismiss === 'function' ? onDismiss : null;
         modal._onEscDismiss = typeof onEsc === 'function' ? onEsc : modal._onMaskDismiss;
         modal.addEventListener('click', (e) => {
-            if (e.target === modal) {
-                if (typeof modal._onMaskDismiss === 'function') {
-                    modal._onMaskDismiss();
-                } else {
-                    this.hideModal(modal);
-                }
+            if (e.target !== modal) return;
+            // U6: 遮罩关闭 150ms 防抖——双击遮罩只触发一次，避免 handleRestart 等回调重复执行
+            const now = Date.now();
+            if (modal._lastMaskDismissAt && now - modal._lastMaskDismissAt < 150) return;
+            modal._lastMaskDismissAt = now;
+            if (typeof modal._onMaskDismiss === 'function') {
+                modal._onMaskDismiss();
+            } else {
+                this.hideModal(modal);
             }
         });
     }

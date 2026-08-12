@@ -2977,6 +2977,9 @@ body::before {
 .p2p-status-dot.disconnected { background: #ef4444; }
 @keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:0.4} }
 .p2p-status-text { font-size: 13px; color: #94a3b8; }
+/* 错误态：状态条整体加红边 + 文字变红，确保弹窗内提示醒目（不被左下角 toast 遮挡影响） */
+.p2p-status.error-state { border: 1px solid rgba(239, 68, 68, 0.45); background: rgba(239, 68, 68, 0.12); }
+.p2p-status.error-state .p2p-status-text { color: #fca5a5; font-weight: 600; }
 .p2p-tabs { display: flex; gap: 4px; margin-bottom: 12px; }
 .p2p-tab { flex: 1; padding: 8px; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; background: rgba(255,255,255,0.04); color: #94a3b8; cursor: pointer; text-align: center; font-size: 14px; transition: all 0.2s; }
 .p2p-tab.active { background: rgba(59,130,246,0.2); border-color: rgba(59,130,246,0.4); color: #dbeafe; }
@@ -4946,6 +4949,8 @@ button.btn-back-circle:hover {
     color: #e2e8f0;
     font-size: 13px;
     line-height: 1.35;
+    /* 2026-08-12 修复：与输入区表达式同字体（等宽），覆盖 shaihai-theme 全局 SmileySans */
+    font-family: 'Courier New', 'Consolas', monospace !important;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;

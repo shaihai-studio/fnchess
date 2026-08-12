@@ -84,6 +84,8 @@ class P2PController {
         this.conn = null;
         this.isHost = false;
         this.roomCode = '';
+        this.roomMode = 'casual';     // 'ranked' | 'casual'（建房/加入时确定，hello 握手校验）
+        this._modeRejected = false;   // 访客收到 hello_reject(mode_mismatch) → UI 应回房间弹窗
         this.isConnected = false;
         this.isConnecting = false;
         this._disconnecting = false;
@@ -203,7 +205,7 @@ class P2PController {
 
     // ─── 连接 ────────────────────────────────────────────────
 
-    async createRoom() {
+    async createRoom(mode) {
         try {
             await P2PController.ensurePeerJs();
         } catch (err) {
@@ -218,6 +220,7 @@ class P2PController {
         this._disconnectHandled = false;
         this._sendFailStreak = 0;
         this.roomCode = this._generateRoomCode();
+        this.roomMode = (mode === 'ranked') ? 'ranked' : 'casual';
         this.isHost = true;
         this.myPlayerId = 'A';
         this.opponentPlayerId = 'B';
@@ -265,7 +268,7 @@ class P2PController {
      *        默认 60s；长效模式（服务器房间 30 分钟 TTL）由调用方传入剩余有效期，
      *        避免 PeerJS 默认 60s 超时提前销毁房间（服务器房间仍存活，访客却无法加入）。
      */
-    async createRoomWithCode(code, waitTimeout = 60000) {
+    async createRoomWithCode(code, waitTimeout = 60000, mode) {
         try {
             await P2PController.ensurePeerJs();
         } catch (err) {
@@ -280,6 +283,7 @@ class P2PController {
         this._disconnectHandled = false;
         this._sendFailStreak = 0;
         this.roomCode = code;
+        this.roomMode = (mode === 'ranked') ? 'ranked' : 'casual';
         this.isHost = true;
         this.myPlayerId = 'A';
         this.opponentPlayerId = 'B';
@@ -319,7 +323,7 @@ class P2PController {
         } catch (err) { this._handleError(err); }
     }
 
-    async joinRoom(roomCode) {
+    async joinRoom(roomCode, mode) {
         try {
             await P2PController.ensurePeerJs();
         } catch (err) {
@@ -340,6 +344,7 @@ class P2PController {
         this._disconnectHandled = false;
         this._sendFailStreak = 0;
         this.roomCode = normalized;
+        this.roomMode = (mode === 'ranked') ? 'ranked' : 'casual';
         this.isHost = false;
         this.myPlayerId = 'B';
         this.opponentPlayerId = 'A';
@@ -414,6 +419,10 @@ class P2PController {
             // 为 false）才会触发 onConnected，并在其中判断是否走快照续局。
             const _wasReconnecting = this._reconnecting;
             this._handleReconnectSuccess();
+            // 访客主动上报自己的模式（房主侧 hello 分支校验排位/休闲一致，不匹配则拒绝）
+            if (!this.isHost && this.roomMode) {
+                try { this.send({ type: 'hello', mode: this.roomMode }); } catch (e) {}
+            }
             if (!_wasReconnecting && this.onConnected) this.onConnected();
         });
         conn.on('data', (data) => {
@@ -440,6 +449,25 @@ class P2PController {
         switch (data.type) {
             case 'ping': this.send({ type: 'pong' }); break;
             case 'pong': break;
+
+            // 排位/休闲模式握手：访客 open 后上报模式，房主校验不匹配则拒绝并断开
+            case 'hello': {
+                if (this.isHost && this.conn && data.mode !== undefined && data.mode !== this.roomMode) {
+                    try {
+                        this.conn.send({ type: 'hello_reject', reason: 'mode_mismatch', mode: this.roomMode });
+                    } catch (e) {}
+                    console.warn(`[P2P] 模式不匹配：访客=${data.mode}，房主=${this.roomMode}，拒绝连接`);
+                    setTimeout(() => { try { this.conn.close(); } catch (e) {} }, 300);
+                }
+                break;
+            }
+            case 'hello_reject':
+                if (data.reason === 'mode_mismatch') {
+                    this._modeRejected = true; // 供 UI 区分：模式不匹配拒绝，应回房间弹窗而非弹断线结算
+                    this._notifyStatus('error', '该房间为排位/休闲房，与你的选择不符');
+                    setTimeout(() => this.disconnect(), 300);
+                }
+                break;
 
             case 'game_init': {
                 const initGen = data.config?.gen;

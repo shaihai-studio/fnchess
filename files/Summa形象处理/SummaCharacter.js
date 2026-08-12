@@ -303,7 +303,7 @@ class SummaCharacter {
             });
         }
 
-        // ── Q 键切换 debug 面板显示/隐藏 ────────────────────────────────────
+        // ── Q 键切换 debug 面板显示/隐藏 ──────────────────────────────
         this._debugPanelVisible = false;
         this._handleDebugToggleKey = (e) => {
             if (e.key === 'q' || e.key === 'Q') {

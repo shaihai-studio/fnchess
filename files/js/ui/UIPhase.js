@@ -60,12 +60,9 @@ if (typeof UIController === 'undefined') {
 
         // P2P：非本方回合禁止确认
         if (this.isP2PMode && !this._isMyTurn()) {
-            console.log(`[UI][Confirm] 非本方回合，已阻止 phase=${phase}`);
             this.showMessage(`等待${this._p2pOpponentProfile?.nickname || '对手'}操作中…`, 'info');
             return;
         }
-
-        console.log(`[UI][Confirm] 确认 phase=${phase}`);
 
         if (phase === 'select_target') {
             this.gameController.confirmTargetSelection();

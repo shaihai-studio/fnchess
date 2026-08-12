@@ -90,6 +90,7 @@ class RaceRoomController {
         this.role = null;             // 'host' | 'guest'
         this.isHost = false;
         this.roomCode = '';
+        this.roomMode = 'casual';     // 'ranked' | 'casual'（房主建房/访客加入时确定，握手校验）
         this.myPlayerId = '';
         this.myNickname = '';
         this.maxPlayers = 4;          // 2-4
@@ -103,6 +104,8 @@ class RaceRoomController {
         this.isConnecting = false;
         this._disconnecting = false;
         this._selfSignalLost = false;
+        this._creating = false;       // createRoom 进行中（U5 防重入）
+        this._joining = false;        // joinRoom 进行中（U5 防重入）
 
         // ── 断线重连（60s 宽限） ─────────────────────────────
         this._reconnecting = false;
@@ -113,8 +116,19 @@ class RaceRoomController {
         this._reconnectPaused = false;
         this._guestReconnectTimers = new Map(); // host: playerId -> timer（60s 后移除）
 
+        // ── 心跳（2026-08-12 房主大退检测：互发 ping/pong 确认在线） ──
+        this._hbTimer = null;            // 5s 发送定时器
+        this._hostLastSeen = 0;          // guest: 房主最后活跃时间戳
+        this._guestLastSeen = new Map(); // host: peerId -> 最后活跃时间戳
+        this._hbIntervalMs = 5000;       // 每 5s 互发一次 ping
+        this._hbStaleMs = 15000;         // 15s 无响应视为失联
+
         // ── 房间解散标记 ─────────────────────────────────────
         this._roomClosed = false;
+
+        // ── 房主迁移（host migration） ────────────────────────
+        this._promoting = false;          // 访客正在尝试升级为新房主
+        this._oldHostPlayerId = null;     // host: 迁移前的旧房主 playerId（拒绝其重入）
 
         // ── 已踢出玩家 ID 集合（host only，防止重入） ──────────
         this._kickedPlayerIds = new Set();
@@ -131,6 +145,7 @@ class RaceRoomController {
         this.onReconnectingChange = null;  // (bool) => void
         this.onReconnected = null;         // () => void 重连成功
         this.onReconnectFailed = null;     // () => void 60s 重连失败
+        this.onHostLost = null;            // (reason) => void 访客感知房主退出（'conn_closed'掉线 | 'host_dissolved'主动解散），迁移由上层处理
     }
 
     // ─── 状态通知 ────────────────────────────────────────────
@@ -143,18 +158,31 @@ class RaceRoomController {
 
     // ─── 公开 API ────────────────────────────────────────────
 
-    /** 房主建房。options: { roomCode, maxPlayers, playerId, nickname } */
+    /** 房主建房。options: { roomCode, maxPlayers, playerId, nickname, mode } */
     async createRoom(options = {}) {
+        // U5: 防重入——创建/加入任一异步进行中时拒绝重复调用，避免重复 new Peer/回调互相覆盖。
+        // 注意：_creating 由 _doCreateRoom 在 peer.open/error/同步异常路径统一释放（见下），
+        // 不能放 finally——因为 _doCreateRoom 在 new Peer 后立即 resolve（peer.open 是异步回调），
+        // finally 过早释放会让「建房中」整个窗口失去防护。
+        if (this._creating || this._joining) return false;
+        this._creating = true;
+        return await this._doCreateRoom(options);
+    }
+
+    async _doCreateRoom(options = {}) {
         await RaceRoomController.ensurePeerJs();
         const normalized = String(options.roomCode || '').trim().replace(/[^0-9]/g, '');
         if (normalized.length !== 6) {
+            this._creating = false; // U5: 提前失败也要释放锁
             this._notifyStatus('error', '房间码必须是6位数字');
             return false;
         }
         this._resetState();
+        this._creating = true; // U5: _resetState() 会清 _creating，重新加锁以覆盖整个建房期（直到 peer.open/error）
         this.role = 'host';
         this.isHost = true;
         this.roomCode = normalized;
+        this.roomMode = (options.mode === 'ranked') ? 'ranked' : 'casual';
         this.maxPlayers = Math.min(4, Math.max(2, Number(options.maxPlayers) || 4));
         this.myPlayerId = String(options.playerId || 'host_' + normalized);
         this.myNickname = String(options.nickname || '房主');
@@ -170,7 +198,7 @@ class RaceRoomController {
 
         try {
             const iceServers = await RaceRoomController._fetchIceServers();
-            if (!this.isConnecting) return false;
+            if (!this.isConnecting) { this._creating = false; return false; } // U5: 取消路径释放锁
             const sig = RaceRoomController.signaling;
             const hostId = 'race_' + normalized;
             this.peer = new Peer(hostId, {
@@ -182,16 +210,21 @@ class RaceRoomController {
                 config: { iceServers }
             });
             this.peer.on('open', () => {
+                this._creating = false; // U5: 建房完成，释放锁
                 this.isConnecting = false;
                 this._notifyStatus('connected', '房间已创建，等待玩家加入...');
                 this._handleReconnectSuccess();
+                this._startHeartbeat();
                 // 房主创建房间成功即同步成员快照（与访客端 joinRoom 收到 welcome 后一致），
                 // 否则房主端成员列表永远为空、看不到自己也看不到昵称
                 if (this.onMembersUpdate) this.onMembersUpdate(this._membersSnapshot());
                 if (this.onConnected) this.onConnected();
             });
             this.peer.on('connection', (conn) => this._setupGuestConn(conn));
-            this.peer.on('error', (err) => this._handlePeerError(err));
+            this.peer.on('error', (err) => {
+                this._creating = false; // U5: 建房失败，释放锁（error 后不会再 open）
+                this._handlePeerError(err);
+            });
             this.peer.on('disconnected', () => {
                 if (this._disconnecting) return;
                 this._selfSignalLost = true;
@@ -199,23 +232,35 @@ class RaceRoomController {
             });
             return true;
         } catch (err) {
+            this._creating = false; // U5: 同步异常也释放锁
             this._handlePeerError(err);
             return false;
         }
     }
 
-    /** 访客加入。options: { roomCode, playerId, nickname } */
+    /** 访客加入。options: { roomCode, playerId, nickname, mode } */
     async joinRoom(options = {}) {
+        // U5: 防重入——与 createRoom 互斥，避免创建/加入并发互相覆盖 _rbIsHost/_rbMyId。
+        // _joining 由 _doJoinRoom 在 peer.open/error/同步异常路径统一释放（覆盖整个加入期）。
+        if (this._creating || this._joining) return false;
+        this._joining = true;
+        return await this._doJoinRoom(options);
+    }
+
+    async _doJoinRoom(options = {}) {
         await RaceRoomController.ensurePeerJs();
         const normalized = String(options.roomCode || '').trim().replace(/[^0-9]/g, '');
         if (normalized.length !== 6) {
+            this._joining = false; // U5: 提前失败也要释放锁
             this._notifyStatus('error', '房间码必须是6位数字');
             return false;
         }
         this._resetState();
+        this._joining = true; // U5: _resetState() 会清 _joining，重新加锁覆盖整个加入期
         this.role = 'guest';
         this.isHost = false;
         this.roomCode = normalized;
+        this.roomMode = (options.mode === 'ranked') ? 'ranked' : 'casual';
         this.myPlayerId = String(options.playerId || 'guest_' + Math.random().toString(36).substr(2, 9));
         this.myNickname = String(options.nickname || '玩家');
         this.members = [];
@@ -224,7 +269,7 @@ class RaceRoomController {
 
         try {
             const iceServers = await RaceRoomController._fetchIceServers();
-            if (!this.isConnecting) return false;
+            if (!this.isConnecting) { this._joining = false; return false; } // U5: 取消路径释放锁
             const sig = RaceRoomController.signaling;
             const guestId = 'rg_' + Math.random().toString(36).substr(2, 9);
             this.peer = new Peer(guestId, {
@@ -236,10 +281,15 @@ class RaceRoomController {
                 config: { iceServers }
             });
             this.peer.on('open', () => {
+                this._joining = false; // U5: 加入完成，释放锁
+                this._startHeartbeat();
                 const conn = this.peer.connect('race_' + normalized, { reliable: true });
                 this._setupHostConn(conn);
             });
-            this.peer.on('error', (err) => this._handlePeerError(err));
+            this.peer.on('error', (err) => {
+                this._joining = false; // U5: 加入失败，释放锁
+                this._handlePeerError(err);
+            });
             this.peer.on('disconnected', () => {
                 if (this._disconnecting) return;
                 this._selfSignalLost = true;
@@ -247,9 +297,107 @@ class RaceRoomController {
             });
             return true;
         } catch (err) {
+            this._joining = false; // U5: 同步异常也释放锁
             this._handlePeerError(err);
             return false;
         }
+    }
+
+    // ─── 房主迁移（host migration）────────────────────────────
+
+    /**
+     * 访客侧：升级为新房主。销毁旧访客 Peer → 重建 Peer 'race_<房间码>' → 恢复成员快照。
+     * 其他访客通过现有重连循环自动连上来（_setupGuestConn → race_hello 握手）。
+     * @returns {Promise<boolean>} 成功接管返回 true；已有新房主（unavailable-id）或失败返回 false。
+     */
+    async promoteToHost() {
+        if (this.isHost || this._disconnecting || this._promoting) return false;
+        if (!this.roomCode) return false;
+        await RaceRoomController.ensurePeerJs();
+        // 停止访客重连循环，进入升级流程
+        if (this._reconnectTimer) { clearTimeout(this._reconnectTimer); this._reconnectTimer = null; }
+        this._reconnecting = false;
+        if (this.onReconnectingChange) this.onReconnectingChange(false);
+        this._promoting = true;
+        this._disconnecting = true;
+        // 记住旧房主（迁移后拒绝其重入）
+        const oldHost = this.members.find(m => m.isHost);
+        this._oldHostPlayerId = oldHost ? oldHost.playerId : null;
+        // 关闭旧访客连接并销毁旧 Peer
+        if (this._hostConn) { try { this._hostConn.close(); } catch (e) {} }
+        this._hostConn = null;
+        this.isConnected = false;
+        if (this.peer && !this.peer.destroyed) { try { this.peer.destroy(); } catch (e) {} }
+        this.peer = null;
+        this._disconnecting = false;
+        // 成员快照：自己升级为房主(slot 0)，其余成员标记待重连
+        const myId = this.myPlayerId;
+        const myNick = this.myNickname;
+        let me = this.members.find(m => m.playerId === myId);
+        if (me) {
+            me.isHost = true; me.connected = true; me.slot = 0;
+        } else {
+            this.members.unshift({ playerId: myId, nickname: myNick, isHost: true, connected: true, slot: 0 });
+        }
+        for (const m of this.members) {
+            if (m.playerId !== myId) { m.isHost = false; m.connected = false; }
+        }
+        // 重建房主 Peer（id 唯一性天然仲裁：多个访客同时 promote 只会有一个成功）
+        const iceServers = await RaceRoomController._fetchIceServers();
+        const sig = RaceRoomController.signaling;
+        const hostId = 'race_' + this.roomCode;
+        const self = this;
+        return await new Promise((resolve) => {
+            let settled = false;
+            const done = (ok) => { if (settled) return; settled = true; self._promoting = false; resolve(ok); };
+            const p = new Peer(hostId, {
+                debug: sig.debug,
+                host: sig.host,
+                port: sig.port,
+                path: sig.path,
+                secure: sig.secure,
+                config: { iceServers }
+            });
+            this.peer = p;
+            this.isConnecting = true;
+            this._notifyStatus('connecting', '正在接管房间...');
+            p.on('open', () => {
+                this.isConnecting = false;
+                this.role = 'host';
+                this.isHost = true;
+                this.isConnected = true;
+                this._notifyStatus('connected', '已接管房间，等待其他玩家重连...');
+                this._handleReconnectSuccess();
+                this._startHeartbeat();
+                if (this.onMembersUpdate) this.onMembersUpdate(this._membersSnapshot());
+                if (this.onConnected) this.onConnected();
+                done(true);
+            });
+            p.on('connection', (conn) => this._setupGuestConn(conn));
+            p.on('disconnected', () => {
+                if (this._disconnecting) return;
+                this._selfSignalLost = true;
+                if (this.peer && !this.peer.destroyed) this.peer.reconnect();
+            });
+            p.on('error', (err) => {
+                console.error('[RaceRoom] promoteToHost error', err);
+                if (err && err.type === 'unavailable-id') {
+                    // 已有其他访客抢先接管 → 降级为访客，继续重连新房主
+                    this.isConnecting = false;
+                    this.role = 'guest';
+                    this.isHost = false;
+                    this.isConnected = false;
+                    if (me) { me.isHost = false; me.connected = false; }
+                    if (this.peer && !this.peer.destroyed) { try { this.peer.destroy(); } catch (e) {} }
+                    this.peer = null;
+                    this._startReconnect();
+                    done(false);
+                } else {
+                    this._handlePeerError(err);
+                    done(false);
+                }
+            });
+        });
     }
 
     // ─── 连接建立 ────────────────────────────────────────────
@@ -266,7 +414,10 @@ class RaceRoomController {
             return;
         }
         this._guestConns.set(peerId, conn);
-        conn.on('open', () => { /* 等待 race_hello 完成身份握手 */ });
+        conn.on('open', () => {
+            this._guestLastSeen.set(peerId, Date.now());
+            /* 等待 race_hello 完成身份握手 */
+        });
         conn.on('data', (data) => this._handleHostSideMessage(conn, data));
         conn.on('close', () => this._handleGuestConnClosed(conn));
         conn.on('error', () => this._handleGuestConnClosed(conn));
@@ -275,17 +426,49 @@ class RaceRoomController {
     /** 房主侧：处理访客发来的消息 */
     _handleHostSideMessage(conn, data) {
         if (!data || !data.type) return;
+        // 心跳：任意消息到达都视为该访客在线（更新最后活跃时间）
+        if (conn && conn.peer) this._guestLastSeen.set(conn.peer, Date.now());
         if (this._reconnecting && data.type === 'race_hello') {
             // 重连期间收到握手 → 视为重连成功，解除房主端重连状态
             this._handleReconnectSuccess();
         }
         switch (data.type) {
+            case 'race_ping':
+                // 访客 ping → 回 pong（心跳确认在线）
+                try { conn.send({ type: 'race_pong' }); } catch (e) {}
+                break;
+            case 'race_pong':
+                break;
             case 'race_hello': {
                 const playerId = String(data.playerId || '');
                 // 已被踢出的玩家禁止重入
                 if (this._kickedPlayerIds && this._kickedPlayerIds.has(playerId)) {
                     try {
                         conn.send({ type: 'race_hello_ack', ok: false, reason: 'kicked' });
+                    } catch (e) {}
+                    setTimeout(function() { try { conn.close(); } catch (e) {} }, 300);
+                    return;
+                }
+                // 房主迁移后，旧房主尝试重入：
+                // - 仍保留在成员列表（60s 宽限内）→ 放行，降为普通成员续局（_oldHostPlayerId 置空后走下方 member 分支）
+                // - 已被移除（超时）→ 拒绝并提示恢复失败
+                if (this._oldHostPlayerId && playerId === this._oldHostPlayerId) {
+                    const oldMember = this.members.find(m => m.playerId === playerId);
+                    if (!oldMember) {
+                        try {
+                            conn.send({ type: 'race_hello_ack', ok: false, reason: 'host_migrated' });
+                        } catch (e) {}
+                        setTimeout(function() { try { conn.close(); } catch (e) {} }, 300);
+                        return;
+                    }
+                    // 放行：旧房主以普通成员身份重入
+                    this._oldHostPlayerId = null;
+                }
+                // 排位/休闲模式隔离：访客选择的模式与房间不符 → 拒绝加入并提示
+                const guestMode = String(data.mode || 'casual');
+                if (guestMode !== this.roomMode) {
+                    try {
+                        conn.send({ type: 'race_hello_ack', ok: false, reason: 'mode_mismatch' });
                     } catch (e) {}
                     setTimeout(function() { try { conn.close(); } catch (e) {} }, 300);
                     return;
@@ -404,12 +587,14 @@ class RaceRoomController {
     _setupHostConn(conn) {
         this._hostConn = conn;
         conn.on('open', () => {
-            // 身份握手
+            this._hostLastSeen = Date.now();
+            // 身份握手（携带模式，房主侧校验排位/休闲一致）
             try {
                 conn.send({
                     type: 'race_hello',
                     playerId: this.myPlayerId,
-                    nickname: this.myNickname
+                    nickname: this.myNickname,
+                    mode: this.roomMode
                 });
             } catch (e) {}
         });
@@ -421,10 +606,20 @@ class RaceRoomController {
     /** 访客侧：处理房主发来的消息 */
     _handleGuestSideMessage(data) {
         if (!data || !data.type) return;
+        // 心跳：任意消息到达都视为房主在线（更新最后活跃时间）
+        this._hostLastSeen = Date.now();
         if (this._reconnecting && data.type === 'race_welcome') {
             this._handleReconnectSuccess();
         }
         switch (data.type) {
+            case 'race_ping':
+                // 房主 ping → 回 pong（心跳确认在线）
+                if (this._hostConn && this._hostConn.open) {
+                    try { this._hostConn.send({ type: 'race_pong' }); } catch (e) {}
+                }
+                break;
+            case 'race_pong':
+                break;
             case 'race_welcome': {
                 this.isConnecting = false;
                 this.isConnected = true;
@@ -448,6 +643,8 @@ class RaceRoomController {
                     var ackMsg = '加入失败';
                     if (reason === 'room_full') ackMsg = '房间已满员';
                     else if (reason === 'kicked') ackMsg = '你已被房主移出房间';
+                    else if (reason === 'host_migrated') ackMsg = '房间已由新房主接管';
+                    else if (reason === 'mode_mismatch') ackMsg = '该房间为排位/休闲房，与你的选择不符';
                     this._notifyStatus('error', ackMsg);
                     var self = this;
                     setTimeout(function() { self.disconnect(); }, 100);
@@ -494,26 +691,41 @@ class RaceRoomController {
                 break;
             case 'race_hello_ack':
                 if (data.ok === false) {
-                    this._notifyStatus('error', data.reason === 'room_full' ? '房间已满员' : '加入被拒绝');
+                    var r2 = data.reason || '';
+                    var ack2 = (r2 === 'room_full') ? '房间已满员' : '加入被拒绝';
+                    if (r2 === 'mode_mismatch') ack2 = '该房间为排位/休闲房，与你的选择不符';
+                    this._notifyStatus('error', ack2);
                     this.disconnect();
                 }
                 break;
             case 'race_close':
-                this._roomClosed = true;
-                if (this.onRoomClosed) this.onRoomClosed(data.reason || 'host_closed');
+                if (data.reason === 'host_dissolved') {
+                    // 房主主动解散：同样触发迁移，访客保持重连等新房主接管
+                    if (this.onHostLost) {
+                        try { this.onHostLost('host_dissolved'); } catch (e) { console.error(e); }
+                    }
+                    if (!this._roomClosed) this._startReconnect();
+                } else {
+                    this._roomClosed = true;
+                    if (this.onRoomClosed) this.onRoomClosed(data.reason || 'host_closed');
+                }
                 break;
             default:
                 break;
         }
     }
 
-    /** 访客侧：房主连接关闭 → 进入 60s 重连 */
+    /** 访客侧：房主连接关闭 → 立即通知上层（迁移）并进入 60s 重连兜底 */
     _handleHostConnClosed() {
-        if (this._disconnecting) return;
+        if (this._disconnecting || this._promoting) return;
         this._hostConn = null;
         this.isConnected = false;
         if (this._roomClosed) return;
         if (!this.roomCode) return;
+        // 房主掉线：立即让上层感知，触发迁移流程（不再傻等 60s）
+        if (this.onHostLost) {
+            try { this.onHostLost('conn_closed'); } catch (e) { console.error(e); }
+        }
         this._startReconnect();
     }
 
@@ -641,6 +853,53 @@ class RaceRoomController {
         }
     }
 
+    // ─── 心跳（ping/pong，2026-08-12） ──────────────────────
+    // 目的：房主直接关浏览器大退时，DataChannel 不会立刻触发 close 事件，
+    //       访客通过心跳超时（15s 无响应）感知房主失联并立即触发迁移。
+    // 双方每 5s 互发 race_ping；收到任意消息（含 race_pong）都刷新 lastSeen；
+    // 15s 无响应 → 房主侧把该访客走断线宽限流程；访客侧触发 onHostLost('conn_timeout')。
+
+    _startHeartbeat() {
+        this._stopHeartbeat();
+        this._hbTimer = setInterval(() => this._heartbeatTick(), this._hbIntervalMs);
+    }
+
+    _stopHeartbeat() {
+        if (this._hbTimer) { clearInterval(this._hbTimer); this._hbTimer = null; }
+        this._guestLastSeen.clear();
+    }
+
+    _heartbeatTick() {
+        if (this._disconnecting) return;
+        const now = Date.now();
+        if (this.isHost) {
+            // 房主：向全部访客广播 ping；15s 无响应的访客 → 触发断线宽限流程
+            for (const [peerId, conn] of this._guestConns) {
+                if (conn.open) {
+                    try { conn.send({ type: 'race_ping' }); } catch (e) {}
+                }
+                const lastSeen = this._guestLastSeen.get(peerId) || 0;
+                if (lastSeen && now - lastSeen > this._hbStaleMs) {
+                    this._guestLastSeen.delete(peerId);
+                    try { conn.close(); } catch (e) {}
+                }
+            }
+        } else {
+            // 访客：向房主发 ping；15s 无响应 → 触发房主迁移 + 60s 重连兜底
+            if (this._hostConn && this._hostConn.open) {
+                try { this._hostConn.send({ type: 'race_ping' }); } catch (e) {}
+            }
+            if (this._hostLastSeen && now - this._hostLastSeen > this._hbStaleMs) {
+                if (this._disconnecting || this._promoting || this._reconnecting || this._roomClosed) return;
+                this._hostLastSeen = 0; // 防重复触发
+                if (this.onHostLost) {
+                    try { this.onHostLost('conn_timeout'); } catch (e) { console.error(e); }
+                }
+                this._startReconnect();
+            }
+        }
+    }
+
     // ─── 清理 ────────────────────────────────────────────────
 
     _handlePeerError(err) {
@@ -663,6 +922,7 @@ class RaceRoomController {
     disconnect(reason = 'self') {
         this._disconnecting = true;
         this._roomClosed = true;
+        this._stopHeartbeat();
         if (this._reconnectTimer) { clearTimeout(this._reconnectTimer); this._reconnectTimer = null; }
         for (const t of this._guestReconnectTimers.values()) clearTimeout(t);
         this._guestReconnectTimers.clear();
@@ -695,6 +955,7 @@ class RaceRoomController {
             try { this.peer.destroy(); } catch (e) {}
         }
         this.peer = null;
+        this._stopHeartbeat();
         this._guestConns.clear();
         this._guestPlayerId.clear();
         this._hostConn = null;
@@ -702,8 +963,12 @@ class RaceRoomController {
         this.isConnecting = false;
         this._disconnecting = false;
         this._selfSignalLost = false;
+        this._creating = false;
+        this._joining = false;
         this._reconnecting = false;
         this._roomClosed = false;
+        this._promoting = false;
+        this._oldHostPlayerId = null;
         if (this._reconnectTimer) { clearTimeout(this._reconnectTimer); this._reconnectTimer = null; }
         for (const t of this._guestReconnectTimers.values()) clearTimeout(t);
         this._guestReconnectTimers.clear();

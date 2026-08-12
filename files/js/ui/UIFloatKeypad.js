@@ -349,6 +349,9 @@ if (typeof UIController === 'undefined') {
         // 相关阶段：隐藏原输入栏与右侧表达式区（body 类 + 永久 CSS 双保险）
         document.body.classList.toggle('float-keypad-mode', relevant);
         if (showKeypad) {
+            // 2026-08-12 修复：展开输入栏时显式隐藏 y= 预览，避免收起时残留
+            const prev = document.getElementById('float-keypad-fab-preview');
+            if (prev) prev.hidden = true;
             this.renderFloatKeypad();
             // 首次显示时夹回屏幕内（小屏可能溢出）
             requestAnimationFrame(() => {
@@ -378,9 +381,14 @@ if (typeof UIController === 'undefined') {
         const preview = document.getElementById('float-keypad-fab-preview');
         if (!fab || !preview) return;
         if (!this._floatKeypadCollapsed) { preview.hidden = true; return; }
-        const text = this.expressionDisplay ? (this.expressionDisplay.textContent || '').trim() : '';
-        const hasExpr = !!text && text !== '点击元素构建表达式...' && text.indexOf('点击') !== 0;
-        if (!hasExpr) { preview.hidden = true; return; }
+        // 2026-08-12 修复：只取 .expression-element 节点文本，排除 "y =" 前缀与光标，
+        // 避免预览显示成 "y = y = ..."
+        let text = '';
+        if (this.expressionDisplay) {
+            text = Array.from(this.expressionDisplay.querySelectorAll('.expression-element'))
+                .map((s) => s.textContent).join('').trim();
+        }
+        if (!text) { preview.hidden = true; return; }
         preview.textContent = 'y = ' + text;
         preview.hidden = false;
         const fr = fab.getBoundingClientRect();

@@ -1619,6 +1619,13 @@ if (typeof UIController === 'undefined') {
 
 // submitFunction
     UIController.prototype.submitFunction = function() {
+        // V7 修复：phase 前置守卫——第一次提交后 phase 已切 EVALUATE，
+        // 连点时后续调用直接 return，避免 GameController 拒绝后 UI 层仍重复
+        // 执行 renderAndEvaluate 造成两条 async 绘制链并发闪帧。
+        // 测试模式 phase 恒为 INPUT_FUNCTION（提交不推进阶段），不受影响。
+        const gc = this.gameController;
+        if (gc && !gc.isTestMode() && gc.currentPhase !== gc.phases.INPUT_FUNCTION) return;
+
         if (this.expressionElements.length === 0) {
             this.showMessage('请输入函数表达式', 'error');
             if (window.audioManager) window.audioManager.playError();
@@ -1840,6 +1847,16 @@ if (typeof UIController === 'undefined') {
 
         // 竞速模式：返回等级列表界面
         if (this.gameController.gameMode === 'race') {
+            // 竞速联机（含对战联机竞速房）：对局中退出走竞速退出确认框，回联机竞速弹窗；
+            // 未开局直接离开（房主等待阶段退出会保留房间）。绝不落到标准竞速选关页。
+            if (this.raceIsMultiplayer || (this._rbRoom && this._rbRoomOpen)) {
+                if (this._rbMatchStarted) {
+                    this.raceBattleConfirmLeave();
+                } else {
+                    this.raceBattleDoLeave();
+                }
+                return;
+            }
             if (this.gameController && typeof this.gameController.cleanupRaceState === 'function') {
                 this.gameController.cleanupRaceState();
             }
@@ -1850,8 +1867,8 @@ if (typeof UIController === 'undefined') {
             this.hideModal(this.gameOverModal);
             this.hideModal(this.startModal);
             if (this.raceIsCustom) {
-                // 试炼场（自定义关）：对局中退出直接返回主页面（无内置等级列表可回）
-                this.closeRaceUI();
+                // 试炼场（自定义关）：对局中退出返回试炼场自定义弹窗（保留上次配置）
+                this.closeRaceUI(true);
             } else {
                 this.showRaceUI();
             }

@@ -8,6 +8,7 @@ if (typeof UIController === 'undefined') {
     UIController.prototype.initLeaderboard = function() {
         this.leaderboardModal = document.getElementById('leaderboard-modal');
         this.leaderboardList = document.getElementById('leaderboard-list');
+        this.leaderboardTip = document.getElementById('leaderboard-tip');
         this.leaderboardMyRankEl = document.getElementById('leaderboard-myrank');
         this.leaderboardNicknameInput = document.getElementById('leaderboard-nickname-input');
         this._leaderboardBoard = 'lr';
@@ -134,6 +135,8 @@ if (typeof UIController === 'undefined') {
         }
         if (this.leaderboardMyRankEl) this.leaderboardMyRankEl.textContent = '';
         this.showModal(this.leaderboardModal);
+        // 打开弹窗时同步一次底部说明，保证与当前 tab 一致
+        this._updateLeaderboardTip(this._leaderboardBoard || 'lr');
         this._queryLeaderboard(this._leaderboardBoard || 'lr');
     }
 ;
@@ -162,7 +165,24 @@ if (typeof UIController === 'undefined') {
         } else {
             if (this.leaderboardRaceSel) this.leaderboardRaceSel.style.display = 'none';
         }
+        // 2026-08-11 需求：切换榜单时同步切换底部小字说明（按当前榜的上报机制展示）
+        this._updateLeaderboardTip(board);
         this._queryLeaderboard(board);
+    }
+;
+
+// _updateLeaderboardTip：按当前榜单切换底部小字说明（说明各榜成绩从何而来）
+    UIController.prototype._updateLeaderboardTip = function(board) {
+        const el = this.leaderboardTip;
+        if (!el) return;
+        const tips = {
+            'lr': '闯关通关自动上报 LR∑ 技术分（通关后自动同步，无需手动操作）',
+            'comet': '闯关通关自动上报 LR∑（附带更新各关彗星分 · 比单关最短表达式 token）',
+            'rsc': '竞速对战结束后自动上报竞速段位积分（按房间去重，不重复计分）',
+            'tt': '竞速通关自动上报该关最佳用时（竞速分关榜，比单关最快）',
+            'elo': '联机对局结束由房主自动上报 ELO 积分'
+        };
+        el.textContent = tips[board] || '';
     }
 ;
 
