@@ -303,19 +303,6 @@ class SummaCharacter {
             });
         }
 
-        // ── Q 键切换 debug 面板显示/隐藏 ──────────────────────────────
-        this._debugPanelVisible = false;
-        this._handleDebugToggleKey = (e) => {
-            if (e.key === 'q' || e.key === 'Q') {
-                e.preventDefault();
-                this._debugPanelVisible = !this._debugPanelVisible;
-                const panel = document.getElementById('summa-debug-panel');
-                if (panel) {
-                    panel.style.display = this._debugPanelVisible ? 'flex' : 'none';
-                }
-            }
-        };
-        document.addEventListener('keydown', this._handleDebugToggleKey);
     }
 
     show(mode) {

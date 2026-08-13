@@ -47,7 +47,10 @@ window.MathLatex = (function () {
                 return s;
             }
             case 'x': return 'x';
-            case 'const': return n.v === 'pi' ? '\\pi' : n.v; // e / i
+            // pi 输出带尾随空格：隐式乘法会省略乘号，若不分隔，\pi 与后接字母
+            // （x / e / i 或 \sin 等）会拼成 \pix / \pisin 等未定义命令 → KaTeX 红色报错。
+            // 数学模式下空格被 KaTeX 忽略，视觉上仍是紧凑的 πx。
+            case 'const': return n.v === 'pi' ? '\\pi ' : n.v; // e / i
             case 'neg': {
                 const inner = astToLatex(n.a);
                 const needParen = pri(n.a) < PREC.neg;
@@ -236,7 +239,7 @@ window.MathLatex = (function () {
         ln: '\\ln', log: '\\log', exp: '\\exp',
         sqrt: '\\sqrt', abs: '\\operatorname{abs}'
     };
-    const SIMPLE_MAP = { '*': '\\cdot ', '/': '\\div', 'π': '\\pi' };
+    const SIMPLE_MAP = { '*': '\\cdot ', '/': '\\div', 'π': '\\pi ' };
 
     /**
      * 单 token → LaTeX（输入区每个元素的 token 级美化）。
