@@ -992,10 +992,10 @@ if (typeof UIController === 'undefined') {
             if (!_hint) {
                 _hint = document.createElement('div');
                 _hint.id = 'inverse-trig-difficulty-hint';
-                _hint.style.cssText = 'font-size:12px;color:#f59e0b;margin-top:6px;line-height:1.4;';
+                _hint.style.cssText = 'font-size:12px;color:#ffffff;text-align:left;margin-top:6px;line-height:1.4;';
                 this.inverseTrigToggleWrap.parentNode.insertBefore(_hint, this.inverseTrigToggleWrap.nextSibling);
             }
-            _hint.textContent = '⚠️ 当前为简单难度，不显示反三角函数。请切换至普通或专家难度。';
+            _hint.textContent = '当前为简单难度，不显示反三角函数。请切换至普通或专家难度。';
         } else if (_hint) {
             _hint.remove();
         }
