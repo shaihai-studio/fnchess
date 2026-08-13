@@ -218,6 +218,9 @@ if (typeof UIController === 'undefined') {
             // splash → 「开始界面」（标题页），与 showModal 默认落「主界面」区分开
             if (typeof this.showStartPage === 'function') this.showStartPage();
             if (window.audioManager) window.audioManager.startBgm();
+            // 进入主界面后再拉取服务器通知 + 检查版本（避免弹窗盖在 splash 全屏遮罩上）
+            if (typeof this.checkNotice === 'function') this.checkNotice();
+            if (typeof this.checkVersion === 'function') this.checkVersion();
         }, 900);
     }
 ;

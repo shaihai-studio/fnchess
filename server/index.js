@@ -38,6 +38,60 @@ const app = express();
 const server = http.createServer(app);
 
 // ─────────────────────────────────────────────
+// 0. 服务器通知（notice.json）
+//    前端每次打开游戏会 fetch /notice 拿到 { id, title, content }，
+//    与本地缓存的编号比较，编号不同则弹出通知。改 notice.json 无需重启服务器。
+// ─────────────────────────────────────────────
+const NOTICE_FILE = path.join(__dirname, 'notice.json');
+app.get('/notice', (req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cache-Control', 'no-store');
+    try {
+        if (!fs.existsSync(NOTICE_FILE)) {
+            res.status(404).json({ error: 'no_notice' });
+            return;
+        }
+        const raw = fs.readFileSync(NOTICE_FILE, 'utf8');
+        const notice = JSON.parse(raw);
+        if (notice && notice.id != null) {
+            res.json(notice);
+        } else {
+            res.status(500).json({ error: 'notice_bad_format' });
+        }
+    } catch (e) {
+        console.warn('[Notice] 读取通知文件失败:', e.message);
+        res.status(500).json({ error: 'notice_error' });
+    }
+});
+
+// ─────────────────────────────────────────────
+// 0.1 游戏版本（version.json）
+//     前端每次启动拉取 /version，与本地 window.GAME_VERSION 比较，
+//     本地版本更小则提示有新版本。发布新版本时更新此文件的 version 即可。
+// ─────────────────────────────────────────────
+const VERSION_FILE = path.join(__dirname, 'version.json');
+app.get('/version', (req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cache-Control', 'no-store');
+    try {
+        if (!fs.existsSync(VERSION_FILE)) {
+            res.status(404).json({ error: 'no_version' });
+            return;
+        }
+        const raw = fs.readFileSync(VERSION_FILE, 'utf8');
+        const data = JSON.parse(raw);
+        if (data && data.version) {
+            res.json(data);
+        } else {
+            res.status(500).json({ error: 'version_bad_format' });
+        }
+    } catch (e) {
+        console.warn('[Version] 读取版本文件失败:', e.message);
+        res.status(500).json({ error: 'version_error' });
+    }
+});
+
+// ─────────────────────────────────────────────
 // 1. PeerJS 信令服务
 // ─────────────────────────────────────────────
 let peerWss = null; // 由 createWebSocketServer 创建，noServer 模式
@@ -159,17 +213,18 @@ const eloSettled = new Set();  // 已结算的房间码（ELO 去重：防 A/B �
 const raceBoard = new Map();
 const raceSettled = new Set();  // 已结算的竞速房间码（按 roomKey:playerId 去重，防多端重复上报）
 // 竞速段位区间（分数越高段位越高）——10 级天体段位
+// 间隔分段：前 4 级 +100、中 3 级 +200、后 2 级 +300（低段升得快、高段升得慢）
 const RACE_TIERS = [
     { name: '流星体', min: 0 },
-    { name: '小行星', min: 300 },
-    { name: '矮行星', min: 600 },
-    { name: '行星', min: 900 },
-    { name: '恒星', min: 1200 },
-    { name: '星团', min: 1500 },
-    { name: '星系', min: 1800 },
-    { name: '星系团', min: 2100 },
-    { name: '超星系团', min: 2400 },
-    { name: '宇宙', min: 2700 }
+    { name: '小行星', min: 100 },
+    { name: '矮行星', min: 200 },
+    { name: '行星', min: 300 },
+    { name: '恒星', min: 400 },
+    { name: '星团', min: 600 },
+    { name: '星系', min: 800 },
+    { name: '星系团', min: 1000 },
+    { name: '超星系团', min: 1300 },
+    { name: '宇宙', min: 1600 }
 ];
 function raceTier(score) {
     let t = RACE_TIERS[0];
@@ -180,8 +235,8 @@ function raceTier(score) {
 const RACE_DIFF_MULT = [0.6, 0.7, 0.8, 0.95, 1.1, 1.3, 1.5];
 // 耐力倍率（1~4：1/3/5/10关）：连跑越长，胜负增减越多
 const RACE_STAMINA_MULT = [0.6, 0.9, 1.2, 1.5];
-// 低段位保护线：积分低于 900（未达「行星」段，即前三个段位）时输不扣分
-const RACE_PROTECT_SCORE = 900;
+// 低段位保护线：积分低于 300（未达「行星」段，即前三个段位）时输不扣分
+const RACE_PROTECT_SCORE = 300;
 // 按名次固定加减分（人数不同分值不同）× 难度/耐力倍率：place 1 为第一名；
 // 局数越多变化越小（抑制刷分），衰减下限 40%
 function raceDelta(place, totalPlayers, games, difficulty, stamina) {
@@ -218,7 +273,7 @@ function handleRaceScore(ws, msg) {
     const abandoned = !!payload.abandoned; // 弃权/退出：强制按最后一名扣分，不受低段位保护
     const p = raceBoard.get(playerId) || { playerId, nickname, score: 0, games: 0, wins: 0, updatedAt: now };
     let delta = raceDelta(place, totalPlayers, p.games, difficulty, stamina);
-    // 低段位保护：前几个等级（积分 < 900 未达「行星」段）正常输/垫底不扣分；弃权/退出例外，必须扣
+    // 低段位保护：前几个等级（积分 < 300 未达「行星」段）正常输/垫底不扣分；弃权/退出例外，必须扣
     if (delta < 0 && p.score < RACE_PROTECT_SCORE && !abandoned) delta = 0;
     p.score = Math.max(0, p.score + delta);
     p.nickname = nickname;

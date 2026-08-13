@@ -993,6 +993,24 @@
         </div>
     </div>
 
+    <!-- 服务器通知弹窗（启动时拉取 /notice，编号与本地缓存不同则弹出） -->
+    <div class="modal" id="notice-modal" style="display:none;">
+        <div class="modal-content" style="max-width:440px;text-align:left;">
+            <h2 id="notice-title">通知</h2>
+            <div class="notice-content" id="notice-content" style="white-space:pre-wrap; word-break:break-word; line-height:1.6; margin:12px 0 18px; max-height:60vh; overflow-y:auto;"></div>
+            <button class="btn btn-primary" id="notice-confirm-btn" style="width:100%;">知道了</button>
+        </div>
+    </div>
+
+    <!-- 新版本提示弹窗（启动时拉取 /version，本地版本更小则每次弹出） -->
+    <div class="modal" id="version-modal" style="display:none;">
+        <div class="modal-content" style="max-width:440px;text-align:left;">
+            <h2 id="version-title">发现新版本</h2>
+            <div class="notice-content" id="version-content" style="white-space:pre-wrap; word-break:break-word; line-height:1.6; margin:12px 0 18px;"></div>
+            <button class="btn btn-primary" id="version-confirm-btn" style="width:100%;">知道了</button>
+        </div>
+    </div>
+
     <!-- 加载 JavaScript 模块 -->
     <!-- KaTeX 数学排版引擎（本地 vendor，离线可用） -->
     <!-- 关卡编辑器（已收编进主程序，作为 #editor-view 就地显示，不再独立页面） -->
@@ -1235,6 +1253,8 @@
     <script src="files/js/LeaderboardService.js"></script>
     <script src="files/js/ui/UILeaderboard.js"></script>
     <script src="files/js/ui/UISpectator.js"></script>
+    <script src="files/js/GameVersion.js"></script>
+    <script src="files/js/ui/UINotice.js"></script>
 <script src="files/js/ui/UICore.js"></script>
 <script src="files/js/ui/UIEditor.js"></script>
 <script src="files/js/ui/UIFloatKeypad.js"></script>
@@ -1302,7 +1322,13 @@
                 uiController._checkRaceBattleResume();
             } else {
                 uiController.showModal(document.getElementById('start-modal'));
+                // 无 splash 场景：直接进入主界面后拉取通知 + 检查版本
+                uiController.checkNotice();
+                uiController.checkVersion();
             }
+
+            // ── 服务器通知/版本：绑定弹窗「知道了」按钮；checkNotice/checkVersion 在进入主界面后触发 ──
+            uiController.initNotice();
 
             console.log('函数棋游戏已加载完成！');
             console.log('游戏模块:', {

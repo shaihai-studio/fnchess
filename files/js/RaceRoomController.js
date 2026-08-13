@@ -117,11 +117,11 @@ class RaceRoomController {
         this._guestReconnectTimers = new Map(); // host: playerId -> timer（60s 后移除）
 
         // ── 心跳（2026-08-12 房主大退检测：互发 ping/pong 确认在线） ──
-        this._hbTimer = null;            // 5s 发送定时器
+        this._hbTimer = null;            // 3s 发送定时器
         this._hostLastSeen = 0;          // guest: 房主最后活跃时间戳
         this._guestLastSeen = new Map(); // host: peerId -> 最后活跃时间戳
-        this._hbIntervalMs = 5000;       // 每 5s 互发一次 ping
-        this._hbStaleMs = 15000;         // 15s 无响应视为失联
+        this._hbIntervalMs = 3000;       // 每 3s 互发一次 ping（更快感知掉线）
+        this._hbStaleMs = 9000;          // 9s 无响应视为失联（3 个 ping 周期）
 
         // ── 房间解散标记 ─────────────────────────────────────
         this._roomClosed = false;

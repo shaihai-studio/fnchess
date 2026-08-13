@@ -139,6 +139,7 @@ UIController.prototype._ensureRaceBattleFields = function() {
     this._rbMigrationTimer = null;      // 选举延迟定时器
     this._rbMigrationAbortTimer = null; // 总超时兜底定时器（60s）
     this._rbMigrationSyncTimer = null;  // 新房主进度收集窗口定时器（8s）
+    this._rbMigrationProgressTimer = null; // 新房主周期重发进度请求的 interval（晚连访客也能回传）
     this._rbMigrationNewHostName = '';  // 新房主昵称（toast 用）
     this._rbMigrationAbortBtnTimer = null; // U7: 弹窗显示 10s 后出现「放弃对局」按钮的定时器
     this._rbMigrationQueryTimer = null;  // 访客侧：迁移待确认时周期请求新房主重发 migration_done 的兜底定时器
@@ -678,7 +679,7 @@ UIController.prototype.raceBattleToggleReady = function() {
     const ready = !this._rbReadyMap[this._rbMyId];
     this._rbReadyMap[this._rbMyId] = ready;
     this.raceBattleRenderMembers();
-    this._rbRoom.send({ type: 'race_battle_ready', ready: !!ready }, false);
+    this._rbRoom.send({ type: 'race_battle_ready', ready: !!ready }, true); // 广播：其他访客也能看到本人就绪状态
     if (this.playUIButtonSound) this.playUIButtonSound();
 };
 
@@ -1695,6 +1696,17 @@ UIController.prototype._rbPromoteAsHost = async function() {
         if (this._rbMigrationSyncTimer) clearTimeout(this._rbMigrationSyncTimer);
         this._rbMigrationSyncTimer = setTimeout(() => this._rbAbortMigration('sync_timeout'), 8000);
         this._rbRequestProgress();
+        // 周期重发进度请求：其他访客可能因重连延迟尚未连上而错过首次请求，
+        // 每 1.5s 重发一次直到收齐（_rbAllOnlineSynced 触发收尾）或超时，保证晚连访客也能回传
+        if (this._rbMigrationProgressTimer) clearInterval(this._rbMigrationProgressTimer);
+        this._rbMigrationProgressTimer = setInterval(() => {
+            if (this._rbMigrationDone || !this._rbMigrationActive || !this._rbIsHost) {
+                clearInterval(this._rbMigrationProgressTimer);
+                this._rbMigrationProgressTimer = null;
+                return;
+            }
+            this._rbRequestProgress();
+        }, 1500);
     } else {
         // 已有其他访客抢先成为新房主：保持访客，等重连成功或 migration_done
         this.raceBattleShowMigrationModal(true, '新房主已确定，正在重连并同步进度…');
@@ -1861,6 +1873,7 @@ UIController.prototype._rbClearMigrationTimers = function() {
     if (this._rbMigrationTimer) { clearTimeout(this._rbMigrationTimer); this._rbMigrationTimer = null; }
     if (this._rbMigrationAbortTimer) { clearTimeout(this._rbMigrationAbortTimer); this._rbMigrationAbortTimer = null; }
     if (this._rbMigrationSyncTimer) { clearTimeout(this._rbMigrationSyncTimer); this._rbMigrationSyncTimer = null; }
+    if (this._rbMigrationProgressTimer) { clearInterval(this._rbMigrationProgressTimer); this._rbMigrationProgressTimer = null; }
     if (this._rbMigrationAbortBtnTimer) { clearTimeout(this._rbMigrationAbortBtnTimer); this._rbMigrationAbortBtnTimer = null; } // U7: 10s 放弃按钮计时器
     if (this._rbMigrationQueryTimer) { clearTimeout(this._rbMigrationQueryTimer); this._rbMigrationQueryTimer = null; }
 };
@@ -2135,7 +2148,7 @@ UIController.prototype._rbCompleteRace = function(elapsed) {
         if (window.audioManager) { try { window.audioManager.playRaceFinish(); } catch (e) {} }
         this.raceBattleShowFinishChoice(true);
     }
-    if (this._rbRoom) this._rbRoom.send({ type: 'race_battle_finish', elapsed: elapsed }, false);
+    if (this._rbRoom) this._rbRoom.send({ type: 'race_battle_finish', elapsed: elapsed }, true); // 广播：其他访客也能看到本人完赛
     if (this._rbIsHost) this._rbCheckResult();
 };
 
@@ -2205,13 +2218,13 @@ UIController.prototype._rbBroadcastProgress = function() {
             level: p.level, puzzle: p.puzzle,
             times: p.times, elapsed: this._rbMyElapsed,
             finished: p.finished, disconnected: p.disconnected
-        }, false);
+        }, true); // 广播：房主转发给其他访客，全员可见彼此进度
     } catch (e) { /* 忽略：断线时进度广播失败不应抛异常打断提交链 */ }
 };
 
 UIController.prototype._rbBroadcastLevelDone = function(level, elapsed) {
     if (!this._rbRoom) return;
-    try { this._rbRoom.send({ type: 'race_battle_level_done', level: level, elapsed: elapsed }, false); } catch (e) { /* 忽略 */ }
+    try { this._rbRoom.send({ type: 'race_battle_level_done', level: level, elapsed: elapsed }, true); } catch (e) { /* 忽略 */ } // 广播：其他访客也能看到本人换关
 };
 
 /** 处理远端进度消息 */
@@ -2361,11 +2374,11 @@ UIController.prototype._raceTierIconHtml = function(tierName) {
     return '<svg class="rb-tier-icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">' + parts + '</svg>';
 };
 
-/** 进度条分母：当前分数所在段位的下一档阈值（对齐服务端 RACE_TIERS 10 级天体 0/300/600/900/1200/1500/1800/2100/2400/2700） */
+/** 进度条分母：当前分数所在段位的下一档阈值（对齐服务端 RACE_TIERS 10 级天体，间隔 100/200/300 分段） */
 UIController.prototype._raceBattleRankTotal = function() {
     const score = (this._rbMyScoreResult && this._rbMyScoreResult.score) || 0;
-    const thresholds = [0, 300, 600, 900, 1200, 1500, 1800, 2100, 2400, 2700];
-    let total = 2700;
+    const thresholds = [0, 100, 200, 300, 400, 600, 800, 1000, 1300, 1600];
+    let total = 1600;
     for (let i = 0; i < thresholds.length; i++) {
         if (score < thresholds[i]) { total = thresholds[i]; break; }
     }
@@ -2473,6 +2486,10 @@ UIController.prototype._rbHandleReconnected = function() {
         } else {
             this._rbSendMigrationSync(); // 已连上新房主 → 回传本人进度快照
         }
+    } else if (!this._rbIsHost) {
+        // 重连成功（迁移已结束或普通闪断）：主动请求房主回发全员完整快照，
+        // 立即补齐其他玩家的最新进度（访客间不互传，只有房主持有完整快照）
+        try { this._rbRoom.send({ type: 'race_full_progress_request' }, false); } catch (e) {}
     }
 };
 
