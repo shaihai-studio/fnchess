@@ -390,6 +390,9 @@ class RaceRoomController {
                     if (me) { me.isHost = false; me.connected = false; }
                     if (this.peer && !this.peer.destroyed) { try { this.peer.destroy(); } catch (e) {} }
                     this.peer = null;
+                    // 关键修复：重建随机访客 Peer，否则 _scheduleReconnectAttempt 因 peer 为 null
+                    // 第一步就 _giveUpReconnect，导致本访客永远连不回新房主（迁移"有时卡死"根因）
+                    this._rebuildGuestPeer(iceServers);
                     this._startReconnect();
                     done(false);
                 } else {
@@ -397,6 +400,33 @@ class RaceRoomController {
                     done(false);
                 }
             });
+        });
+    }
+
+    /** 访客 promote 失败后重建随机访客 Peer（供 _scheduleReconnectAttempt 重连新房主）。
+     *  promoteToHost 已把 peer 销毁置 null，若不重建，重连循环会在第一步就放弃。
+     *  @param {Array} iceServers 复用 promoteToHost 已获取的 ICE 服务器列表 */
+    _rebuildGuestPeer(iceServers) {
+        const sig = RaceRoomController.signaling;
+        const guestId = 'rg_' + Math.random().toString(36).substr(2, 9);
+        const self = this;
+        this.peer = new Peer(guestId, {
+            debug: sig.debug,
+            host: sig.host,
+            port: sig.port,
+            path: sig.path,
+            secure: sig.secure,
+            config: { iceServers }
+        });
+        this.peer.on('open', () => {
+            self._startHeartbeat();
+            // 不主动 connect：交给 _scheduleReconnectAttempt 周期连接新房主
+        });
+        this.peer.on('error', (err) => self._handlePeerError(err));
+        this.peer.on('disconnected', () => {
+            if (self._disconnecting) return;
+            self._selfSignalLost = true;
+            if (self.peer && !self.peer.destroyed) self.peer.reconnect();
         });
     }
 

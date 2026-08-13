@@ -60,6 +60,13 @@ class MatchLobbyController {
         this._manualClose = false;
         this._reconnectTimer = null;
         this._refreshTimer = null;
+        // 房间删除 ack 确认（2026-08-13）：发送删除请求后等待服务器确认，未确认则重发，防幽灵房间
+        this._pendingCancelAck = false;
+        this._pendingDissolveAck = false;
+        this._cancelAckRetries = 0;
+        this._dissolveAckRetries = 0;
+        this._cancelAckTimer = null;
+        this._dissolveAckTimer = null;
 
         // ── 回调 ──────────────────────────────────────────────
         // 2026-08-11 修复：构造函数原本不接受参数，调用方传入的回调配置被静默丢弃，
@@ -89,6 +96,10 @@ class MatchLobbyController {
         // ── 房间解散回调 ───────────────────────────────────────
         this.onRoomDissolved = null;      // (data) => void（对战方收到房主解散房间）
 
+        // ── 房间删除确认回调（2026-08-13 服务器 ack 确认机制）────
+        this.onCancelRegisterAck = null;  // (code, ok) => void（房主收到服务器确认：房间已从大厅删除）
+        this.onRoomDissolveAck = null;    // (code, ok) => void（房主收到服务器确认：房间已解散）
+
         // ── 大厅模式过滤 ──────────────────────────────────────
         this.currentLobbyMode = null;     // 'ranked' | 'casual' | null（拉取/加入房间时按此过滤）
 
@@ -100,7 +111,8 @@ class MatchLobbyController {
                 'onHostRoomExpired', 'onSpectateState', 'onSpectateEnded',
                 'onSpectateJoined', 'onSpectateJoinRejected', 'onSpectateEmoji',
                 'onLeaderboardResult', 'onPlayerEloResult', 'onChallenge',
-                'onSubmitResult', 'onRoomDissolved'
+                'onSubmitResult', 'onRoomDissolved',
+                'onCancelRegisterAck', 'onRoomDissolveAck'
             ];
             for (const k of CALLBACK_KEYS) {
                 if (typeof callbacks[k] === 'function') this[k] = callbacks[k];
@@ -271,6 +283,14 @@ class MatchLobbyController {
             case 'room_dissolved':
                 if (this.onRoomDissolved) this.onRoomDissolved(data);
                 break;
+            case 'cancel_register_ack':
+                this._pendingCancelAck = false;
+                if (this.onCancelRegisterAck) this.onCancelRegisterAck(String(data.code), !!data.ok);
+                break;
+            case 'room_dissolve_ack':
+                this._pendingDissolveAck = false;
+                if (this.onRoomDissolveAck) this.onRoomDissolveAck(String(data.code), !!data.ok);
+                break;
         }
     }
 
@@ -312,11 +332,27 @@ class MatchLobbyController {
         });
     }
 
-    /** 房主取消登记 */
+    /** 房主取消登记（带服务器 ack 确认与重发：未收到确认则重试，确保房间确实从服务器删除） */
     cancelHost(code) {
-        this._send({ type: 'cancel_register', code: String(code || this.myRoomCode || '') });
+        const c = String(code || this.myRoomCode || '');
+        this._send({ type: 'cancel_register', code: c });
         this.myRoomCode = null;
         this.myRoomExpiresAt = 0;
+        // 启动 ack 等待：服务器回 cancel_register_ack 即视为删除成功；否则重发（最多 2 次）
+        this._pendingCancelAck = true;
+        this._cancelAckRetries = 0;
+        if (this._cancelAckTimer) clearTimeout(this._cancelAckTimer);
+        this._cancelAckTimer = setTimeout(() => this._retryCancelAck(c), 2000);
+    }
+
+    /** 未收到 cancel_register_ack 时重发，最多重试 2 次，确保服务器真的删掉 */
+    _retryCancelAck(code) {
+        this._cancelAckTimer = null;
+        if (!this._pendingCancelAck) return; // 已确认，无需重发
+        if (this._cancelAckRetries >= 2) { this._pendingCancelAck = false; return; }
+        this._cancelAckRetries++;
+        this._send({ type: 'cancel_register', code });
+        this._cancelAckTimer = setTimeout(() => this._retryCancelAck(code), 2000);
     }
 
     /** 拉取房间列表（按当前大厅模式过滤：休闲看不到排位房间，反之亦然；
@@ -408,9 +444,24 @@ class MatchLobbyController {
         this._send({ type: 'query_player_elo', playerIds: Array.isArray(playerIds) ? playerIds : [], id: String(id) });
     }
 
-    /** 房主主动解散房间（对局中/等待中退出），服务器会通知对战方与观众 */
+    /** 房主主动解散房间（对局中/等待中退出），服务器会通知对战方与观众；
+     *  带 ack 确认与重发，确保房间确实从服务器删除 */
     notifyRoomDissolve() {
         this._send({ type: 'room_dissolve' });
+        this._pendingDissolveAck = true;
+        this._dissolveAckRetries = 0;
+        if (this._dissolveAckTimer) clearTimeout(this._dissolveAckTimer);
+        this._dissolveAckTimer = setTimeout(() => this._retryDissolveAck(), 2000);
+    }
+
+    /** 未收到 room_dissolve_ack 时重发，最多重试 2 次 */
+    _retryDissolveAck() {
+        this._dissolveAckTimer = null;
+        if (!this._pendingDissolveAck) return;
+        if (this._dissolveAckRetries >= 2) { this._pendingDissolveAck = false; return; }
+        this._dissolveAckRetries++;
+        this._send({ type: 'room_dissolve' });
+        this._dissolveAckTimer = setTimeout(() => this._retryDissolveAck(), 2000);
     }
 
     /** 房主迁移：新房主接管房间后通知服务器移交 hostWs（竞速房掉线迁移） */

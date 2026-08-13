@@ -681,7 +681,9 @@
                     <div class="lobby-actions" style="margin-top:8px;">
                         <button class="btn btn-primary p2p-action-btn race-battle-start-btn" id="race-battle-start-btn" disabled>开始竞速</button>
                     </div>
-                    <button class="btn btn-secondary p2p-back-btn" id="race-battle-home-btn" style="width:100%;margin-top:8px;">返回主页面</button>
+                    <button class="btn-back-circle round-back-abs" id="race-battle-home-btn" type="button" title="返回主页面" aria-label="返回主页面">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+                    </button>
                 </div>
             </div>
         </div>
@@ -738,6 +740,7 @@
             <button class="race-battle-panel-exit rb-finish-exit-btn" id="race-battle-finish-exit-btn" type="button" style="display:none;">退出结算</button>
             <button class="race-battle-panel-exit rb-finish-watch-btn" id="race-battle-finish-watch-btn" type="button" style="display:none;">继续观战</button>
         </div>
+        <div class="race-battle-progress-thin" id="race-battle-progress-thin"></div>
         <div class="race-battle-rows" id="race-battle-rows"></div>
         <div class="race-battle-feature-line" id="race-battle-feature-line"></div>
     </div>
@@ -765,7 +768,7 @@
                     <span class="p2p-mode-select-sub">不计 ELO · 娱乐对局</span>
                 </button>
             </div>
-            <button class="btn-back-circle" id="p2p-mode-select-back" type="button" title="返回主菜单" aria-label="返回主菜单">
+            <button class="btn-back-circle round-back-abs" id="p2p-mode-select-back" type="button" title="返回主菜单" aria-label="返回主菜单">
                 <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
             </button>
         </div>
@@ -872,7 +875,9 @@
                         <small>房主为<strong>玩家A</strong>，访客为<strong>玩家B</strong></small><br>
                         <small>双方轮流操作，玩法与本地对战一致</small>
                     </div>
-                    <button class="btn btn-secondary p2p-back-btn" id="p2p-back-btn" style="width:100%;margin-top:8px;">返回</button>
+                    <button class="btn-back-circle round-back-abs" id="p2p-back-btn" type="button" title="返回" aria-label="返回">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+                    </button>
                 </div>
             </div>
         </div>

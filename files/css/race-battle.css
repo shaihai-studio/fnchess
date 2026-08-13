@@ -123,6 +123,18 @@
 .race-battle-panel.is-collapsed .race-battle-rows,
 .race-battle-panel.is-collapsed .race-battle-feature-line,
 .race-battle-panel.is-collapsed .race-battle-wait-hint { display:none; }
+/* 折叠态窄进度线：2px 细线贴合标题栏底部，宽度 = 本人进度，透明不挡棋盘 */
+.race-battle-progress-thin {
+    display:none;
+    height:2px;
+    margin-top:2px;
+    border-radius:1px;
+    background:linear-gradient(90deg, var(--rb-primary), var(--rb-blue));
+    box-shadow:0 0 8px rgba(34,211,238,.5);
+    width:0%;
+    transition:width .3s ease;
+}
+.race-battle-panel.is-collapsed .race-battle-progress-thin { display:block; }
 .race-battle-panel-code { font-family:Consolas,monospace; font-size:12px; color:var(--rb-dim); letter-spacing:2px; }
 .race-battle-panel-timer { font-size:15px; font-weight:700; color:var(--rb-blue); font-family:Consolas,monospace; margin-left:auto; }
 .race-battle-wait-hint {

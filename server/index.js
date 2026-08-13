@@ -1054,10 +1054,12 @@ lobbyWss.on('connection', (ws, req) => {
                 break;
             }
 
-            // 房主取消登记（退出等待）
+            // 房主取消登记（退出等待）——回 ack 确认已删除，客户端据此确认房间确实不在服务器
             case 'cancel_register': {
-                rooms.delete(String(msg.code));
-                console.log(`[Lobby] 房主取消登记 ${msg.code}`);
+                const code = String(msg.code || '');
+                rooms.delete(code);
+                send(ws, { type: 'cancel_register_ack', code, ok: true });
+                console.log(`[Lobby] 房主取消登记 ${code}`);
                 break;
             }
 
@@ -1394,9 +1396,10 @@ lobbyWss.on('connection', (ws, req) => {
                 break;
             }
 
-            // 房主主动解散房间（对局中/等待中退出）：通知对战方与观众，房间作废
+            // 房主主动解散房间（对局中/等待中退出）：通知对战方与观众，房间作废，并回 ack 确认删除
             case 'room_dissolve': {
                 try {
+                    let dissolvedCode = '';
                     for (const [code, room] of rooms) {
                         if (room.hostWs === ws) {
                             if (room.isRace && Array.isArray(room.guests)) {
@@ -1411,10 +1414,13 @@ lobbyWss.on('connection', (ws, req) => {
                             }
                             room.spectators.clear();
                             rooms.delete(code);
+                            dissolvedCode = code;
                             console.log(`[Lobby] 房主主动解散房间 ${code}（${room.isRace ? `竞速房 ${room.guests.length} 访客已通知` : ''}）`);
                             break;
                         }
                     }
+                    // 无论是否找到房间都回 ack（幂等：找不到也视为已删除），客户端据此确认房间确实不在服务器
+                    send(ws, { type: 'room_dissolve_ack', code: dissolvedCode, ok: true });
                 } catch (e) { console.warn('[Lobby] room_dissolve 处理异常:', e.message); }
                 break;
             }

@@ -1393,6 +1393,11 @@ UIController.prototype._reportP2PForfeitOpponent = function() {
     UIController.prototype._showP2PVSIntro = function(myNick, myElo, oppNick, oppElo) {
         const overlay = document.getElementById('p2p-vs-overlay');
         if (!overlay) return;
+        // 关键修复（2026-08-13）：VS 开场动画期间暂停回合计时，动画"开始！"后再恢复，
+        // 避免玩家还在看 3-2-1 时回合倒计时已提前消耗 3~4 秒。
+        if (this.gameController && typeof this.gameController.pauseTimer === 'function') {
+            this.gameController.pauseTimer();
+        }
         const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = String(v); };
         set('p2p-vs-my-nick', myNick);
         set('p2p-vs-my-elo', 'ELO ' + (myElo != null ? myElo : 1200));
@@ -1423,6 +1428,8 @@ UIController.prototype._reportP2PForfeitOpponent = function() {
         const finish = () => {
             if (subEl) subEl.textContent = '开始！';
             playTick(0);
+            // 动画结束后恢复计时（从暂停时的剩余时间续跑，不重置）
+            if (this.gameController) this._resumeP2PTimer();
             setTimeout(() => { overlay.style.display = 'none'; }, 900);
         };
         const tick = () => {
@@ -1432,6 +1439,20 @@ UIController.prototype._reportP2PForfeitOpponent = function() {
         };
         if (this._p2pVSTimer) clearTimeout(this._p2pVSTimer);
         this._p2pVSTimer = setTimeout(tick, 1000);
+    }
+;
+
+// _resumeP2PTimer：VS 开场动画结束后按当前阶段恢复回合计时（从暂停时的剩余时间续跑）
+    UIController.prototype._resumeP2PTimer = function() {
+        const gc = this.gameController;
+        if (!gc || gc.gameMode !== 'p2p') return;
+        if (gc.currentPhase === gc.phases.INPUT_FUNCTION) {
+            if (typeof gc.resumeTimer === 'function') gc.resumeTimer();
+        } else if (gc.currentPhase === gc.phases.SELECT_TARGET ||
+                   gc.currentPhase === gc.phases.SET_FORBIDDEN ||
+                   gc.currentPhase === gc.phases.SET_LOCKS) {
+            if (typeof gc.resumeTargetTimer === 'function') gc.resumeTargetTimer();
+        }
     }
 ;
 
@@ -1687,7 +1708,12 @@ UIController.prototype._reportP2PForfeitOpponent = function() {
         }
         // 隐藏封面，直接弹出恢复询问
         const splash = document.getElementById('splash-screen');
-        if (splash) { splash.classList.add('splash-exit'); splash.style.display = 'none'; }
+        if (splash) {
+            splash.classList.add('splash-exit');
+            splash.style.display = 'none';
+            // 关键修复：解绑 splash 的 document 级 keydown 监听器，避免恢复后答题按 Enter 误触 _enterFromSplash 跳回主菜单
+            this._unbindSplashEnter(splash);
+        }
         const modal = document.getElementById('p2p-resume-modal');
         if (modal) this.showModal(modal);
     };

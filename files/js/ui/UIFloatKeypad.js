@@ -55,6 +55,7 @@ if (typeof UIController === 'undefined') {
         header.addEventListener('pointermove', (e) => {
             if (!drag) return;
             el.style.left = (drag.left + e.clientX - drag.sx) + 'px';
+            // 自由纵向拖动：上下都跟随指针；高度变化由 _clampFloatKeypad 保持底边界、向上延展
             el.style.top = (drag.top + e.clientY - drag.sy) + 'px';
             el.style.transform = 'none'; // 拖动后取消居中 transform
             this._clampFloatKeypad();     // 防止拖出屏幕

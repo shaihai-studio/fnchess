@@ -262,7 +262,7 @@ if (typeof UIController === 'undefined') {
                 else if (isRaceBoard) scoreText = `${Number(row.score).toFixed(2)}s`;
                 else if (isCometBoard) scoreText = `${row.score} token`;   // 彗星：显示该关最短 token
                 else if (boardType === 'tt') scoreText = `${row.score} 速度`;
-                else if (isRscBoard) scoreText = `${row.tier || ''} ${row.score}分`;   // 竞速段位：段位名+积分
+                else if (isRscBoard) scoreText = `${this._raceTierIconHtml(row.tier)} ${this._escapeHtml(row.tier || '')} ${row.score}分`;   // 竞速段位：段位图标+段位名+积分
                 else scoreText = String(row.score);
                 const sub = (boardType === 'elo')
                     ? `${row.wins}胜 ${row.losses}负 ${row.draws}平`

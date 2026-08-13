@@ -398,6 +398,7 @@ class GameController {
 
     pauseTimer() {
         this.stopTimer();
+        this.stopTargetTimer();
     }
 
     getRaceElapsedSeconds() {
@@ -1057,6 +1058,52 @@ class GameController {
             clearInterval(this.timerInterval);
             this.timerInterval = null;
         }
+    }
+    
+    /**
+     * 恢复输入阶段倒计时：从当前 remainingTime 继续（不重置），
+     * 用于 VS 开场动画暂停后恢复、访客重连后按快照剩余时间续跑等场景。
+     */
+    resumeTimer() {
+        if (this.isTestMode() || (this.campaignState && this.campaignState.active) || (this.raceState && this.raceState.active)) return;
+        if (this.timerInterval) return; // 已在运行
+        const isP2P = this.gameMode === 'p2p' && this.p2pActionSender;
+        // P2P：只有当前操作玩家本地驱动倒计时，对手仅接收同步
+        if (isP2P && this.currentPlayer !== this.p2pActionSender.myPlayerId) return;
+        if (this.remainingTime <= 0) return;
+        this.timerInterval = setInterval(() => {
+            this.remainingTime--;
+            this.emit('timerUpdate', { remainingTime: this.remainingTime });
+            if (isP2P && this.p2pActionSender && this.p2pActionSender.sendTimerSync) {
+                this.p2pActionSender.sendTimerSync(this.remainingTime);
+            }
+            if (this.remainingTime <= 0) {
+                this.handleTimeout();
+            }
+        }, 1000);
+    }
+    
+    /**
+     * 恢复选格子倒计时：从当前 targetRemaining 继续（不重置），用于 VS 动画暂停后恢复。
+     */
+    resumeTargetTimer() {
+        if (this.targetTimerInterval) return; // 已在运行
+        if (this.gameMode === 'p2p' && !this.p2pActionSender) return; // 观战/只读端
+        if (this.isTestMode() || (this.campaignState && this.campaignState.active) || (this.raceState && this.raceState.active)) return;
+        const isP2P = this.gameMode === 'p2p' && this.p2pActionSender;
+        if (isP2P && this.currentPlayer !== this.p2pActionSender.myPlayerId) return;
+        if (this.targetRemaining <= 0) return;
+        this.targetTimerInterval = setInterval(() => {
+            this.targetRemaining--;
+            this.remainingTime = this.targetRemaining;
+            this.emit('timerUpdate', { remainingTime: this.targetRemaining });
+            if (isP2P && this.p2pActionSender && this.p2pActionSender.sendTimerSync) {
+                this.p2pActionSender.sendTimerSync(this.targetRemaining);
+            }
+            if (this.targetRemaining <= 0) {
+                this.handleTargetTimeout();
+            }
+        }, 1000);
     }
     
     /**
@@ -2110,10 +2157,24 @@ class GameController {
             this.functionHistory = JSON.parse(JSON.stringify(s.functionHistory || []));
             this.elementLockCounts = new Map(Object.entries(s.elementLockCounts || {}));
 
+            // 恢复计时器（关键修复，2026-08-13）：恢复后轮到本方操作时，确保本地倒计时在跑。
+            // 原条件 oldPhase !== INPUT_FUNCTION 只覆盖"新进入输入阶段"；访客重连后 oldPhase 同为
+            // INPUT_FUNCTION 时计时器不会被重启 → 计时卡死。此处区分：新回合重置启动，重连续跑不重置。
             if (this.gameMode === 'p2p' && this.p2pActionSender &&
-                oldPhase !== this.phases.INPUT_FUNCTION && this.currentPhase === this.phases.INPUT_FUNCTION &&
                 this.currentPlayer === this.p2pActionSender.myPlayerId) {
-                this.startTimer();
+                if (this.currentPhase === this.phases.INPUT_FUNCTION) {
+                    if (oldPhase !== this.phases.INPUT_FUNCTION) {
+                        this.startTimer(); // 新进入输入阶段：重置并启动
+                    } else if (!this.timerInterval) {
+                        this.resumeTimer(); // 重连恢复：从快照剩余时间续跑（不重置）
+                    }
+                } else if (this.currentPhase === this.phases.SELECT_TARGET ||
+                           this.currentPhase === this.phases.SET_FORBIDDEN ||
+                           this.currentPhase === this.phases.SET_LOCKS) {
+                    if (!this.targetTimerInterval) {
+                        this.resumeTargetTimer(); // 选格子阶段重连恢复：续跑
+                    }
+                }
             }
             // 应用远端快照后同步版本号：
             // 操作方保留 max（防被对端旧快照回退）；被动方严格对齐操作方（消除本地
