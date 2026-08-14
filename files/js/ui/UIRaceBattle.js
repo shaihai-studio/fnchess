@@ -71,6 +71,7 @@ UIController.prototype._ensureRaceBattleFields = function() {
     this.raceLobbyEloRangeWrap = document.getElementById('race-lobby-elo-range-wrap');
     this.raceLobbyEloRangeToggle = document.getElementById('race-lobby-elo-range-toggle');
     this.raceLobbyEloRangeInput = document.getElementById('race-lobby-elo-range-input');
+    this.raceLobbyTierToggle = document.getElementById('race-lobby-tier-toggle');
 
     this.raceBattlePanel = document.getElementById('race-battle-panel');
     this.raceBattlePanelCode = document.getElementById('race-battle-panel-code');
@@ -131,7 +132,7 @@ UIController.prototype._ensureRaceBattleFields = function() {
     this._rbWarningShown = false;  // 竞速排位「勿消极比赛」提示（每会话一次）
     this._rbResultScoreTimer = null; // 结算"积分结算中"兜底定时器（5s 后改显"积分暂不可用"）
     this._rbProgress = {};
-    this._rbRanks = null;
+    this._rbRanks = {};              // playerId → 竞速段位名（未查到返回"未定段"）
     this._rbGameParams = null;
     // 房主迁移（host migration，2026-08-11）
     this._rbMigrationActive = false;    // 是否处于迁移流程
@@ -152,6 +153,15 @@ UIController.prototype.openRaceBattleModal = function() {
     // 竞速联机：先选排位/休闲模式
     const sel = document.getElementById('p2p-mode-select-modal');
     if (sel) {
+        // 复用 P2P 的模式选择弹窗，但竞速联机是「段位」而非 ELO，动态改写文案
+        const _t = sel.querySelector('h2');
+        const _d = sel.querySelector('.p2p-mode-select-desc');
+        const _rSub = sel.querySelector('#p2p-mode-select-ranked .p2p-mode-select-sub');
+        const _cSub = sel.querySelector('#p2p-mode-select-casual .p2p-mode-select-sub');
+        if (_t) _t.textContent = '选择竞速模式';
+        if (_d) _d.textContent = '排位模式计入竞速段位并参与排行榜；休闲模式不增减段位。';
+        if (_rSub) _rSub.textContent = '计竞速段位 · 可上排行榜';
+        if (_cSub) _cSub.textContent = '不增减段位 · 娱乐对局';
         // U3: 用 bindModalDismiss 统一注册 ESC + 遮罩关闭（原先手动设 _dismissBound 只有 ESC 生效，遮罩点击无 handler）
         this.bindModalDismiss(sel, function() { this.hideModal(sel); }.bind(this));
         const pick = (mode) => {
@@ -380,7 +390,7 @@ UIController.prototype.raceBattleCreateRoom = function(optCode) {
     if (!this._rbRoom) this._rbRoom = new RaceRoomController();
     const room = this._rbRoom;
     this._bindRaceBattleRoomCallbacks(room);
-    return room.createRoom({ roomCode: code, maxPlayers: 4, playerId: this._rbMyId, nickname, mode: this._rbRanked ? 'ranked' : 'casual' }).then((ok) => {
+    return room.createRoom({ roomCode: code, maxPlayers: 4, playerId: this._rbMyId, nickname, profileId: this._rbProfileId(), mode: this._rbRanked ? 'ranked' : 'casual' }).then((ok) => {
         if (!ok) {
             // U5: 创建被拒/失败立即复位；成功时 _rbBusy 保持 true 直到 onStatusChange(connected/error)，
             // 覆盖「Peer 信令连接中」的挂起窗口，防止切 tab 加入互相覆盖状态
@@ -422,7 +432,7 @@ UIController.prototype.raceBattleJoinRoom = function(skipLookup) {
         if (!this._rbRoom) this._rbRoom = new RaceRoomController();
         const room = this._rbRoom;
         this._bindRaceBattleRoomCallbacks(room);
-        room.joinRoom({ roomCode: code, playerId: this._rbMyId, nickname, mode: this._rbRanked ? 'ranked' : 'casual' }).then((ok) => {
+        room.joinRoom({ roomCode: code, playerId: this._rbMyId, nickname, profileId: this._rbProfileId(), mode: this._rbRanked ? 'ranked' : 'casual' }).then((ok) => {
             if (!ok) {
                 // U5: 加入被拒/失败立即复位；成功时保持 true 直到 onStatusChange(connected/error)
                 this._rbBusy = false;
@@ -515,6 +525,13 @@ UIController.prototype._bindRaceBattleRoomCallbacks = function(room) {
             }
         } else {
             this._raceBattleSetStatus('connecting', msg || '连接中…');
+            // 恢复流程中连接彻底断开（60s 重连放弃后走 disconnected）：同样清上下文回主菜单，
+            // 否则 _rbResuming 残留，用户会卡在"正在恢复对局…"界面
+            if (this._rbResuming && !this._rbMatchStarted) {
+                this._rbClearResumeContext();
+                this.raceBattleToast('恢复失败，本局已结束');
+                this.showSplash();
+            }
         }
     };
     room.onMembersUpdate = (members) => {
@@ -525,11 +542,14 @@ UIController.prototype._bindRaceBattleRoomCallbacks = function(room) {
         members.forEach((m) => {
             this._rbReadyMap[m.playerId] = m.isHost ? true : !!prev[m.playerId];
         });
+        // 批量查询未缓存的成员竞速段位（避免成员行显示"未定段"）；查询用 profileId 持久身份而非临时 playerId
+        this._rbQueryRaceRanks(this._rbMembers.map((m) => m.profileId || m.playerId));
         this.raceBattleRenderMembers();
     };
     room.onMemberJoined = (member) => {
         this._rbMembers.push(member);
         this._rbReadyMap[member.playerId] = false;
+        this._rbQueryRaceRanks([member.profileId || member.playerId]);
         this.raceBattleRenderMembers();
         // 2026-08-12 修复重复音效：移除 click（playUIButtonSound），只保留加入成功音
         if (window.audioManager) { try { window.audioManager.playSuccess(); } catch (e) {} }
@@ -635,7 +655,7 @@ UIController.prototype.raceBattleRenderMembers = function() {
 
         const badge = document.createElement('span');
         badge.className = 'race-battle-member-badge';
-        badge.textContent = this._raceBattleGetRankBadge(m.playerId);
+        badge.textContent = this._raceBattleGetRankBadge(m.profileId || m.playerId);
         row.appendChild(badge);
 
         const role = document.createElement('span');
@@ -668,10 +688,35 @@ UIController.prototype.raceBattleRenderMembers = function() {
     });
 };
 
+/** 竞速成绩身份（持久）：与成绩上报 submitRaceScore 同 key，段位查询/展示必须用它（临时 playerId racehost_/raceguest_ 查不到 raceBoard） */
+UIController.prototype._rbProfileId = function() {
+    return (typeof PlayerProfile !== 'undefined' && PlayerProfile.getPlayerId ? (PlayerProfile.getPlayerId() || '') : '') || '';
+};
+
 UIController.prototype._raceBattleGetRankBadge = function(playerId) {
     const ranks = this._rbRanks || {};
     if (ranks[playerId]) return ranks[playerId];
     return '未定段';
+};
+
+/** 批量查询玩家竞速段位并填充 _rbRanks（去重已缓存项，避免 N+1 重复请求） */
+UIController.prototype._rbQueryRaceRanks = function(playerIds) {
+    const lobby = this._rbLobby;
+    if (!lobby || typeof lobby.queryPlayerRaceRank !== 'function') return;
+    const need = [];
+    const seen = {};
+    (Array.isArray(playerIds) ? playerIds : []).forEach((pid) => {
+        if (!pid || seen[pid]) return;
+        seen[pid] = true;
+        if (!this._rbRanks[pid]) need.push(pid);
+    });
+    if (!need.length) return;
+    lobby.queryPlayerRaceRank(need, 'race-rank');
+};
+
+/** "仅同段位可见"开关是否开启 */
+UIController.prototype._rbLobbyTierFilter = function() {
+    return !!(this.raceLobbyTierToggle && this.raceLobbyTierToggle.checked);
 };
 
 UIController.prototype.raceBattleToggleReady = function() {
@@ -768,7 +813,7 @@ UIController.prototype.raceBattleConfirmLeave = function() {
     const p = this.raceBattleExitModal.querySelector('p');
     if (p) {
         p.textContent = isRanked
-            ? '确定要退出当前竞速对局吗？退出后本局判负并扣除积分。'
+            ? '确定要退出当前竞速对局吗？退出后本局判负并扣除 30 分。'
             : '确定要离开房间吗？';
     }
     // 2026-08-11 修复弹窗不显示：必须走 showModal() 获得动态 z-index（10000 + 栈深*2），
@@ -780,8 +825,16 @@ UIController.prototype.raceBattleCancelLeave = function() {
     if (this._rbReady) this.hideModal('race-battle-exit-modal');
 };
 
-UIController.prototype.raceBattleDoLeave = function() {
+UIController.prototype.raceBattleDoLeave = function(isKick) {
     this._ensureRaceBattleFields();
+    // 排位对局中主动退出（非被踢）：立即上报弃权结算，服务端固定扣 30 分（不受低段位保护，保底不减成负数）
+    if (!isKick && this._rbRanked && this._rbMatchStarted) {
+        try {
+            const prog = this._rbProgress[this._rbMyId] || (this._rbProgress[this._rbMyId] = {});
+            prog.abandoned = true;
+            this._rbSubmitSelfScore(this._rbBuildResult());
+        } catch (e) {}
+    }
     // 离开/解散即清理断线恢复上下文（对局已放弃）
     this._rbClearResumeContext();
     this.hideModal('race-battle-exit-modal');
@@ -995,16 +1048,23 @@ UIController.prototype.raceBattleRenderProgress = function(progressMap) {
         rows.appendChild(row);
     });
 
-    // 折叠态窄进度线：显示本人当前进度（2px 细线，不挡棋盘）
+    // 折叠态窄进度线：全员各一段并排（本人绿色、他人白色），段内填充 = 各人进度（2px 细线，不挡棋盘）
     const thin = this.raceBattleProgressThin;
     if (thin) {
-        const me = this._rbProgress[this._rbMyId];
+        thin.innerHTML = '';
         const totalLv = (this._rbGameParams && this._rbGameParams.levels) || 3;
-        let pct = 0;
-        if (me) {
-            pct = (me.finished ? totalLv : ((me.level || 1) - 1) + ((me.puzzle || 0) / 10)) / totalLv;
-        }
-        thin.style.width = Math.round(Math.max(0, Math.min(1, pct)) * 100) + '%';
+        list.forEach((item) => {
+            const d = item.data;
+            const seg = document.createElement('span');
+            seg.className = 'rb-progress-thin-seg' + (item.id === this._rbMyId ? ' is-me' : '');
+            if (d.disconnected) seg.classList.add('is-offline');
+            const fill = document.createElement('span');
+            fill.className = 'rb-progress-thin-fill';
+            const pct = d.finished ? totalLv : ((d.level || 1) - 1) + ((d.puzzle || 0) / 10);
+            fill.style.width = Math.round(Math.max(0, Math.min(1, pct / totalLv)) * 100) + '%';
+            seg.appendChild(fill);
+            thin.appendChild(seg);
+        });
     }
 };
 
@@ -1287,14 +1347,46 @@ UIController.prototype.raceBattleBackToMenu = function() {
 // 刷新/重开页面后，通过 localStorage 中的未完成排位对局上下文弹窗询问是否恢复。
 // 关键：持久化 _rbMyId，刷新后用同一 playerId 重入，房主 race_hello 才能命中已有成员分支认回。
 
+/** 生成/复用本窗口归属标记（sessionStorage per-tab 独立：刷新保留、跨标签页隔离） */
+UIController.prototype._ensureRbWindowOwner = function() {
+    if (this._rbWindowOwner) return;
+    try { this._rbWindowOwner = sessionStorage.getItem('function_chess_rb_owner') || ''; } catch (e) {}
+    if (!this._rbWindowOwner) {
+        this._rbWindowOwner = 'rbw_' + Math.random().toString(36).substr(2, 9);
+        try { sessionStorage.setItem('function_chess_rb_owner', this._rbWindowOwner); } catch (e) {}
+    }
+    // 注册 BroadcastChannel 存活监听：收到同 owner 的 ping 回 pong，供其他标签页判断本窗口是否存活
+    this._rbRegisterOwnerAliveListener();
+};
+
+/**
+ * BroadcastChannel 存活监听：仅响应与自己 owner 相同的 ping。
+ * 旧窗口存活 → 新标签页探测恢复键 owner 会收到 pong → 判定"他人对局"拦截，不弹恢复；
+ * 旧窗口已关闭/崩溃（channel 随窗口销毁）→ 新窗口收不到 pong → 判定可接管恢复键。
+ */
+UIController.prototype._rbRegisterOwnerAliveListener = function() {
+    if (this._rbOwnerChannel || typeof BroadcastChannel === 'undefined') return;
+    try {
+        this._rbOwnerChannel = new BroadcastChannel('function_chess_rb_owner_alive');
+        this._rbOwnerChannel.onmessage = (ev) => {
+            const d = ev.data;
+            if (!d || d.type !== 'ping' || d.owner !== this._rbWindowOwner) return;
+            try { this._rbOwnerChannel.postMessage({ type: 'pong', owner: this._rbWindowOwner }); } catch (e) {}
+        };
+    } catch (e) { this._rbOwnerChannel = null; }
+};
+
 UIController.prototype._rbSaveResumeContext = function() {
     try {
         if (!this._rbRanked || !this._rbMatchStarted) return;
         if (!this._rbRoom || !this._rbRoom.roomCode) return;
+        // 窗口归属标记：防止同源多标签页互相覆盖同一 localStorage 恢复键后串号
+        this._ensureRbWindowOwner();
         const p = this._rbGameParams || {};
         const ctx = {
             roomCode: this._rbRoom.roomCode,
             myId: this._rbMyId,
+            owner: this._rbWindowOwner,
             isHost: !!this._rbIsHost,
             mode: 'ranked',
             goAt: this._rbGoAt || p.goAt || 0,
@@ -1317,13 +1409,60 @@ UIController.prototype._rbSaveResumeContext = function() {
 };
 
 UIController.prototype._rbLoadResumeContext = function() {
+    this._rbForeignResume = false;
+    this._rbForeignCtx = null;
     try {
         const raw = localStorage.getItem('function_chess_rb_resume');
         if (!raw) return null;
         const ctx = JSON.parse(raw);
         if (!ctx || !ctx.roomCode || !ctx.myId) return null;
+        // 恢复上下文可能属于其他同源标签页：暂存并探测其 owner 是否仍存活（活着=他人对局拦截，已死=接管恢复）
+        this._ensureRbWindowOwner();
+        if (ctx.owner && this._rbWindowOwner && ctx.owner !== this._rbWindowOwner) {
+            this._rbForeignCtx = ctx;
+            this._rbForeignResume = true;
+            return null;
+        }
         return ctx;
     } catch (e) { return null; }
+};
+
+/**
+ * 探测恢复键 owner 是否仍存活（BroadcastChannel ping/pong）。
+ * 存活 → 保持 _rbForeignResume=true（他人对局，拦截）；
+ * 已死（关标签/浏览器重开/崩溃）→ 接管恢复键（owner 更新为本窗口）并放行恢复。
+ */
+UIController.prototype._rbProbeResumeOwner = function(cb) {
+    const ctx = this._rbForeignCtx;
+    const doCb = () => { if (typeof cb === 'function') cb(); };
+    // 无 owner 的旧键或已接管：直接放行
+    if (!ctx || !ctx.owner) { this._rbForeignResume = false; doCb(); return; }
+    // 浏览器不支持 BroadcastChannel：保守视为他人对局（维持拦截，不接管）
+    if (typeof BroadcastChannel === 'undefined') { doCb(); return; }
+    let channel = null;
+    try { channel = new BroadcastChannel('function_chess_rb_owner_alive'); } catch (e) {}
+    if (!channel) { doCb(); return; }
+    let done = false;
+    const finish = (alive) => {
+        if (done) return;
+        done = true;
+        try { channel.close(); } catch (e) {}
+        if (!alive) {
+            // 旧窗口已死：接管恢复键（owner 改为本窗口），放行恢复
+            this._rbForeignResume = false;
+            try {
+                ctx.owner = this._rbWindowOwner;
+                localStorage.setItem('function_chess_rb_resume', JSON.stringify(ctx));
+            } catch (e) {}
+        }
+        doCb();
+    };
+    channel.onmessage = (ev) => {
+        const d = ev.data;
+        if (d && d.type === 'pong' && d.owner === ctx.owner) finish(true);
+    };
+    try { channel.postMessage({ type: 'ping', owner: ctx.owner }); } catch (e) {}
+    setTimeout(() => finish(false), 200);
 };
 
 UIController.prototype._rbClearResumeContext = function() {
@@ -1335,6 +1474,15 @@ UIController.prototype._rbClearResumeContext = function() {
 /** 启动检测：有未结束的竞速排位对局 → 弹恢复询问 */
 UIController.prototype._checkRaceBattleResume = function() {
     const ctx = this._rbLoadResumeContext();
+    // 恢复上下文可能属于其他标签页：先探测 owner 是否仍存活——存活则本窗口拦截；
+    // 已死（关标签/重开浏览器/崩溃，sessionStorage 清空导致 owner 失配）则接管后重新执行恢复检测
+    if (this._rbForeignResume) {
+        this._rbProbeResumeOwner(() => {
+            if (this._rbForeignResume) return; // 旧窗口仍存活 → 本窗口保持拦截，不弹恢复
+            this._checkRaceBattleResume();     // 已接管 → 重新走恢复流程
+        });
+        return;
+    }
     if (!ctx || !ctx.roomCode || ctx.mode !== 'ranked') {
         this._rbClearResumeContext();
         return;
@@ -1357,6 +1505,14 @@ UIController.prototype._checkRaceBattleResume = function() {
 /** 确认恢复：以原 playerId 重新加入房间（访客续局；原房主以普通成员身份续局） */
 UIController.prototype.confirmRaceBattleResume = function() {
     const ctx = this._rbLoadResumeContext();
+    // 弹窗期间恢复键可能被其他窗口覆盖：探测 owner 存活——存活则放弃，已死则接管后继续恢复
+    if (this._rbForeignResume) {
+        this._rbProbeResumeOwner(() => {
+            if (this._rbForeignResume) return;
+            this.confirmRaceBattleResume();
+        });
+        return;
+    }
     if (!ctx || !ctx.roomCode) { this._rbClearResumeContext(); return; }
     this.hideStartModal();
     this._rbResumeCtx = ctx;
@@ -1372,7 +1528,7 @@ UIController.prototype.confirmRaceBattleResume = function() {
     const room = this._rbRoom;
     this._bindRaceBattleRoomCallbacks(room);
     const nickname = (typeof PlayerProfile !== 'undefined' && PlayerProfile.getNickname ? (PlayerProfile.getNickname() || '') : '') || '玩家';
-    room.joinRoom({ roomCode: ctx.roomCode, playerId: this._rbMyId, nickname, mode: 'ranked' }).then((ok) => {
+    room.joinRoom({ roomCode: ctx.roomCode, playerId: this._rbMyId, nickname, profileId: this._rbProfileId(), mode: 'ranked' }).then((ok) => {
         if (!ok) {
             // 对齐 P2P 恢复失败处理：房间已关闭/无法连接 → 清上下文、复位互斥并回主菜单提示
             this._rbBusy = false;
@@ -1518,18 +1674,27 @@ UIController.prototype._raceBattleHandleMessage = function(payload, fromPlayerId
                 this.raceBattleRenderMembers();
             } else if (payload.targetId === this._rbMyId) {
                 this.raceBattleToast('你已被房主移出房间');
-                this.raceBattleDoLeave();
+                this.raceBattleDoLeave(true); // isKick=true：被动离开，不触发主动退出的 -30 扣分
+                // 被踢后强制重渲染成员列表：确保底部「就绪」按钮隐藏（_rbRoomOpen=false 分支生效）
+                this.raceBattleRenderMembers();
             }
             break;
         case 'race_battle_dissolve':
             if (this._rbMatchStarted) {
-                // 对局中：房主解散 → 本局不计成绩
-                this._raceBattleHandleHostLost('host_exit');
+                // 对局中房主主动解散（含完赛退出）：触发迁移让其他玩家继续，
+                // 与 race_close(host_dissolved) 语义一致。不能直接作废——否则房主完赛退出后其他人无法继续玩
+                if (!this._rbMigrationActive) this._rbStartHostMigration('host_dissolved');
             } else {
                 // 未开局：房主解散房间，仅提示不弹结算
                 this._rbRoomOpen = false;
                 this._raceBattleSetStatus('error', '房间已解散');
                 this.raceBattleToast('房主已解散房间');
+                // 断开 PeerJS 房间连接并置空：房主已断开，本地若不主动断开，
+                // conn close 会误启 60s 重连（重连注定失败、还会残留"正在重连"状态）
+                if (this._rbRoom) {
+                    try { this._rbRoom.disconnect(); } catch (e) {}
+                    this._rbRoom = null;
+                }
                 this._raceBattleSwitchJoinButton('join');
                 this.raceBattleRenderMembers(); // 房间解散：隐藏底部按钮
             }
@@ -2526,7 +2691,24 @@ UIController.prototype._ensureRaceLobby = function() {
         },
         onRoomsUpdate: (rooms) => {
             this._rbLobbyRooms = Array.isArray(rooms) ? rooms.filter((r) => r && r.isRace) : [];
+            // 批量收集房间房主 playerId，填充竞速段位徽章（避免"未定段"）
+            const ids = [];
+            for (const r of this._rbLobbyRooms) {
+                if (r && r.hostPlayerId) ids.push(r.hostPlayerId);
+            }
+            const selfId = this._rbLobby ? this._rbLobby._getPlayerId() : '';
+            if (selfId) ids.push(selfId);
+            if (ids.length) this._rbQueryRaceRanks(ids);
             this._renderRaceLobbyRooms();
+        },
+        onPlayerRaceRankResult: (data) => {
+            const players = (data && data.players) || {};
+            for (const pid in players) {
+                const tier = players[pid] && players[pid].tier;
+                if (tier) this._rbRanks[pid] = tier;
+            }
+            this._renderRaceLobbyRooms();
+            this.raceBattleRenderMembers();
         },
         onHostRegistered: (code, expiresAt) => {
             this._rbLobbyOpen = true;
@@ -2568,6 +2750,24 @@ UIController.prototype._ensureRaceLobby = function() {
             if (typeof this._stopHostRoomBanner === 'function') this._stopHostRoomBanner();
             if (this.raceLobbyCreateBtn) { this.raceLobbyCreateBtn.disabled = false; this.raceLobbyCreateBtn.style.display = ''; }
             if (this.raceLobbyDeleteBtn) this.raceLobbyDeleteBtn.style.display = 'none';
+            // 房间到期 = 房间作废：PeerJS 房间可能仍存活（等待中的访客还在里面），
+            // 必须广播解散让访客退出并断开连接，否则访客会卡在已过期的房间里
+            // （服务端 room_started 时 expiresAt=0，对局中房间不受 TTL 清理，故此处必为等待阶段）
+            if (this._rbRoom && this._rbIsHost && !this._rbMatchStarted) {
+                try { this._rbRoom.send({ type: 'race_battle_dissolve' }, true); } catch (e) {}
+                try { this._rbRoom.disconnect(); } catch (e) {}
+                this._rbRoom = null;
+                this._rbRoomOpen = false;
+                this._rbMembers = [];
+                this._rbReadyMap = {};
+                this._rbClearResumeContext();
+                this.raceIsMultiplayer = false;
+                this.raceBattleStopMatchUI();
+                this.raceBattleHidePanel();
+                this.raceBattleRenderMembers();
+                this._raceBattleSetStatus('idle', '未连接');
+                this._raceBattleSwitchJoinButton('join');
+            }
             this._raceLobbySetStatus('idle', '房间已到期，请重新创建');
             this._renderRaceLobbyRooms();
         }
@@ -2575,6 +2775,17 @@ UIController.prototype._ensureRaceLobby = function() {
     // 竞速房区分排位/休闲子模式（race_ranked / race_casual），大厅列表按子模式精确过滤
     lobby.currentLobbyMode = this._rbRanked ? 'race_ranked' : 'race_casual';
     this._rbLobby = lobby;
+    // "仅同段位可见"开关：切换时持久化到 lobby 并立即刷新房间列表（定时刷新沿用该状态）
+    if (this.raceLobbyTierToggle && !this._rbTierToggleBound) {
+        this._rbTierToggleBound = true;
+        this.raceLobbyTierToggle.addEventListener('change', () => {
+            if (this._rbLobbyConnected) lobby.setTierFilter(this.raceLobbyTierToggle.checked ? 'same' : null);
+            if (this._rbLobbyOpen && this.raceLobbyCreateBtn) {
+                // 房主已建房间时不能改过滤（房间登记已完成），提示即可
+                this._raceLobbySetStatus('connected', '过滤仅对新创建的房间生效');
+            }
+        });
+    }
     return lobby;
 };
 
@@ -2587,10 +2798,14 @@ UIController.prototype._openRaceLobby = function() {
         if (this.raceLobbyDeleteBtn) this.raceLobbyDeleteBtn.style.display = '';
     }
     if (!this._rbLobbyConnected) {
+        // 首次连接前同步段位过滤开关，保证 ws.onopen 的首次 fetchRooms 即带过滤
+        lobby.setTierFilter(this._rbLobbyTierFilter() ? 'same' : null);
         this._raceLobbySetStatus('connecting', '连接大厅中…');
         lobby.connect();
     } else {
-        lobby.fetchRooms();
+        // 仅同段位可见：按开关状态传 tierFilter（服务端按访客竞速段位过滤房间列表）
+        const tierFilter = this._rbLobbyTierFilter() ? 'same' : null;
+        lobby.fetchRooms(tierFilter);
     }
 };
 
@@ -2669,7 +2884,8 @@ UIController.prototype._raceLobbyReasonText = function(reason) {
         room_full: '房间已满员',
         already_joined: '你已在该房间中',
         mode_mismatch: '模式不匹配',
-        elo_range: '段位差距超出房间限制'
+        elo_range: '段位差距超出房间限制',
+        tier_mismatch: '该房间仅限同竞速段位玩家加入'
     };
     return map[reason] || ('加入失败：' + (reason || '未知原因'));
 };
@@ -2702,15 +2918,21 @@ UIController.prototype._renderRaceLobbyRooms = function() {
         const diffName = diffNames[df - 1] || ('Lv.' + df);
         const players = `${r.currentPlayers}/${r.maxPlayers}`;
         const host = this._rbEscapeHtml(r.hostNickname || '房主');
+        // 房主竞速段位（服务端 list_rooms 实时下发，hostTierNow；旧房间无值则回退本地缓存）
+        let hostTier = r.hostTier || '';
+        if (!hostTier && r.hostPlayerId) hostTier = this._rbRanks[r.hostPlayerId] || '';
         // 竞速房子模式：race_ranked=排位 / race_casual=休闲（旧 race 视为休闲）
         const modeTag = (opts.mode === 'race_ranked')
             ? '<span class="lobby-room-mode lobby-room-mode-ranked">排位</span>'
             : '<span class="lobby-room-mode lobby-room-mode-casual">休闲</span>';
+        const tierTag = hostTier
+            ? `<span class="lobby-room-tier">${this._rbEscapeHtml(hostTier)}</span>`
+            : '';
         return `<div class="lobby-room-row">
             <div class="lobby-room-info">
                 <span class="lobby-room-code">${r.code}</span>
                 <span class="lobby-room-desc">${modeTag}${players} 人 · 耐力 ${st} · ${diffName}</span>
-                <span class="lobby-room-host">${host}</span>
+                <span class="lobby-room-host">${host}${tierTag}</span>
             </div>
             <button class="btn btn-small lobby-join-btn" data-code="${r.code}">加入</button>
         </div>`;
@@ -2739,6 +2961,7 @@ UIController.prototype._createRaceLobbyRoom = function() {
             maxPlayers: 4,
             roomCode: roomCode,
             longLived: !!(self.raceLobbyLongLivedToggle && self.raceLobbyLongLivedToggle.checked),
+            tierOnly: !!(self.raceLobbyTierToggle && self.raceLobbyTierToggle.checked),
             stamina: self._rbStamina,
             difficulty: self._rbDifficulty
         };

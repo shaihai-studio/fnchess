@@ -535,8 +535,8 @@ if (typeof UIController === 'undefined') {
                     // 禁止区/锁定区超时：扣 1 分并重试 20s，累计 3 次判负
                     this.showMessage(`${this.getPlayerDisplayName(data.player)}选格子超时！扣1分（第${n}/3次，再超时${Math.max(0, 3 - n)}次判负）`, 'error');
                 } else {
-                    // 选目标格超时（未选）：扣 1 分，直接进入对手输入回合
-                    this.showMessage(`${this.getPlayerDisplayName(data.player)}选目标格超时！扣1分，直接进入对手回合`, 'error');
+                    // 选目标格超时（未选）：扣 1 分，由对手重新选格（不进输入回合）
+                    this.showMessage(`${this.getPlayerDisplayName(data.player)}选目标格超时！扣1分，由对手重新选格`, 'error');
                 }
             } else if (data && data.reason === 'select_target_selected') {
                 // 选目标格超时但已选（含未确认）：不扣分，直接进入对手输入回合

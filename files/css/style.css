@@ -3052,6 +3052,7 @@ body::before {
 .lobby-room-mode { display: inline-block; margin-right: 6px; padding: 1px 6px; font-size: 11px; line-height: 16px; border-radius: 4px; border: 1px solid; vertical-align: 1px; }
 .lobby-room-mode-ranked { color: #fbbf24; border-color: rgba(245,158,11,0.5); background: rgba(245,158,11,0.12); }
 .lobby-room-mode-casual { color: #34d399; border-color: rgba(52,211,153,0.5); background: rgba(52,211,153,0.12); }
+.lobby-room-tier { display: inline-block; margin-right: 6px; padding: 1px 6px; font-size: 11px; line-height: 16px; border-radius: 4px; border: 1px solid; color: #a78bfa; border-color: rgba(167,139,250,0.5); background: rgba(167,139,250,0.12); vertical-align: 1px; }
 .lobby-join-btn { flex-shrink: 0; }
 .lobby-empty { padding: 20px; text-align: center; color: #64748b; font-size: 13px; border: 1px dashed rgba(255,255,255,0.1); border-radius: 10px; }
 .lobby-delete-btn { flex: 0 0 auto; width: auto !important; padding: 8px 14px; background: rgba(239,68,68,0.15); color: #f87171; border-color: rgba(239,68,68,0.4); }
@@ -5607,7 +5608,7 @@ button.btn-back-circle.round-back-abs {
 /* 输入栏尺寸调节过渡：仅在点击「增大/缩小」按钮期间启用，
    宽度 / 高度 / 位置平滑过渡；拖动标题栏时由 JS 移除，避免位置跟随延迟 */
 .float-keypad.kp-sizing {
-    transition: width 0.28s ease, height 0.28s ease, left 0.28s ease, top 0.28s ease;
+    transition: width 0.28s ease, height 0.28s ease, min-height 0.28s ease, left 0.28s ease, top 0.28s ease;
 }
 /* 背景模式：透明（无背景无模糊） */
 .float-keypad.keypad-bg-transparent {
@@ -5779,9 +5780,16 @@ button.btn-back-circle.round-back-abs {
     color: #e2e8f0;
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: calc(4px * var(--kp-w-scale));
     flex-wrap: wrap;
     flex: 0 0 auto; /* display 高度由内容+min/max 决定，不被 flex 拉伸 */
+}
+/* 浮窗键盘内：已输入元素（蓝色 chip）随键盘缩放等比缩放（主输入区不受影响，
+   主输入区无 --kp-w-scale 定义，若直接用 var() 会导致 calc 失效，故限定在 .float-keypad 作用域内覆盖） */
+.float-keypad .expression-element {
+    font-size: calc(16px * var(--kp-w-scale));
+    padding: calc(4px * var(--kp-w-scale)) calc(8px * var(--kp-w-scale));
+    border-radius: calc(8px * var(--kp-w-scale));
 }
 /* KaTeX 数学预览（位于表达式显示下方，常驻显示） */
 .float-keypad-math {

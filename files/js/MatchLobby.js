@@ -57,6 +57,7 @@ class MatchLobbyController {
         this.myRoomCode = null;   // 我作为房主登记的房间码
         this.myRoomExpiresAt = 0; // 房间到期时间戳（毫秒），状态条倒计时用
         this.rooms = [];          // 服务器推来的房间列表快照
+        this.tierFilter = null;   // "仅同段位可见"过滤：null=关闭，'same'=开启（持久化，定时刷新沿用）
         this._manualClose = false;
         this._reconnectTimer = null;
         this._refreshTimer = null;
@@ -90,6 +91,7 @@ class MatchLobbyController {
         // ── 排行榜回调 ─────────────────────────────────────────
         this.onLeaderboardResult = null;  // (data) => void（收到排行榜查询结果）
         this.onPlayerEloResult = null;    // (data) => void（收到批量 ELO 查询结果）
+        this.onPlayerRaceRankResult = null;// (data) => void（收到批量竞速段位查询结果）
         this.onChallenge = null;          // (data) => void（收到签名一次性 nonce）
         this.onSubmitResult = null;       // (data) => void（收到上报结果 verify_failed / rate_limited 等）
 
@@ -110,7 +112,7 @@ class MatchLobbyController {
                 'onGuestJoining', 'onGuestLeft', 'onJoinAccepted', 'onJoinRejected', 'onRoomLookupResult',
                 'onHostRoomExpired', 'onSpectateState', 'onSpectateEnded',
                 'onSpectateJoined', 'onSpectateJoinRejected', 'onSpectateEmoji',
-                'onLeaderboardResult', 'onPlayerEloResult', 'onChallenge',
+                'onLeaderboardResult', 'onPlayerEloResult', 'onPlayerRaceRankResult', 'onChallenge',
                 'onSubmitResult', 'onRoomDissolved',
                 'onCancelRegisterAck', 'onRoomDissolveAck'
             ];
@@ -274,6 +276,9 @@ class MatchLobbyController {
             case 'player_elo_result':
                 if (this.onPlayerEloResult) this.onPlayerEloResult(data);
                 break;
+            case 'player_race_rank_result':
+                if (this.onPlayerRaceRankResult) this.onPlayerRaceRankResult(data);
+                break;
             case 'challenge':
                 if (this.onChallenge) this.onChallenge(data);
                 break;
@@ -314,20 +319,24 @@ class MatchLobbyController {
             : '';
     }
 
-    /** 房主登记房间（options: {rounds,difficulty,timeLimitMode,mode,eloRange}；mode=排位/休闲）
-     *  eloRange>0 时开启 ELO 距离过滤（以房主 ELO 为基准，超出该分差的玩家不可见/不可加入） */
+    /** 房主登记房间（options: {rounds,difficulty,timeLimitMode,mode,eloRange,tierOnly}；mode=排位/休闲）
+     *  eloRange>0 时开启 ELO 距离过滤（以房主 ELO 为基准，超出该分差的玩家不可见/不可加入）
+     *  tierOnly=true 时开启"仅同段位可见"（竞速房）：非同段位玩家不可见/不可加入 */
     hostRegister(options) {
         const opts = options || {};
         if (this.currentLobbyMode && !opts.mode) opts.mode = this.currentLobbyMode;
-        // eloRange 是过滤开关配置，抽离为顶层字段（服务器入 room.eloRange），不混入 options 配置描述
+        // eloRange / tierOnly 是过滤开关配置，抽离为顶层字段（服务器入 room.eloRange / room.tierOnly），不混入 options 配置描述
         const rawRange = Number(opts.eloRange);
         const eloRange = isFinite(rawRange) && rawRange > 0 ? rawRange : null;
         delete opts.eloRange;
+        const tierOnly = !!opts.tierOnly;
+        delete opts.tierOnly;
         this._send({
             type: 'host_register',
             options: opts,
             playerId: this._getPlayerId(),
             eloRange,
+            tierOnly,
             nickname: this._getNickname()
         });
     }
@@ -356,13 +365,24 @@ class MatchLobbyController {
     }
 
     /** 拉取房间列表（按当前大厅模式过滤：休闲看不到排位房间，反之亦然；
-     *  携带本机 playerId 供服务器做 ELO 距离过滤与房主 ELO 下发） */
-    fetchRooms() {
+     *  携带本机 playerId 供服务器做 ELO 距离过滤与房主 ELO 下发；
+     *  若传入 tierFilter='same' 则持久化并立即刷新；不传则沿用已保存的过滤状态，
+     *  保证内部定时器 fetchRooms() 不会把"仅同段位可见"开关状态冲掉） */
+    fetchRooms(tierFilter) {
+        if (tierFilter !== undefined) {
+            this.tierFilter = tierFilter === 'same' ? 'same' : null;
+        }
         this._send({
             type: 'list_rooms',
             mode: this.currentLobbyMode || null,
-            playerId: this._getPlayerId()
+            playerId: this._getPlayerId(),
+            tierFilter: this.tierFilter || null
         });
+    }
+
+    /** 切换"仅同段位可见"过滤并立即刷新（null=关闭，'same'=开启） */
+    setTierFilter(tierFilter) {
+        this.fetchRooms(tierFilter === 'same' ? 'same' : null);
     }
 
     /** 访客申请加入（带模式与身份，服务器校验匹配及 ELO 距离过滤；竞速房昵称用于成员列表） */
@@ -442,6 +462,11 @@ class MatchLobbyController {
     /** 批量查询玩家 ELO → 服务器回 player_elo_result */
     queryPlayerElo(playerIds, id) {
         this._send({ type: 'query_player_elo', playerIds: Array.isArray(playerIds) ? playerIds : [], id: String(id) });
+    }
+
+    /** 批量查询玩家竞速段位 → 服务器回 player_race_rank_result（{ [playerId]: { score, tier } }） */
+    queryPlayerRaceRank(playerIds, id) {
+        this._send({ type: 'query_player_race_rank', playerIds: Array.isArray(playerIds) ? playerIds : [], id: String(id) });
     }
 
     /** 房主主动解散房间（对局中/等待中退出），服务器会通知对战方与观众；

@@ -270,11 +270,16 @@ function handleRaceScore(ws, msg) {
     const difficulty = Math.max(1, parseInt(payload.difficulty, 10) || 1);
     const stamina = Math.max(1, parseInt(payload.stamina, 10) || 1);
     const now = Date.now();
-    const abandoned = !!payload.abandoned; // 弃权/退出：强制按最后一名扣分，不受低段位保护
+    const abandoned = !!payload.abandoned; // 主动退出/弃权：固定扣 30 分，不受难度/耐力倍率与低段位保护影响
     const p = raceBoard.get(playerId) || { playerId, nickname, score: 0, games: 0, wins: 0, updatedAt: now };
-    let delta = raceDelta(place, totalPlayers, p.games, difficulty, stamina);
-    // 低段位保护：前几个等级（积分 < 300 未达「行星」段）正常输/垫底不扣分；弃权/退出例外，必须扣
-    if (delta < 0 && p.score < RACE_PROTECT_SCORE && !abandoned) delta = 0;
+    let delta;
+    if (abandoned) {
+        delta = -30;
+    } else {
+        delta = raceDelta(place, totalPlayers, p.games, difficulty, stamina);
+        // 低段位保护：前几个等级（积分 < 300 未达「行星」段）正常输/垫底不扣分
+        if (delta < 0 && p.score < RACE_PROTECT_SCORE) delta = 0;
+    }
     p.score = Math.max(0, p.score + delta);
     p.nickname = nickname;
     p.games++;
@@ -1084,6 +1089,12 @@ lobbyWss.on('connection', (ws, req) => {
                 // ELO 距离过滤阈值：仅排位房间可设置（>0 开启，超出范围的玩家不可见/不可加入）
                 const rawRange = Number(msg.eloRange);
                 const eloRange = isFinite(rawRange) && rawRange > 0 ? rawRange : null;
+                // 竞速段位：房主竞速分数（raceBoard）→ 天体段位名，供大厅显示与"仅同段位可见"过滤
+                const hostRaceEntry = hostPlayerId ? raceBoard.get(hostPlayerId) : null;
+                const hostRaceScore = hostRaceEntry && hostRaceEntry.score != null ? hostRaceEntry.score : 0;
+                const hostTier = isRace ? raceTier(hostRaceScore).name : null;
+                // 仅同段位可见（竞速房可开启）：非同段位访客不可见/不可加入
+                const tierOnly = isRace && !!(msg.tierOnly);
                 rooms.set(code, {
                     code,
                     options: msg.options || {},
@@ -1102,6 +1113,8 @@ lobbyWss.on('connection', (ws, req) => {
                     hostPlayerId,
                     hostElo,
                     eloRange,
+                    hostTier,
+                    tierOnly,
                     hostNickname: String(msg.nickname || '').slice(0, 10)
                 });
                 send(ws, { type: 'host_registered', code, expiresAt });
@@ -1128,6 +1141,11 @@ lobbyWss.on('connection', (ws, req) => {
                 const visitorId = String(msg.playerId || '').slice(0, 64);
                 const visitorEloEntry = visitorId ? eloBoard.get(visitorId) : null;
                 const visitorElo = visitorEloEntry && visitorEloEntry.elo != null ? visitorEloEntry.elo : ELO_INIT;
+                // 访客竞速段位：tierFilter='same'（仅同段位可见）时按访客段位过滤
+                const visitorRaceEntry = visitorId ? raceBoard.get(visitorId) : null;
+                const visitorRaceScore = visitorRaceEntry && visitorRaceEntry.score != null ? visitorRaceEntry.score : 0;
+                const visitorTierName = raceTier(visitorRaceScore).name;
+                const tierFilter = msg.tierFilter === 'same';
                 const list = [];
                 for (const [code, room] of rooms) {
                     if (room.expiresAt && now >= room.expiresAt) {
@@ -1149,6 +1167,19 @@ lobbyWss.on('connection', (ws, req) => {
                         if (!visitorId) continue; // 无法校验身份 → 保守隐藏
                         if (Math.abs(hostEloNow - visitorElo) > room.eloRange) continue;
                     }
+                    // 竞速段位过滤（双层）：
+                    //   1) 房主开启"仅同段位可见"（tierOnly）→ 非同段位访客不可见
+                    //   2) 访客开启"仅同段位可见"（tierFilter='same'）→ 只显示与访客同段位的房间
+                    let hostTierNow = null;
+                    if (room.isRace) {
+                        const hostRaceEntry = room.hostPlayerId ? raceBoard.get(room.hostPlayerId) : null;
+                        const hostRaceScore = hostRaceEntry && hostRaceEntry.score != null ? hostRaceEntry.score : 0;
+                        hostTierNow = raceTier(hostRaceScore).name;
+                        if (room.tierOnly || tierFilter) {
+                            if (!visitorId) continue; // 无法校验身份 → 保守隐藏
+                            if (hostTierNow !== visitorTierName) continue;
+                        }
+                    }
                     const guestCount = room.isRace && Array.isArray(room.guests) ? room.guests.length : (room.guestWs ? 1 : 0);
                     list.push({
                         code: room.code,
@@ -1158,6 +1189,7 @@ lobbyWss.on('connection', (ws, req) => {
                         status: room.status,
                         spectatorCount: room.spectators ? room.spectators.size : 0,
                         hostElo: hostEloNow,
+                        hostTier: hostTierNow,
                         hostNickname: room.hostNickname || '',
                         isRace: !!room.isRace,
                         maxPlayers: room.maxPlayers || 2,
@@ -1223,6 +1255,18 @@ lobbyWss.on('connection', (ws, req) => {
                     if (room.guests && room.guests.some(g => g.ws === ws)) {
                         send(ws, { type: 'join_rejected', code: String(msg.code), reason: 'already_joined' });
                         return;
+                    }
+                    // 仅同段位可见：房主开启 tierOnly → 非同段位访客拒绝加入
+                    if (room.tierOnly) {
+                        const visitorId = String(msg.playerId || '').slice(0, 64);
+                        const vRace = visitorId ? raceBoard.get(visitorId) : null;
+                        const vScore = vRace && vRace.score != null ? vRace.score : 0;
+                        const hRace = room.hostPlayerId ? raceBoard.get(room.hostPlayerId) : null;
+                        const hScore = hRace && hRace.score != null ? hRace.score : 0;
+                        if (!visitorId || raceTier(vScore).name !== raceTier(hScore).name) {
+                            send(ws, { type: 'join_rejected', code: String(msg.code), reason: 'tier_mismatch' });
+                            return;
+                        }
                     }
                     const guestPlayerId = String(msg.playerId || '').slice(0, 64);
                     const guestNickname = String(msg.nickname || '').slice(0, 10);
@@ -1494,6 +1538,22 @@ lobbyWss.on('connection', (ws, req) => {
                     }
                     send(ws, { type: 'player_elo_result', id: String(msg.id || ''), players });
                 } catch (e) { console.warn('[LB] query_player_elo 处理异常:', e.message); }
+                break;
+            }
+
+            // 排行榜：批量查询玩家竞速段位（竞速房成员段位徽章）→ player_race_rank_result
+            case 'query_player_race_rank': {
+                try {
+                    const ids = (Array.isArray(msg.playerIds) ? msg.playerIds : [])
+                        .map((id) => String(id).slice(0, 64)).filter(Boolean);
+                    const players = {};
+                    for (const id of ids) {
+                        const p = raceBoard.get(id);
+                        const score = p && p.score != null ? p.score : 0;
+                        players[id] = { score, tier: raceTier(score).name };
+                    }
+                    send(ws, { type: 'player_race_rank_result', id: String(msg.id || ''), players });
+                } catch (e) { console.warn('[LB] query_player_race_rank 处理异常:', e.message); }
                 break;
             }
         }

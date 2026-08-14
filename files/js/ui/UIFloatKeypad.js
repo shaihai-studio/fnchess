@@ -247,8 +247,12 @@ if (typeof UIController === 'undefined') {
                 const nextH = Math.round((this._floatKeypadBaseH || 320) * next);
                 el.style.left = (r.right - nextW) + 'px';
                 el.style.top = (r.bottom - nextH) + 'px';
-                // 过渡期间先固定高度（fx 展开时高度交给内容自适应，不固定避免截断）
-                if (!this._floatKeypadFxOpen) el.style.height = nextH + 'px';
+                // 过渡期间先设最小高度（fx 展开时高度交给内容自适应，不设避免截断）；
+                // 用 minHeight 而非固定 height：显示区内容变高时容器随内容向上扩展，底部按钮不会溢出边框
+                if (!this._floatKeypadFxOpen) {
+                    el.style.height = '';
+                    el.style.minHeight = nextH + 'px';
+                }
                 el.style.transform = 'none';
                 // 宽高交给 CSS：--kp-w-scale / --kp-h-scale 驱动 calc(base * scale)，
                 // 宽度 / 高度 / 按钮 / 字号 / 间距全部等比缩放
@@ -373,6 +377,11 @@ if (typeof UIController === 'undefined') {
                 this._updateFloatKeypadFabPreview();
             });
         }
+        // 非收起态/非相关阶段（含中途退出对局）一律隐藏 y= 预览，避免残留屏幕
+        if (!showFab) {
+            const prev = document.getElementById('float-keypad-fab-preview');
+            if (prev) prev.hidden = true;
+        }
     }
 ;
 
@@ -381,6 +390,8 @@ if (typeof UIController === 'undefined') {
         const fab = this.floatKeypadFab;
         const preview = document.getElementById('float-keypad-fab-preview');
         if (!fab || !preview) return;
+        // 非相关阶段（如中途退出对局后）禁止显示 y= 预览
+        if (!this._floatKeypadRelevant()) { preview.hidden = true; return; }
         if (!this._floatKeypadCollapsed) { preview.hidden = true; return; }
         // 2026-08-12 修复：只取 .expression-element 节点文本，排除 "y =" 前缀与光标，
         // 避免预览显示成 "y = y = ..."
@@ -483,8 +494,9 @@ if (typeof UIController === 'undefined') {
 
 // _applyFloatKeypadUserSize — 把用户通过「增大/缩小」按钮设定的 scale 应用回输入栏。
 //                             宽度由 CSS 驱动（calc(220px * --kp-w-scale)，fx 展开 360px）；
-//                             高度：收起时固定为 基准高 × scale（宽高比恒定 + 过渡平滑），
-//                             fx 展开时函数面板与主键盘上下堆叠、整体变高 → 交给内容自适应。
+//                             高度：收起时以 基准高 × scale 为最小高度（宽高比恒定 + 过渡平滑），
+//                             内容变高（表达式多行/fx 展开等）时容器随内容向上扩展、底部按钮不溢出；
+//                             fx 展开时函数面板与主键盘上下堆叠、整体变高 → 完全交给内容自适应。
     UIController.prototype._applyFloatKeypadUserSize = function() {
         const el = this.floatKeypad;
         if (!el) return;
@@ -492,10 +504,12 @@ if (typeof UIController === 'undefined') {
         if (!scale) return;
         if (this._floatKeypadFxOpen) {
             el.style.height = '';
+            el.style.minHeight = '';
         } else {
             // 基准高优先取记录值；未记录（首次调节恰在 fx 展开态）时用当前收起态实际高度
             const baseH = this._floatKeypadBaseH || el.offsetHeight || 320;
-            el.style.height = Math.round(baseH * scale) + 'px';
+            el.style.height = '';
+            el.style.minHeight = Math.round(baseH * scale) + 'px';
         }
     }
 ;

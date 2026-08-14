@@ -186,9 +186,12 @@ class RaceRoomController {
         this.maxPlayers = Math.min(4, Math.max(2, Number(options.maxPlayers) || 4));
         this.myPlayerId = String(options.playerId || 'host_' + normalized);
         this.myNickname = String(options.nickname || '房主');
+        // profileId = PlayerProfile 持久身份，与竞速成绩上报同 key，供段位查询/展示使用（临时 playerId 查不到 raceBoard）
+        this.myProfileId = String(options.profileId || '');
         this.members = [{
             playerId: this.myPlayerId,
             nickname: this.myNickname,
+            profileId: this.myProfileId,
             isHost: true,
             connected: true,
             slot: 0
@@ -263,6 +266,8 @@ class RaceRoomController {
         this.roomMode = (options.mode === 'ranked') ? 'ranked' : 'casual';
         this.myPlayerId = String(options.playerId || 'guest_' + Math.random().toString(36).substr(2, 9));
         this.myNickname = String(options.nickname || '玩家');
+        // profileId = PlayerProfile 持久身份，随 race_hello 上报给房主，供段位查询/展示使用
+        this.myProfileId = String(options.profileId || '');
         this.members = [];
         this.isConnecting = true;
         this._notifyStatus('connecting', '正在连接房间...');
@@ -337,7 +342,7 @@ class RaceRoomController {
         if (me) {
             me.isHost = true; me.connected = true; me.slot = 0;
         } else {
-            this.members.unshift({ playerId: myId, nickname: myNick, isHost: true, connected: true, slot: 0 });
+            this.members.unshift({ playerId: myId, nickname: myNick, profileId: this.myProfileId || '', isHost: true, connected: true, slot: 0 });
         }
         for (const m of this.members) {
             if (m.playerId !== myId) { m.isHost = false; m.connected = false; }
@@ -504,6 +509,7 @@ class RaceRoomController {
                     return;
                 }
                 const nickname = String(data.nickname || '玩家');
+                const profileId = String(data.profileId || '');
                 if (!playerId) return;
                 const peerId = conn.peer;
                 this._guestPlayerId.set(peerId, playerId);
@@ -512,6 +518,7 @@ class RaceRoomController {
                 if (member) {
                     member.connected = true;
                     member.nickname = nickname;
+                    member.profileId = profileId || member.profileId;
                     this._clearGuestReconnectTimer(playerId);
                     // race_hello 能到达说明 DataChannel 已 open，直接发送回执
                     try {
@@ -534,7 +541,7 @@ class RaceRoomController {
                         return;
                     }
                     const slot = this.members.length;
-                    member = { playerId, nickname, isHost: false, connected: true, slot };
+                    member = { playerId, nickname, profileId, isHost: false, connected: true, slot };
                     this.members.push(member);
                     try {
                         conn.send({
@@ -624,6 +631,7 @@ class RaceRoomController {
                     type: 'race_hello',
                     playerId: this.myPlayerId,
                     nickname: this.myNickname,
+                    profileId: this.myProfileId,
                     mode: this.roomMode
                 });
             } catch (e) {}
@@ -657,6 +665,7 @@ class RaceRoomController {
                 this.members = list.map((m, i) => ({
                     playerId: String(m.playerId || ''),
                     nickname: String(m.nickname || ''),
+                    profileId: String(m.profileId || ''),
                     isHost: !!m.isHost,
                     connected: m.connected !== false,
                     slot: (typeof m.slot === 'number') ? m.slot : i
@@ -796,6 +805,7 @@ class RaceRoomController {
         return this.members.map(m => ({
             playerId: m.playerId,
             nickname: m.nickname,
+            profileId: m.profileId || '',
             isHost: m.isHost,
             connected: m.connected !== false,
             slot: m.slot

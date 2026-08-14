@@ -14,6 +14,15 @@ if (typeof UIController === 'undefined') {
         // 休闲模式玩家在匹配大厅看不到排位房间（反之亦然），由服务器按 mode 过滤。
         const sel = document.getElementById('p2p-mode-select-modal');
         if (sel) {
+            // 该弹窗被竞速联机入口复用，恢复为 P2P 的 ELO 文案（竞速入口会动态改成段位）
+            const _t = sel.querySelector('h2');
+            const _d = sel.querySelector('.p2p-mode-select-desc');
+            const _rSub = sel.querySelector('#p2p-mode-select-ranked .p2p-mode-select-sub');
+            const _cSub = sel.querySelector('#p2p-mode-select-casual .p2p-mode-select-sub');
+            if (_t) _t.textContent = '选择对战模式';
+            if (_d) _d.textContent = '排位模式计入 ELO 积分并参与排行榜；休闲模式不计算任何 ELO。';
+            if (_rSub) _rSub.textContent = '计 ELO · 可上排行榜';
+            if (_cSub) _cSub.textContent = '不计 ELO · 娱乐对局';
             // ESC 关闭模式选择弹窗（返回主界面）
             sel._dismissBound = true;
             sel._onEscDismiss = () => this.hideModal(sel);

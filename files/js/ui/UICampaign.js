@@ -765,7 +765,9 @@ if (typeof UIController === 'undefined') {
             const enterHint = fracCleared >= 1
                 ? `当前可进入 1/${fracUnlocked}`
                 : (cleared >= easyEnd ? `当前可进入 1/2（通关全部简单难度解锁）` : `当前可进入 1/${fracUnlocked}`);
-            this.campaignLevelProgress.textContent = `已通关 ${fracCleared}/19，${enterHint}`;
+            // fracCleared 存的是已通关的最大分母（2~20），换算成已通关数量（共 19 关）
+            const fracDone = fracCleared >= 2 ? fracCleared - 1 : 0;
+            this.campaignLevelProgress.textContent = `已通关 ${fracDone}/19，${enterHint}`;
         } else {
             const unlockedMax = Math.min(total, cleared + 1);
             this.campaignLevelProgress.textContent = `已通关 ${cleared}/${total}，当前可进入 ≤ ${unlockedMax}`;
@@ -939,11 +941,13 @@ if (typeof UIController === 'undefined') {
         if (window.audioManager) window.audioManager.playError();
         const fracCleared = (typeof this.getCampaignFractionClearedMax === 'function')
             ? this.getCampaignFractionClearedMax() : 0;
-        const progress = Math.min(100, Math.round((fracCleared / 20) * 100));
+        // fracCleared 是最大分母（2~20），换算成已通关数量（共 19 关）
+        const fracDone = fracCleared >= 2 ? fracCleared - 1 : 0;
+        const progress = Math.min(100, Math.round((fracDone / 19) * 100));
         this.showInverseTrigModal(
             '反三角函数未解锁',
             'asin / acos / atan 需要通关<b>全部分数关</b>（1/2 ~ 1/20）后解锁。<br><br>'
-            + `当前分数关进度：${fracCleared} / 19（${progress}%）`
+            + `当前分数关进度：${fracDone} / 19（${progress}%）`
         );
     }
 
