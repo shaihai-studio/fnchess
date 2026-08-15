@@ -32,6 +32,9 @@ server.md
 # 排行榜防作弊方案（内部方案文档，不纳入版本控制）
 markdowns/排行榜防作弊方案评估.md
 markdowns/排行榜防作弊实施方案.md
+
+# markdowns 整个文件夹不纳入版本控制（取消跟踪）
+markdowns/
 版本更新日志-1.0.0至最新.md
 大重构计划.md
 大重构计划-后续批次.md

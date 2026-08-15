@@ -415,8 +415,16 @@ UIController.prototype._raceMaxLevel = function() {
                         // 附题数供服务器难度下限拦截（通关必然解满 10 题）
                         const solved = Number(data.solvedCount) || 0;
                         const totalR = Number(data.totalSolved) || solved;
-                        this._leaderboardService.submitRaceTime(lv, bestTime, profile.nickname, solved, totalR);
-                        this.refreshLeaderboardIfOpen();
+                        // 阶段一：携带服务端权威计时会话（raceSessionId）上报；无会话也照常提交，由服务端拒绝（强制权威计时）
+                        const doSubmit = (sessionId) => {
+                            this._leaderboardService.submitRaceTime(lv, bestTime, profile.nickname, solved, totalR, sessionId);
+                            this.refreshLeaderboardIfOpen();
+                        };
+                        if (this._raceSessionPromise) {
+                            this._raceSessionPromise.then((sid) => doSubmit(sid)).catch(() => doSubmit(null));
+                        } else {
+                            doSubmit(null);
+                        }
                     }
                 }
             } catch (e) { /* 上报失败静默降级，不影响结算界面 */ }
@@ -560,6 +568,12 @@ UIController.prototype._raceMaxLevel = function() {
         if (this._raceElapsedTimer) clearInterval(this._raceElapsedTimer);
         if (this.gameController?.gameMode !== 'race' || !this.gameController?.raceState?.active) return;
         if (!this.gameController.raceState.startedAt) this.gameController.startRaceTimer?.();
+        // 阶段一：单人竞速（非自定义关）正式起跑时向服务器申请权威计时会话（每关一个）
+        this._raceSessionPromise = null;
+        const raceLevelId = Number(this.raceCurrentLevelId);
+        if (!this.raceIsMultiplayer && !this.raceIsCustom && raceLevelId >= 1 && this._leaderboardService && typeof this._leaderboardService.startRaceSession === 'function') {
+            this._raceSessionPromise = this._leaderboardService.startRaceSession(raceLevelId);
+        }
         this._raceTriggeredThresholds = new Set();
         this._raceElapsedStart = this.gameController.raceState.startedAt || Date.now();
         this._raceElapsedFrozen = false;

@@ -21,52 +21,31 @@ UIController.prototype._raceBattleResultView = function(result) {
     };
 };
 
-/** 竞速段位图标：按段位名返回 10 级天体段位徽章的内联 HTML（tier-0~9 对应流星体~宇宙） */
+/** 竞速段位图标：按段位名返回 9 级天体段位徽章的 <img>（tier-0~8 对应流星体~宇宙）
+ * 贴图文件：files/images/rank_*.png（透明 PNG，按段位顺序 9 张） */
 UIController.prototype._raceTierIconHtml = function(tierName) {
-    // SVG 描边小星球 + 轨道环（10 级天体段位，段位越高轨道环越多、天体规模越大）
-    const names = ['流星体', '小行星', '矮行星', '行星', '恒星', '星团', '星系', '星系团', '超星系团', '宇宙'];
-    const idx = names.indexOf(String(tierName || ''));
-    const T = [
-        { c: '#94a3b8', d: '#64748b', n: 0, ray: false, glow: false }, // 流星体
-        { c: '#22d3ee', d: '#0891b2', n: 1, ray: false, glow: false }, // 小行星
-        { c: '#a78bfa', d: '#7c3aed', n: 1, ray: false, glow: false }, // 矮行星
-        { c: '#f59e0b', d: '#d97706', n: 1, ray: false, glow: false }, // 行星
-        { c: '#f87171', d: '#ef4444', n: 1, ray: true,  glow: false }, // 恒星
-        { c: '#ec4899', d: '#db2777', n: 2, ray: false, glow: false }, // 星团
-        { c: '#818cf8', d: '#4f46e5', n: 2, ray: false, glow: false }, // 星系
-        { c: '#34d399', d: '#059669', n: 3, ray: false, glow: false }, // 星系团
-        { c: '#e2e8f0', d: '#94a3b8', n: 3, ray: false, glow: false }, // 超星系团
-        { c: '#fbbf24', d: '#f59e0b', n: 4, ray: false, glow: true  }, // 宇宙
+    const names = ['流星体', '小行星', '矮行星', '行星', '恒星', '矮星系', '星系', '星系团', '宇宙'];
+    const files = [
+        'rank_meteoroid.png',      // 流星体
+        'rank_asteroid.png',       // 小行星
+        'rank_dwarf_planet.png',   // 矮行星
+        'rank_planet.png',         // 行星
+        'rank_star.png',           // 恒星
+        'rank_dwarf_galaxy.png',   // 矮星系
+        'rank_galaxy.png',         // 星系
+        'rank_galaxy_cluster.png', // 星系团
+        'rank_universe.png'        // 宇宙
     ];
-    const t = T[idx >= 0 ? idx : 0];
-    const ringStroke = ['rgba(255,255,255,.55)', 'rgba(255,255,255,.4)', 'rgba(255,255,255,.3)', 'rgba(255,255,255,.24)'];
-    let parts = '';
-    // 轨道环：描边椭圆，不同倾斜角度交错，环越多代表天体规模越大
-    for (let i = 0; i < t.n; i++) {
-        const rx = 7 + i * 1.1;
-        const ry = 2.4 + i * 0.4;
-        const rot = (i % 2 === 0 ? -20 : 20) + i * 4;
-        parts += '<ellipse cx="12" cy="12" rx="' + rx.toFixed(2) + '" ry="' + ry.toFixed(2) + '" fill="none" stroke="' + ringStroke[i] + '" stroke-width="0.9" transform="rotate(' + rot + ' 12 12)"/>';
-    }
-    // 宇宙：外圈金色光晕环
-    if (t.glow) parts += '<circle cx="12" cy="12" r="6.6" fill="none" stroke="rgba(251,191,36,.55)" stroke-width="1.6"/>';
-    // 恒星：四向放射光芒
-    if (t.ray) {
-        parts += '<g stroke="rgba(248,113,113,.7)" stroke-width="1" stroke-linecap="round">' +
-            '<line x1="12" y1="4.2" x2="12" y2="7.4"/><line x1="12" y1="16.6" x2="12" y2="19.8"/>' +
-            '<line x1="4.2" y1="12" x2="7.4" y2="12"/><line x1="16.6" y1="12" x2="19.8" y2="12"/></g>';
-    }
-    // 中心星球：主色填充 + 深色描边 + 左上高光
-    parts += '<circle cx="12" cy="12" r="5.2" fill="' + t.c + '" stroke="' + t.d + '" stroke-width="1.3"/>';
-    parts += '<circle cx="9.9" cy="9.6" r="1.5" fill="rgba(255,255,255,.6)"/>';
-    return '<svg class="rb-tier-icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">' + parts + '</svg>';
+    const idx = names.indexOf(String(tierName || ''));
+    const i = idx >= 0 ? idx : 0;
+    return '<img class="rb-tier-icon" src="files/images/' + files[i] + '" alt="' + names[i] + '" loading="lazy">';
 };
 
-/** 进度条分母：当前分数所在段位的下一档阈值（对齐服务端 RACE_TIERS 10 级天体，间隔 100/200/300 分段）
+/** 进度条分母：当前分数所在段位的下一档阈值（对齐服务端 RACE_TIERS 9 级天体，间隔 100/200 分段）
  * ⚠️ 2026-08-15 修复 #5：thresholds 必须与服务端 RACE_TIERS 的 min 值完全一致，改动需同步两处（见 server/index.js RACE_TIERS 注释） */
 UIController.prototype._raceBattleRankTotal = function() {
     const score = (this._rbMyScoreResult && this._rbMyScoreResult.score) || 0;
-    const thresholds = [0, 100, 200, 300, 400, 600, 800, 1000, 1300, 1600];
+    const thresholds = [0, 100, 200, 300, 400, 600, 800, 1000, 1600];
     let total = 1600;
     for (let i = 0; i < thresholds.length; i++) {
         if (score < thresholds[i]) { total = thresholds[i]; break; }

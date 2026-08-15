@@ -5270,14 +5270,14 @@ button.btn-back-circle.round-back-abs {
     color: #94a3b8;
     flex-shrink: 0;
 }
-/* 竞速段位图标（10 级天体段位）：SVG 描边小星球 + 轨道环，无需外部图片资源 */
+/* 竞速段位图标（9 级天体段位）：<img> 贴图 files/images/rank_*.png（透明 PNG） */
 .rb-tier-icon {
     display: inline-block;
     width: 18px;
     height: 18px;
     flex: 0 0 auto;
     vertical-align: middle;
-    overflow: visible;
+    object-fit: contain;
 }
 .leaderboard-row.me {
     background: rgba(34,197,94,0.14);

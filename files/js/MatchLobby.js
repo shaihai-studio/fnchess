@@ -94,6 +94,7 @@ class MatchLobbyController {
         this.onPlayerRaceRankResult = null;// (data) => void（收到批量竞速段位查询结果）
         this.onChallenge = null;          // (data) => void（收到签名一次性 nonce）
         this.onSubmitResult = null;       // (data) => void（收到上报结果 verify_failed / rate_limited 等）
+        this.onRaceStartResult = null;    // (data) => void（阶段一：收到竞速权威计时会话创建结果）
 
         // ── 房间解散回调 ───────────────────────────────────────
         this.onRoomDissolved = null;      // (data) => void（对战方收到房主解散房间）
@@ -284,6 +285,9 @@ class MatchLobbyController {
                 break;
             case 'submit_result':
                 if (this.onSubmitResult) this.onSubmitResult(data);
+                break;
+            case 'race_start_result':
+                if (this.onRaceStartResult) this.onRaceStartResult(data);
                 break;
             case 'room_dissolved':
                 if (this.onRoomDissolved) this.onRoomDissolved(data);

@@ -27,6 +27,7 @@ class LeaderboardService {
             const self = this;
             this.lobby.onLeaderboardResult = (data) => self._handleResult(data);
             this.lobby.onPlayerEloResult = (data) => self._handleResult(data);   // 批量 ELO 查询结果（P2P 开场用）
+            this.lobby.onRaceStartResult = (data) => self._handleResult(data);   // 阶段一：竞速权威计时会话（按 id 配对）
             this.lobby.onChallenge = (data) => self._handleChallenge(data);
             this.lobby.onSubmitResult = (data) => {
                 // 失败原因控制台可见（之前只 setItem 成功路径，失败被吞，排障困难）
@@ -201,9 +202,12 @@ class LeaderboardService {
     }
 
     /** 上报竞速分关 Time Attack 用时：boardType = rt{levelId}，value = 该关最佳用时(秒)；附题数供服务器难度下限拦截 */
-    submitRaceTime(levelId, seconds, nickname, solvedCount, totalRounds) {
+    submitRaceTime(levelId, seconds, nickname, solvedCount, totalRounds, raceSessionId) {
         let playerId = '';
         if (typeof PlayerProfile !== 'undefined') playerId = PlayerProfile.getPlayerId();
+        const payload = {};
+        // 阶段一：服务端权威计时。raceSessionId 放入 payload（随签名锁定），服务端以此校验会话并用 now-startTs 计算权威用时
+        if (raceSessionId) payload.raceSessionId = String(raceSessionId);
         this._submitSigned({
             boardType: 'rt' + Number(levelId),
             value: Number(seconds) || 0,
@@ -211,7 +215,28 @@ class LeaderboardService {
             playerId,
             solvedCount: Number(solvedCount) || 0,
             totalRounds: Number(totalRounds) || 0
-        }, {});
+        }, payload);
+    }
+
+    /**
+     * 阶段一：竞速权威计时——向服务器申请一次性会话（每关一个，起跑时调用）。
+     * 服务器记录 startTs，并以 now - startTs 为权威用时；无会话的 rtN 上报会被拒绝。
+     * @param {number} levelId 竞速关卡（1~30；自定义关/多人对战不要调用）
+     * @returns {Promise<string|null>} raceSessionId（服务器未连/被限流/超时返回 null）
+     */
+    startRaceSession(levelId) {
+        return new Promise((resolve) => {
+            const id = 'rs' + (++this._querySeq);
+            const timer = setTimeout(() => {
+                this._pendingQueries.delete(id);
+                resolve(null);
+            }, 5000);
+            this._pendingQueries.set(id, (data) => {
+                clearTimeout(timer);
+                resolve(data && data.ok ? String(data.raceSessionId || '') : null);
+            });
+            this._send({ type: 'race_start', levelId: Number(levelId) || 0, id: String(id) });
+        });
     }
 
     /**
