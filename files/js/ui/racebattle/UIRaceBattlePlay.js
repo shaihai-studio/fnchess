@@ -42,6 +42,7 @@ UIController.prototype.initRaceBattleUI = function() {
     bind('race-battle-start-btn', () => this.raceBattleStart());
     bind('race-battle-exit-confirm-btn', () => this.raceBattleDoLeave());
     bind('race-battle-exit-cancel-btn', () => this.raceBattleCancelLeave());
+    bind('race-battle-kicked-confirm-btn', () => this.hideModal('race-battle-kicked-modal'));
     bind('race-battle-panel-exit', () => this.raceBattleConfirmLeave());
     bind('race-battle-panel-collapse', () => {
         const panel = this.raceBattlePanel;

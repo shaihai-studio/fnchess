@@ -13,6 +13,8 @@ UIController.prototype.raceBattleStartMatch = function(params) {
     // U10: 防重入——消息重复投递时忽略第二次（新对局由 rematch/doLeave 复位 _rbMatchStarted）
     if (this._rbMatchStarted) return;
     this._rbMatchStarted = true;
+    // 同步对局开始标志到房间控制器：匹配大厅阶段成员退出直接踢出、对局中才进入重连宽限
+    if (this._rbRoom) this._rbRoom.matchStarted = true;
     this._rbGameParams = params;
     this._rbGoAt = params.goAt || (Date.now() + 4500);
     this.raceBattleRenderMembers();
@@ -172,8 +174,10 @@ UIController.prototype._rbHandleFinishMsg = function(payload, fromPlayerId) {
 };
 
 UIController.prototype._raceBattleHandleHostLost = function(reason) {
-    // 对局中断（迁移失败/断线弃权）：清理断线恢复上下文，不再提供恢复入口
-    this._rbClearResumeContext();
+    // 断线重连失败（reconnect_failed）：保留恢复上下文，允许用户重开页面后尝试恢复
+    // （房主侧仍有 60s 重连宽限，宽限内 joinRoom 可成功续局；对局中断弹窗返回/取消会清键）
+    // 迁移失败 / 主动放弃 / 已完成：对局已中断，清理恢复键
+    if (reason !== 'reconnect_failed') this._rbClearResumeContext();
     // 对局已中断：终止迁移状态机（清选举/60s 兜底/同步窗口定时器，置 done），
     // 防止 onReconnectFailed 先弹「对局中断」后，60s 兜底定时器仍触发 _rbAbortMigration、
     // 或 _rbTryPromote 在已中断的对局上继续尝试接管

@@ -583,7 +583,12 @@ class RaceRoomController {
         const member = this.members.find(m => m.playerId === playerId);
         if (!member) return;
         member.connected = false;
-        // 广播断线状态（对局不暂停），并启动 60s 宽限定时器
+        // 匹配大厅阶段（对局未开始）：直接踢出，不进入 60s 重连宽限（避免误显示"重连中"）
+        if (!this.matchStarted) {
+            this.kickMember(playerId);
+            return;
+        }
+        // 对局中：广播断线状态（对局不暂停），并启动 60s 宽限定时器
         this._broadcast({ type: 'race_member_state', member }, playerId);
         if (this.onMemberState) this.onMemberState(member);
         if (this.onMembersUpdate) this.onMembersUpdate(this._membersSnapshot());
@@ -712,8 +717,17 @@ class RaceRoomController {
                     const idx = this.members.findIndex(m => m.playerId === pid);
                     if (idx !== -1) {
                         const removed = this.members.splice(idx, 1)[0];
-                        if (this.onMemberLeft) this.onMemberLeft(removed);
-                        if (this.onMembersUpdate) this.onMembersUpdate(this._membersSnapshot());
+                        // 被房主踢出：自己收到带 kicked 标记的离开通知，禁止后续重连/迁移
+                        if (data.kicked === true && pid === this.myPlayerId) {
+                            this._roomClosed = true;
+                            this.isConnected = false;
+                            if (this.onKicked) {
+                                try { this.onKicked(removed); } catch (e) { console.error(e); }
+                            }
+                        } else {
+                            if (this.onMemberLeft) this.onMemberLeft(removed);
+                            if (this.onMembersUpdate) this.onMembersUpdate(this._membersSnapshot());
+                        }
                     }
                 }
                 break;
@@ -1009,6 +1023,7 @@ class RaceRoomController {
         this._roomClosed = false;
         this._promoting = false;
         this._oldHostPlayerId = null;
+        this.matchStarted = false;   // 对局是否已开始（匹配大厅阶段为 false → 成员退出直接踢出）
         if (this._reconnectTimer) { clearTimeout(this._reconnectTimer); this._reconnectTimer = null; }
         for (const t of this._guestReconnectTimers.values()) clearTimeout(t);
         this._guestReconnectTimers.clear();

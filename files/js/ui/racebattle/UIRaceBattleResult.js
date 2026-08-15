@@ -137,6 +137,7 @@ UIController.prototype.raceBattleBackToMenu = function() {
         this._stopHostRoomBanner(); // 创建tab建房退出即删除 → 隐藏顶部胶囊
     }
     this._rbMatchStarted = false;
+    if (this._rbRoom) this._rbRoom.matchStarted = false; // 房间回到等待/关闭状态：大厅阶段退出按踢出处理
     this.raceIsMultiplayer = false; // 返回主菜单，恢复单人竞速记录
     this._raceBattleSwitchJoinButton('join');
     this._closeRaceLobby(keep);

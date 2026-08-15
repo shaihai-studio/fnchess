@@ -285,6 +285,17 @@ UIController.prototype._bindRaceBattleRoomCallbacks = function(room) {
             try { window.audioManager.playRaceAlert(); } catch (e) {}
         }
     };
+    // 被房主踢出：清理房间状态 + 弹窗提示（race_member_left 带 kicked 标记时触发）
+    room.onKicked = (member) => {
+        this.raceBattleToast('你已被房主移出房间');
+        // isKick=true：被动离开，不触发主动退出的 -30 扣分；内部会恢复房间弹窗主界面
+        this.raceBattleDoLeave(true);
+        // 被踢后强制重渲染成员列表：确保底部「就绪」按钮隐藏（_rbRoomOpen=false 分支生效）
+        this.raceBattleRenderMembers();
+        // 弹窗提示被移出（确定后返回竞速房间弹窗主界面）
+        const kickedModal = this.raceBattleKickedModal || (this.raceBattleKickedModal = document.getElementById('race-battle-kicked-modal'));
+        if (kickedModal) this.showModal('race-battle-kicked-modal');
+    };
     room.onRoomClosed = (reason) => {
         this._rbRoomOpen = false;
         this._rbKeepHostWaiting = false;
@@ -557,6 +568,7 @@ UIController.prototype.raceBattleDoLeave = function(isKick) {
         this._stopHostRoomBanner(); // 创建tab建房退出即删除 → 隐藏顶部胶囊
     }
     this._rbMatchStarted = false;
+    if (this._rbRoom) this._rbRoom.matchStarted = false; // 房间回到等待/关闭状态：大厅阶段退出按踢出处理
     this.raceIsMultiplayer = false; // 离开多人模式，恢复单人竞速记录
     this._closeRaceLobby(keep);
     if (!keep) {

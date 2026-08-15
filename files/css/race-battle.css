@@ -133,10 +133,9 @@
     overflow:hidden;
     background:rgba(148,163,184,.12);
 }
-.race-battle-panel.is-collapsed .race-battle-progress-thin { display:flex; }
-.rb-progress-thin-seg { flex:1 1 0; min-width:0; position:relative; height:100%; }
-.rb-progress-thin-seg + .rb-progress-thin-seg { border-left:1px solid rgba(148,163,184,.28); }
-.rb-progress-thin-fill { position:absolute; left:0; top:0; bottom:0; border-radius:1px; background:rgba(255,255,255,.55); transition:width .3s ease; }
+.race-battle-panel.is-collapsed .race-battle-progress-thin { display:flex; gap:4px; }
+.rb-progress-thin-seg { flex:1 1 0; min-width:0; position:relative; height:100%; border-radius:2px; overflow:hidden; }
+.rb-progress-thin-fill { position:absolute; left:0; top:0; bottom:0; border-radius:2px; background:rgba(255,255,255,.55); transition:width .3s ease; }
 .rb-progress-thin-seg.is-me .rb-progress-thin-fill { background:linear-gradient(90deg, var(--rb-primary), var(--rb-blue)); box-shadow:0 0 8px rgba(34,211,238,.5); }
 .rb-progress-thin-seg.is-offline .rb-progress-thin-fill { background:rgba(148,163,184,.35); }
 .race-battle-panel-code { font-family:Consolas,monospace; font-size:12px; color:var(--rb-dim); letter-spacing:2px; }
