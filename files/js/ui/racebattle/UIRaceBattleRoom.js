@@ -64,6 +64,8 @@ UIController.prototype.raceBattleCopyCode = function() {
 // ─── 建房 / 加入 ────────────────────────────────────────────────
 
 UIController.prototype.raceBattleCreateRoom = function(optCode) {
+    // 统一守卫：进入任意对局前检查是否有未完成的联机排位对局，有则弹恢复询问
+    if (this._guardPendingOnlineMatch()) return;
     this._ensureRaceBattleFields();
     // 已在房间中：明确提示，避免用户重复创建导致状态错乱（2026-08-13）
     if (this._rbRoom && this._rbRoom.isHost && this._rbRoomOpen) {
@@ -108,6 +110,8 @@ UIController.prototype.raceBattleCreateRoom = function(optCode) {
 
 /** 竞速访客加入房间。skipLookup=true 表示来源为大厅列表 onJoinAccepted（房间已由服务器确认是竞速房），跳过类型查询 */
 UIController.prototype.raceBattleJoinRoom = function(skipLookup) {
+    // 统一守卫：进入任意对局前检查是否有未完成的联机排位对局，有则弹恢复询问
+    if (this._guardPendingOnlineMatch()) return;
     this._ensureRaceBattleFields();
     // 已在房间中：明确提示，避免访客重复加入覆盖当前连接状态（2026-08-13）
     if (this._rbRoom && this._rbRoomOpen) {
@@ -224,15 +228,20 @@ UIController.prototype._bindRaceBattleRoomCallbacks = function(room) {
                 this.raceBattleToast('恢复失败，本局已结束');
                 this.showSplash();
             }
-        } else {
-            this._raceBattleSetStatus('connecting', msg || '连接中…');
-            // 恢复流程中连接彻底断开（60s 重连放弃后走 disconnected）：同样清上下文回主菜单，
+        } else if (status === 'disconnected') {
+            this._raceBattleSetStatus('disconnected', msg || '连接已断开');
+            // 恢复流程中连接彻底断开（60s 重连放弃后走 disconnected）：清上下文回主菜单，
             // 否则 _rbResuming 残留，用户会卡在"正在恢复对局…"界面
             if (this._rbResuming && !this._rbMatchStarted) {
                 this._rbClearResumeContext();
                 this.raceBattleToast('恢复失败，本局已结束');
                 this.showSplash();
             }
+        } else {
+            // connecting/waiting 等过渡状态：仅更新状态文案。
+            // 关键修复：joinRoom 内部 _notifyStatus('connecting') 会先于连接建立同步触发，
+            // 若把 connecting 误判为"恢复失败"清上下文并 showSplash，恢复按钮一按就被弹回主页面。
+            this._raceBattleSetStatus('connecting', msg || '连接中…');
         }
     };
     room.onMembersUpdate = (members) => {
@@ -408,10 +417,12 @@ UIController.prototype._rbProfileId = function() {
 UIController.prototype._raceBattleGetRankBadge = function(playerId) {
     const ranks = this._rbRanks || {};
     if (ranks[playerId]) return ranks[playerId];
+    // 查询仍在进行中 → 显示"加载中…"，查出来后再替换为真实段位
+    if (this._rbRanksPending && this._rbRanksPending[playerId]) return '加载中…';
     return '未定段';
 };
 
-/** 批量查询玩家竞速段位并填充 _rbRanks（去重已缓存项，避免 N+1 重复请求） */
+/** 批量查询玩家竞速段位并填充 _rbRanks（去重已缓存/查询中项，避免 N+1 重复请求） */
 UIController.prototype._rbQueryRaceRanks = function(playerIds) {
     const lobby = this._rbLobby;
     if (!lobby || typeof lobby.queryPlayerRaceRank !== 'function') return;
@@ -420,9 +431,23 @@ UIController.prototype._rbQueryRaceRanks = function(playerIds) {
     (Array.isArray(playerIds) ? playerIds : []).forEach((pid) => {
         if (!pid || seen[pid]) return;
         seen[pid] = true;
-        if (!this._rbRanks[pid]) need.push(pid);
+        if (!this._rbRanks[pid] && !this._rbRanksPending[pid]) need.push(pid);
     });
     if (!need.length) return;
+    const self = this;
+    need.forEach((pid) => {
+        this._rbRanksPending[pid] = true;
+        // 超时兜底：网络丢包/服务器无响应时从"加载中…"回退"未定段"，
+        // 但不写入 _rbRanks，后续渲染（成员变动/房间刷新）会重新查询
+        const timer = setTimeout(() => {
+            delete self._rbRanksPending[pid];
+            delete self._rbRanksTimeout[pid];
+            self._renderRaceLobbyRooms();
+            self.raceBattleRenderMembers();
+        }, 8000);
+        if (this._rbRanksTimeout[pid]) clearTimeout(this._rbRanksTimeout[pid]);
+        this._rbRanksTimeout[pid] = timer;
+    });
     lobby.queryPlayerRaceRank(need, 'race-rank');
 };
 

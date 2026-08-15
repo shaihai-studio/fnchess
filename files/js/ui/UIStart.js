@@ -352,6 +352,8 @@ if (typeof UIController === 'undefined') {
 
 // startNormalGame
     UIController.prototype.startNormalGame = function() {
+        // 统一守卫：进入任意对局前检查是否有未完成的联机排位对局，有则弹恢复询问
+        if (this._guardPendingOnlineMatch()) return;
         const rounds = parseInt(this.roundValue?.textContent) || 8;
         const difficulty = this.getSelectedDifficulty();
         // 对战模式使用子模式名
@@ -502,7 +504,7 @@ if (typeof UIController === 'undefined') {
             }
             window.audioManager.playClick();
         }
-        
+
         // 闯关模式子模式：经典闯关进入关卡选择界面；关卡编辑器就地打开
         if (this.selectedMode === 'campaign') {
             if (this._campaignSubMode === 'editor') {
@@ -530,6 +532,9 @@ if (typeof UIController === 'undefined') {
             this.showP2PRoomModal();
             return;
         }
+
+        // 统一守卫：进入任意本地/AI/测试对局前检查是否有未完成的联机排位对局，有则弹恢复询问
+        if (this._guardPendingOnlineMatch()) return;
 
         const rounds = parseInt(this.roundSelect?.value || this.roundOptions?.[this.currentRoundIndex || 0]?.value || 8);
         let gameMode = this.selectedMode;

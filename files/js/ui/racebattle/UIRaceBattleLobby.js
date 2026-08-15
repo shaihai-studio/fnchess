@@ -46,6 +46,14 @@ UIController.prototype._ensureRaceLobby = function() {
             for (const pid in players) {
                 const tier = players[pid] && players[pid].tier;
                 if (tier) this._rbRanks[pid] = tier;
+                // 查询完成：清除"加载中…"状态与该 pid 的超时定时器
+                if (this._rbRanksPending && this._rbRanksPending[pid]) {
+                    delete this._rbRanksPending[pid];
+                    if (this._rbRanksTimeout && this._rbRanksTimeout[pid]) {
+                        clearTimeout(this._rbRanksTimeout[pid]);
+                        delete this._rbRanksTimeout[pid];
+                    }
+                }
             }
             this._renderRaceLobbyRooms();
             this.raceBattleRenderMembers();

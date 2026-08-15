@@ -95,6 +95,9 @@
         this._clearP2PResumeContext();
         const modal = document.getElementById('p2p-resume-modal');
         if (modal) this.hideModal(modal);
+        // 守卫可能从主菜单触发（startModal 仍显示）：取消后留在主菜单；
+        // 启动时序触发（splash 场景）：回封面按 Enter 进主菜单
+        if (this.startModal && this.startModal.style.display !== 'none') return;
         this.showSplash();
     };
 

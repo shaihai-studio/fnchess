@@ -184,6 +184,8 @@ if (typeof UIController === 'undefined') {
 
 // startCampaign
     UIController.prototype.startCampaign = async function(startLevelId) {
+        // 统一守卫：进入任意对局前检查是否有未完成的联机排位对局，有则弹恢复询问
+        if (this._guardPendingOnlineMatch()) return;
         const isCustom = !!this.campaignIsCustom;
         const pack = isCustom ? this.importedCampaignPack : (await this.loadCampaignPack());
         if (!pack) {

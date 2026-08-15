@@ -389,6 +389,8 @@ if (typeof UIController === 'undefined') {
         if (createBtn) {
             createBtn.onclick = () => {
                 if (window.audioManager) window.audioManager.playClick();
+                // 统一守卫：进入任意对局前检查是否有未完成的联机排位对局，有则弹恢复询问
+                if (this._guardPendingOnlineMatch()) return;
                 createBtn.disabled = true;
                 const del = $('p2p-delete-btn'); if (del) del.style.display = '';
                 this._updateP2PStatus('creating', '正在创建房间...');
@@ -442,6 +444,8 @@ if (typeof UIController === 'undefined') {
         if (joinBtn) {
             joinBtn.onclick = () => {
                 if (window.audioManager) window.audioManager.playClick();
+                // 统一守卫：进入任意对局前检查是否有未完成的联机排位对局，有则弹恢复询问
+                if (this._guardPendingOnlineMatch()) return;
                 const code = $('p2p-room-input')?.value?.trim();
                 if (!code || code.length !== 6) {
                     this.showMessage('请输入6位数字房间码', 'error');

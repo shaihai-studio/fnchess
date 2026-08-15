@@ -32,6 +32,8 @@ UIController.prototype._raceMaxLevel = function() {
 
 // startRaceLevel
     UIController.prototype.startRaceLevel = function(levelId) {
+        // 统一守卫：进入任意对局前检查是否有未完成的联机排位对局，有则弹恢复询问
+        if (this._guardPendingOnlineMatch()) return;
         const safeLevelId = Math.max(1, Math.min(this._raceMaxLevel(), Number(levelId) || 1));
         const unlocked = this.getRaceUnlockedLevels();
         if (safeLevelId > 1 && !unlocked.has(safeLevelId)) {
@@ -794,6 +796,8 @@ UIController.prototype._raceMaxLevel = function() {
 
 // _replayCustomRace — 重玩上一次的自定义竞速配置
     UIController.prototype._replayCustomRace = function() {
+        // 统一守卫：进入任意对局前检查是否有未完成的联机排位对局，有则弹恢复询问
+        if (this._guardPendingOnlineMatch()) return;
         const config = this._lastRaceCustomConfig;
         if (!config) { this.backToRaceLevelListFromVictory(); return; }
         this.gameController.raceState.customConfig = config;
@@ -968,6 +972,8 @@ UIController.prototype._raceMaxLevel = function() {
 
 // startCustomRace — 读取校验并生成自定义竞速关卡
     UIController.prototype.startCustomRace = function() {
+        // 统一守卫：进入任意对局前检查是否有未完成的联机排位对局，有则弹恢复询问
+        if (this._guardPendingOnlineMatch()) return;
         const allowedEl = document.getElementById('race-custom-allowed');
         const forbiddenEl = document.getElementById('race-custom-forbidden');
         const locksEl = document.getElementById('race-custom-locks');

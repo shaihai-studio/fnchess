@@ -142,7 +142,9 @@ UIController.prototype._ensureRaceBattleFields = function() {
     this._rbWarningShown = false;  // 竞速排位「勿消极比赛」提示（每会话一次）
     this._rbResultScoreTimer = null; // 结算"积分结算中"兜底定时器（5s 后改显"积分暂不可用"）
     this._rbProgress = {};
-    this._rbRanks = {};              // playerId → 竞速段位名（未查到返回"未定段"）
+    this._rbRanks = {};              // playerId → 竞速段位名（查询未开始返回"未定段"）
+    this._rbRanksPending = {};       // playerId → true（段位查询进行中，徽章显示"加载中…"）
+    this._rbRanksTimeout = {};       // playerId → 超时定时器（查询丢包时从"加载中…"回退"未定段"，后续渲染会重查）
     this._rbGameParams = null;
     // 房主迁移（host migration，2026-08-11）
     this._rbMigrationActive = false;    // 是否处于迁移流程

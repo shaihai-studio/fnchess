@@ -217,6 +217,9 @@ UIController.prototype.cancelRaceBattleResume = function() {
     this._rbClearResumeContext();
     const modal = document.getElementById('race-resume-modal');
     if (modal) this.hideModal(modal);
+    // 守卫可能从主菜单触发（startModal 仍显示）：取消后留在主菜单；
+    // 启动时序触发（splash 场景）：回封面按 Enter 进主菜单
+    if (this.startModal && this.startModal.style.display !== 'none') return;
     this.showSplash();
 };
 
@@ -275,6 +278,47 @@ UIController.prototype._rbRestoreMatchFromCtx = function(ctx) {
         this._rbResumeCtx = null;
         this._rbResuming = false;
     }
+};
+
+/**
+ * 统一入口守卫：进入任意对局（本地/AI/闯关/竞速/联机）之前，
+ * 检查是否存在未完成的联机排位对局（P2P 对战 / 竞速联机）。
+ * 有 → 弹对应恢复询问并返回 true（拦截本次进入）；
+ * 无 → 返回 false（放行）。
+ * 正在恢复中或恢复弹窗已显示时不重复拦截。
+ */
+UIController.prototype._guardPendingOnlineMatch = function() {
+    // 正在恢复中：放行，避免拦截恢复流程自身
+    if (this._p2pResuming || this._rbResuming) return false;
+    // 恢复弹窗已显示：不重复拦截
+    const p2pModal = document.getElementById('p2p-resume-modal');
+    if (p2pModal && p2pModal.style.display !== 'none') return false;
+    const rbModal = document.getElementById('race-resume-modal');
+    if (rbModal && rbModal.style.display !== 'none') return false;
+
+    // 1) P2P 排位对局：同步判定，有有效恢复键则弹询问
+    const p2pCtx = this._loadP2PResumeContext();
+    if (p2pCtx && p2pCtx.roomCode) {
+        if (p2pCtx.mode === 'ranked') {
+            this._checkP2PResume();
+            return true;
+        }
+        this._clearP2PResumeContext(); // 非排位残留键：清除后放行
+    }
+    // 2) 竞速排位对局：含跨窗口 owner 探测链（_checkRaceBattleResume 内部异步处理）
+    const rbCtx = this._rbLoadResumeContext();
+    if (this._rbForeignResume) {
+        this._checkRaceBattleResume(); // 探测存活→维持拦截不弹；已死→接管后弹窗
+        return true;
+    }
+    if (rbCtx && rbCtx.roomCode) {
+        if (rbCtx.mode === 'ranked') {
+            this._checkRaceBattleResume();
+            return true;
+        }
+        this._rbClearResumeContext(); // 非排位残留键：清除后放行
+    }
+    return false;
 };
 
 // ─── 对局开始（界面侧入口，ui-logic 负责播种与同步计时）────────

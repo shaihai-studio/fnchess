@@ -37,8 +37,9 @@ UIController.prototype._raceTierIconHtml = function(tierName) {
         'rank_universe.png'        // 宇宙
     ];
     const idx = names.indexOf(String(tierName || ''));
-    const i = idx >= 0 ? idx : 0;
-    return '<img class="rb-tier-icon" src="files/images/' + files[i] + '" alt="' + names[i] + '" loading="lazy">';
+    // 未定段/未知段位：不显示段位图标（避免 fallback 成最低段「流星体」误导）
+    if (idx < 0) return '';
+    return '<img class="rb-tier-icon" src="files/images/' + files[idx] + '" alt="' + names[idx] + '" loading="lazy">';
 };
 
 /** 进度条分母：当前分数所在段位的下一档阈值（对齐服务端 RACE_TIERS 9 级天体，间隔 100/200 分段）
