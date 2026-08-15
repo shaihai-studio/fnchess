@@ -756,7 +756,7 @@ if (typeof UIController === 'undefined') {
 
         const lockFuncDisplayNames = {
             'sin': 'sin', 'cos': 'cos', 'tan': 'tan',
-            'abs': 'abs', 'exp': 'exp', 'ln': 'ln', 'log': 'log'
+            'abs': 'abs', 'ln': 'ln'
         };
         const getDisplay = (v) => lockFuncDisplayNames[v] || this.getDisplaySymbol(v);
 

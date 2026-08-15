@@ -153,11 +153,15 @@ class GridSystem {
             this.isRaceMode = false;
             this.range = this.fixedCampaignRange;
             this.gridSize = this.range * 2;
+            // 2026-08-15 修复 #19：切换坐标系时清空上一局残留的 usedCells（与 setRaceFixedRange 一致）
+            this.usedCells = [];
             this.resize();
         } else {
             // 退出闯关时立即恢复默认对战网格，避免保留 20x20 状态
             this.range = 5;
             this.gridSize = 10;
+            // 2026-08-15 修复 #19：退出时也清空 usedCells，避免残留污染后续对局
+            this.usedCells = [];
             this.resize();
         }
     }
@@ -499,7 +503,6 @@ class GridSystem {
         
         const ctx = this.ctx;
         const currentRound = this.currentRound || 1;
-        const currentRange = this.range;
         
         for (const func of this.functionHistory) {
             const roundDiff = currentRound - func.round;
@@ -635,7 +638,6 @@ class GridSystem {
         const ctx = this.ctx;
             
         for (const cell of this.usedCells) {
-            const key = `${cell.x},${cell.y}`;
             const topLeft = this.mathToCanvas(cell.x, cell.y + 1);
             const bottomRight = this.mathToCanvas(cell.x + 1, cell.y);
                 

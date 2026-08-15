@@ -9,6 +9,10 @@ if (typeof UIController === 'undefined') {
         return (this.raceLevels && this.raceLevels.length) ? this.raceLevels.length : 30;
     }
 ;
+// 2026-08-15 修复 #59：竞速总关卡数单一来源（调用时求值，避免 RaceModeController 尚未加载时捕获到旧值 30）
+UIController.prototype._raceMaxLevel = function() {
+    return (typeof RaceModeController !== 'undefined' && RaceModeController.TOTAL_LEVELS) || 30;
+};
 
 // openRaceUI
     UIController.prototype.openRaceUI = function() {
@@ -28,7 +32,7 @@ if (typeof UIController === 'undefined') {
 
 // startRaceLevel
     UIController.prototype.startRaceLevel = function(levelId) {
-        const safeLevelId = Math.max(1, Math.min(30, Number(levelId) || 1));
+        const safeLevelId = Math.max(1, Math.min(this._raceMaxLevel(), Number(levelId) || 1));
         const unlocked = this.getRaceUnlockedLevels();
         if (safeLevelId > 1 && !unlocked.has(safeLevelId)) {
             this.showMessage('请先通关上一关解锁', 'warning');
@@ -103,7 +107,7 @@ if (typeof UIController === 'undefined') {
 
 // getRaceLevels
     UIController.prototype.getRaceLevels = function() {
-        return Array.from({ length: 30 }, (_, i) => ({ id: i + 1 }));
+        return Array.from({ length: this._raceMaxLevel() }, (_, i) => ({ id: i + 1 }));
     }
 ;
 
@@ -195,7 +199,7 @@ if (typeof UIController === 'undefined') {
             const parsed = raw ? JSON.parse(raw) : [];
             for (const v of Array.isArray(parsed) ? parsed : []) {
                 const n = Number(v);
-                if (Number.isFinite(n) && n >= 1 && n <= 30) unlocked.add(n);
+                if (Number.isFinite(n) && n >= 1 && n <= this._raceMaxLevel()) unlocked.add(n);
             }
         } catch {}
         return unlocked;
@@ -205,7 +209,7 @@ if (typeof UIController === 'undefined') {
 // saveRaceUnlockedLevels
     UIController.prototype.saveRaceUnlockedLevels = function(levels) {
         try {
-            const arr = Array.from(new Set([...(levels || [])])).filter(v => Number.isFinite(Number(v))).map(v => Math.max(1, Math.min(30, Number(v))));
+            const arr = Array.from(new Set([...(levels || [])])).filter(v => Number.isFinite(Number(v))).map(v => Math.max(1, Math.min(this._raceMaxLevel(), Number(v))));
             localStorage.setItem('function_chess_race_unlocked_levels', JSON.stringify(arr));
         } catch {}
     }
@@ -213,7 +217,7 @@ if (typeof UIController === 'undefined') {
 
 // unlockNextRaceLevel
     UIController.prototype.unlockNextRaceLevel = function(levelId) {
-        const next = Math.min(30, Number(levelId) + 1);
+        const next = Math.min(this._raceMaxLevel(), Number(levelId) + 1);
         const levels = this.getRaceUnlockedLevels();
         levels.add(next);
         this.saveRaceUnlockedLevels(levels);
@@ -248,14 +252,10 @@ if (typeof UIController === 'undefined') {
             });
             if (!secondConfirm || secondConfirm === 'cancel') return;
 
+            // 2026-08-15 修复 #61：bestTimes 单一写者已统一为 RaceModeManager.clearProgress，
+            // 不再由 RaceModeController 重复写同一 localStorage key（避免两处都写 function_chess_race_best_times）
             if (this.raceModeManager) {
                 this.raceModeManager.clearProgress();
-            }
-            if (this.raceModeController) {
-                this.raceModeController.bestTimes = {};
-                if (typeof this.raceModeController.saveBestTimes === 'function') {
-                    this.raceModeController.saveBestTimes();
-                }
             }
             try {
                 localStorage.removeItem('function_chess_race_best_times');
@@ -767,7 +767,7 @@ if (typeof UIController === 'undefined') {
             this.backToRaceLevelListFromVictory();
             return;
         }
-        const next = Math.min(30, (this.raceCurrentLevelId || 1) + 1);
+        const next = Math.min(this._raceMaxLevel(), (this.raceCurrentLevelId || 1) + 1);
         const unlocked = this.getRaceUnlockedLevels();
         if (!unlocked.has(next)) {
             this.showMessage('请先通关上一关解锁', 'warning');

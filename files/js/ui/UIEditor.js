@@ -47,7 +47,10 @@ UIController.prototype.initEditor = function() {
         dragState: null
     };
 
-    const els = Object.fromEntries(['id','difficulty','nextId','targetCells','forbiddenCells','lockedElements','exportBox','levelList','gridCanvas','status','btnBack','btnCloseLeft','btnCloseRight','btnShowLeft','btnShowRight','btnCopyOne','btnAdd','btnDelete','btnCopyExport','btnDownload','btnImportFile','btnImportText','editorImportFile','fileNameInput','precisionSelect','btnRect','btnLine','btnBrush','btnSelect','btnSwapMouse','btnUndo','btnFx','fxPanel','fxInput','btnFxClear','anchorModeSelect','btnArrowUp','btnArrowDown','btnArrowLeft','btnArrowRight','btnTrash','lockElementPanel'].map(id => [id, document.getElementById(id)]));
+    // #14：通用 id（id/difficulty/status/exportBox/nextId/fileNameInput）在浏览器中会污染 window 全局
+    // （window.status 甚至是内建属性），统一加 editor- 前缀；此处把对象 key 保持原名、只改 DOM 查找名。
+    const EDITOR_ID_REMAP = { id: 'editor-id', difficulty: 'editor-difficulty', nextId: 'editor-nextId', exportBox: 'editor-exportBox', fileNameInput: 'editor-fileNameInput', status: 'editor-status' };
+    const els = Object.fromEntries(['id','difficulty','nextId','targetCells','forbiddenCells','lockedElements','exportBox','levelList','gridCanvas','status','btnBack','btnCloseLeft','btnCloseRight','btnShowLeft','btnShowRight','btnCopyOne','btnAdd','btnDelete','btnCopyExport','btnDownload','btnImportFile','btnImportText','editorImportFile','fileNameInput','precisionSelect','btnRect','btnLine','btnBrush','btnSelect','btnSwapMouse','btnUndo','btnFx','fxPanel','fxInput','btnFxClear','anchorModeSelect','btnArrowUp','btnArrowDown','btnArrowLeft','btnArrowRight','btnTrash','lockElementPanel'].map(id => [id, document.getElementById(EDITOR_ID_REMAP[id] || id)]));
     const ctx = els.gridCanvas.getContext('2d');
 
     // 锁定元素快捷面板：从解析器可用元素构建，点击元素按钮即锁定/解锁（无需手动输入坐标或编号）

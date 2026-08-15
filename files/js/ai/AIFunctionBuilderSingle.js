@@ -263,40 +263,20 @@ class AIFunctionBuilderSingle {
                     }
                     break;
 
-                case 9: // log/ln函数 y = a*ln(bx) + c 或 a*log(bx) + c
+                case 9: // ln函数 y = a*ln(bx) + c
                     if (decimalLocked) {
                         const a = Math.round(Math.random() * 2 + 1);
                         const b = Math.round(Math.random() + 1);
                         const c = Math.round(ty - a * Math.log(b * Math.abs(tx)));
-                        const logFunc = Math.random() < 0.5 ? 'ln' : 'log';
                         if (Math.abs(c) <= 20) {
-                            expression = `${a}*${logFunc}(${b}*x)+${c}`;
+                            expression = `${a}*ln(${b}*x)+${c}`;
                         }
                     } else {
                         const a = (Math.random() * 2 + 1).toFixed(1);
                         const b = (Math.random() + 0.5).toFixed(1);
                         const c = (ty - parseFloat(a) * Math.log(parseFloat(b) * Math.abs(tx))).toFixed(1);
-                        const logFunc = Math.random() < 0.5 ? 'ln' : 'log';
                         if (Math.abs(parseFloat(c)) <= 20) {
-                            expression = `${a}*${logFunc}(${b}*x)+${c}`;
-                        }
-                    }
-                    break;
-
-                case 10: // 指数函数 y = a*e^(bx) + c
-                    if (decimalLocked) {
-                        const a = Math.round(Math.random() * 2 + 1);
-                        const b = Math.round(Math.random() * 2 - 1);
-                        const c = Math.round(ty - a * Math.exp(b * tx));
-                        if (Math.abs(c) <= 20 && Math.abs(b) <= 2) {
-                            expression = `${a}*exp(${b}*x)+${c}`;
-                        }
-                    } else {
-                        const a = (Math.random() * 2 + 1).toFixed(1);
-                        const b = (Math.random() * 2 - 1).toFixed(1);
-                        const c = (ty - parseFloat(a) * Math.exp(parseFloat(b) * tx)).toFixed(1);
-                        if (Math.abs(parseFloat(c)) <= 20) {
-                            expression = `${a}*exp(${b}*x)+${c}`;
+                            expression = `${a}*ln(${b}*x)+${c}`;
                         }
                     }
                     break;

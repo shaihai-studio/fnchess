@@ -109,7 +109,7 @@ class VerifyCrypto {
     /** 长度口径（§5）：原始 token、不化简；与 FunctionParser.analyzeFunctionType 完全一致 */
     static tokenCount(expr) {
         const s = String(expr).replace(/\s+/g, '').replace(/[()（）]/g, '');
-        const re = /(sin|cos|tan|asin|acos|atan|abs|exp|ln|log|sqrt|factorial)|(\d+(?:\.\d+)?)|(PI|π|e|i)|([+\-*/^!])|(x)/gi;
+        const re = /(sin|cos|tan|asin|acos|atan|abs|ln|sqrt|factorial)|(\d+(?:\.\d+)?)|(PI|π|e|i)|([+\-*/^!])|(x)/gi;
         let n = 0, m;
         while ((m = re.exec(s)) !== null) n++;
         if (n === 0 && s.length > 0) n = s.length;

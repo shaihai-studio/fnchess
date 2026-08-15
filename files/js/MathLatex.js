@@ -103,8 +103,6 @@ window.MathLatex = (function () {
                     case 'acos': return '\\operatorname{acos}\\left(' + arg + '\\right)';
                     case 'atan': return '\\operatorname{atan}\\left(' + arg + '\\right)';
                     case 'ln': return '\\ln\\left(' + arg + '\\right)';
-                    case 'log': return '\\log\\left(' + arg + '\\right)';
-                    case 'exp': return 'e^{' + arg + '}';
                     case 'sqrt': return '\\sqrt{' + arg + '}';
                     case 'abs': return '\\left|' + arg + '\\right|';
                     default: return '\\operatorname{' + n.n + '}\\left(' + arg + '\\right)';
@@ -236,7 +234,7 @@ window.MathLatex = (function () {
     const FUNC_MAP = {
         sin: '\\sin', cos: '\\cos', tan: '\\tan',
         asin: '\\operatorname{asin}', acos: '\\operatorname{acos}', atan: '\\operatorname{atan}',
-        ln: '\\ln', log: '\\log', exp: '\\exp',
+        ln: '\\ln',
         sqrt: '\\sqrt', abs: '\\operatorname{abs}'
     };
     const SIMPLE_MAP = { '*': '\\cdot ', '/': '\\div', 'π': '\\pi ' };

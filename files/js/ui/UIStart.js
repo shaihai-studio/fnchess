@@ -434,16 +434,11 @@ if (typeof UIController === 'undefined') {
             canvasSection.classList.remove('test-mode');
         }
         
-        // 恢复标题
+        // 恢复标题（#23：用进入时保存的原始状态还原，不再硬编码属性清单）
         const gameTitle = document.querySelector('.game-title');
         if (gameTitle) {
-            gameTitle.textContent = '函数棋';
-            gameTitle.style.color = '';
-            gameTitle.style.position = '';
-            gameTitle.style.left = '';
-            gameTitle.style.top = '';
-            gameTitle.style.margin = '';
-            gameTitle.style.transform = '';
+            gameTitle.textContent = this._testModeTitleText || '函数棋';
+            gameTitle.style.cssText = this._testModeTitleCss || '';
         }
         
         // 恢复UI显示
@@ -663,6 +658,9 @@ if (typeof UIController === 'undefined') {
         // 修改标题为"测试模式"，显示在左上角
         const gameTitle = document.querySelector('.game-title');
         if (gameTitle) {
+            // #23：进入前先保存原始文案与内联样式，退出时原样还原（避免还原清单与这里改动失配）
+            this._testModeTitleText = gameTitle.textContent;
+            this._testModeTitleCss = gameTitle.style.cssText;
             gameTitle.textContent = '测试模式';
             gameTitle.style.color = '#ffffff';
             gameTitle.style.position = 'absolute';

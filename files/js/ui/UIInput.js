@@ -269,9 +269,7 @@ if (typeof UIController === 'undefined') {
             'acos': 'acos',
             'atan': 'atan',
             'abs': 'abs',
-            'exp': 'exp',
-            'ln': 'ln',
-            'log': 'log'
+            'ln': 'ln'
         };
         
         // 移动端/平板竖屏：使用内联面板+Tab切换
@@ -428,8 +426,7 @@ if (typeof UIController === 'undefined') {
         // 函数显示名称映射（用于锁定视图）
         const lockFuncDisplayNames = {
             'sin': 'sin', 'cos': 'cos', 'tan': 'tan',
-            'abs': 'abs', 'exp': 'exp',
-            'ln': 'ln', 'log': 'log'
+            'abs': 'abs', 'ln': 'ln'
         };
         
         for (const element of allElements) {
@@ -597,8 +594,7 @@ if (typeof UIController === 'undefined') {
         // 函数显示名称映射（用于锁定视图）
         const lockFuncDisplayNames = {
             'sin': 'sin', 'cos': 'cos', 'tan': 'tan',
-            'abs': 'abs', 'exp': 'exp',
-            'ln': 'ln', 'log': 'log'
+            'abs': 'abs', 'ln': 'ln'
         };
         
         // 更新按钮状态（桌面端 + 移动端内联面板 + 悬浮计算器栏）
@@ -677,7 +673,7 @@ if (typeof UIController === 'undefined') {
         }
         
         // 函数类元素自动添加括号
-        const functionElements = ['sin', 'cos', 'tan', 'asin', 'acos', 'atan', 'abs', 'exp', 'ln', 'log', 'sqrt'];
+        const functionElements = ['sin', 'cos', 'tan', 'asin', 'acos', 'atan', 'abs', 'ln', 'sqrt'];
         if (functionElements.includes(element)) {
             // 插入函数名和括号：[sin, (, )]
             this.expressionElements.splice(this.cursorIndex, 0, element, '(', ')');
@@ -1199,36 +1195,8 @@ if (typeof UIController === 'undefined') {
     }
 ;
 
-// tokenizeExpression
+// tokenizeExpression —— 单一来源：委托 FunctionParser.tokenizeExpression（#41 收敛，消除与 AI 的重复实现）
     UIController.prototype.tokenizeExpression = function(expr) {
-        const tokens = [];
-        let i = 0;
-        const len = expr.length;
-        
-        // 多字母函数名列表
-        const multiCharFuncs = ['sin', 'cos', 'tan', 'asin', 'acos', 'atan', 'abs', 'exp', 'ln', 'log', 'sqrt'];
-        
-        while (i < len) {
-            let matched = false;
-            
-            // 尝试匹配多字母函数
-            for (const func of multiCharFuncs) {
-                if (expr.substring(i, i + func.length) === func) {
-                    tokens.push(func);
-                    i += func.length;
-                    matched = true;
-                    break;
-                }
-            }
-            
-            if (matched) continue;
-            
-            // 匹配单个字符（变量、数字、运算符、括号等）
-            tokens.push(expr[i]);
-            i++;
-        }
-        
-        return tokens;
-    }
-;
+        return this.parser.tokenizeExpression(expr);
+    };
 

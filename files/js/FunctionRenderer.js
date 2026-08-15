@@ -642,9 +642,6 @@ class FunctionRenderer {
         if (typeof this.gridSystem.clearFunctionCache === 'function') {
             this.gridSystem.clearFunctionCache();
         }
-        if (typeof this.parser.clearCache === 'function') {
-            this.parser.clearCache();
-        }
 
         return this._segmentsToPoints(segments);
     }

@@ -170,6 +170,9 @@ if (typeof UIController === 'undefined') {
     UIController.prototype.handleCanvasClick = function(e) {
         // 观战模式：棋盘只读，禁止点击
         if (this._isSpectating) return;
+        // 2026-08-15 修复 #26：测试模式下棋盘点击不用于选格/禁区（测试模式通过 submitFunction 绘制），
+        // 显式早返回避免误触发"已使用格子"等提示（原依赖 GC 侧 selectTargetCell/addForbiddenCell 内部拦截）。
+        if (this.gameController?.isTestMode()) return;
         if (this.gameController?.gameMode === 'race' && this._raceCountdownActive) return;
         const canvas = this.gridSystem.canvas;
         const rect = canvas.getBoundingClientRect();

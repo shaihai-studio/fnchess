@@ -5,15 +5,15 @@ class SummaCharacter {
 
         // 情绪 → 立绘图片映射
         this.imageMap = {
-            neutral: 'files/Summa形象处理/summa_image/neutral.PNG',
-            thinking: 'files/Summa形象处理/summa_image/thinking.PNG',
-            smug: 'files/Summa形象处理/summa_image/smug.PNG',
-            happy: 'files/Summa形象处理/summa_image/happy.PNG',
-            surprised: 'files/Summa形象处理/summa_image/surprised.PNG',
-            sad: 'files/Summa形象处理/summa_image/sad.PNG',
-            angry: 'files/Summa形象处理/summa_image/angry.PNG',
-            determined: 'files/Summa形象处理/summa_image/determined.PNG',
-            exhausted: 'files/Summa形象处理/summa_image/exhausted.PNG'
+            neutral: 'files/Summa形象处理/summa_image/neutral.png',
+            thinking: 'files/Summa形象处理/summa_image/thinking.png',
+            smug: 'files/Summa形象处理/summa_image/smug.png',
+            happy: 'files/Summa形象处理/summa_image/happy.png',
+            surprised: 'files/Summa形象处理/summa_image/surprised.png',
+            sad: 'files/Summa形象处理/summa_image/sad.png',
+            angry: 'files/Summa形象处理/summa_image/angry.png',
+            determined: 'files/Summa形象处理/summa_image/determined.png',
+            exhausted: 'files/Summa形象处理/summa_image/exhausted.png'
         };
 
         // 温和、鼓励、带点数学趣味的对话库
@@ -374,7 +374,7 @@ class SummaCharacter {
         }
 
         // 包含 sqrt 时负数测试
-        if (expression.includes('sqrt') || expression.includes('log') || expression.includes('ln')) {
+        if (expression.includes('sqrt') || expression.includes('ln')) {
             return this._sampleHasNaN(expression);
         }
 
@@ -505,7 +505,7 @@ class SummaCharacter {
             this.speak('aiSuccess_Multiple', 'happy');
         } else if (expression && (
             expression.includes('abs') || expression.includes('cos') ||
-            expression.includes('sin') || expression.includes('exp')
+            expression.includes('sin')
         )) {
             // 检查表达式是否有间断点
             if (this._hasDiscontinuity(expression)) {

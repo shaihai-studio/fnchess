@@ -9,6 +9,7 @@ window.CAMPAIGN_LEVEL_PACK = {
     "levels":  [
                    {
                        "id":  1,
+                       "difficulty":  "easy",
                        "targetCells":  [
                                            {
                                                "x":  0,
@@ -22,6 +23,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  2,
+                       "difficulty":  "easy",
                        "targetCells":  [
                                            {
                                                "x":  0,
@@ -35,6 +37,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  3,
+                       "difficulty":  "easy",
                        "targetCells":  [
                                            {
                                                "x":  3,
@@ -48,6 +51,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  4,
+                       "difficulty":  "easy",
                        "targetCells":  [
                                            {
                                                "x":  0,
@@ -65,6 +69,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  5,
+                       "difficulty":  "easy",
                        "targetCells":  [
                                            {
                                                "x":  0,
@@ -82,6 +87,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  6,
+                       "difficulty":  "easy",
                        "targetCells":  [
                                            {
                                                "x":  -7,
@@ -111,6 +117,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  7,
+                       "difficulty":  "easy",
                        "targetCells":  [
                                            {
                                                "x":  2,
@@ -132,6 +139,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  8,
+                       "difficulty":  "easy",
                        "targetCells":  [
                                            {
                                                "x":  -1,
@@ -165,6 +173,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  9,
+                       "difficulty":  "easy",
                        "targetCells":  [
                                            {
                                                "x":  -1,
@@ -198,6 +207,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  10,
+                       "difficulty":  "easy",
                        "targetCells":  [
                                            {
                                                "x":  -3,
@@ -255,6 +265,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  11,
+                       "difficulty":  "easy",
                        "targetCells":  [
                                            {
                                                "x":  -7,
@@ -384,6 +395,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  12,
+                       "difficulty":  "easy",
                        "targetCells":  [
                                            {
                                                "x":  0,
@@ -400,6 +412,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  13,
+                       "difficulty":  "easy",
                        "targetCells":  [
                                            {
                                                "x":  -3,
@@ -440,6 +453,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  14,
+                       "difficulty":  "easy",
                        "targetCells":  [
                                            {
                                                "x":  2,
@@ -512,6 +526,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  15,
+                       "difficulty":  "easy",
                        "targetCells":  [
                                            {
                                                "x":  0,
@@ -604,6 +619,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  16,
+                       "difficulty":  "easy",
                        "targetCells":  [
                                            {
                                                "x":  -1,
@@ -624,6 +640,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  17,
+                       "difficulty":  "easy",
                        "targetCells":  [
                                            {
                                                "x":  4,
@@ -644,6 +661,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  18,
+                       "difficulty":  "easy",
                        "targetCells":  [
                                            {
                                                "x":  -3,
@@ -664,6 +682,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  19,
+                       "difficulty":  "easy",
                        "targetCells":  [
                                            {
                                                "x":  5,
@@ -684,6 +703,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  20,
+                       "difficulty":  "easy",
                        "targetCells":  [
                                            {
                                                "x":  3,
@@ -704,6 +724,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  21,
+                       "difficulty":  "easy",
                        "targetCells":  [
                                            {
                                                "x":  -2,
@@ -724,6 +745,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  22,
+                       "difficulty":  "easy",
                        "targetCells":  [
                                            {
                                                "x":  -4,
@@ -744,6 +766,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  23,
+                       "difficulty":  "easy",
                        "targetCells":  [
                                            {
                                                "x":  -2,
@@ -768,6 +791,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  24,
+                       "difficulty":  "easy",
                        "targetCells":  [
                                            {
                                                "x":  4,
@@ -806,6 +830,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  25,
+                       "difficulty":  "easy",
                        "targetCells":  [
                                            {
                                                "x":  -10,
@@ -1066,6 +1091,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  26,
+                       "difficulty":  "easy",
                        "targetCells":  [
                                            {
                                                "x":  -2,
@@ -1088,6 +1114,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  27,
+                       "difficulty":  "easy",
                        "targetCells":  [
                                            {
                                                "x":  -6,
@@ -1114,6 +1141,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  28,
+                       "difficulty":  "easy",
                        "targetCells":  [
                                            {
                                                "x":  4,
@@ -1141,6 +1169,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  29,
+                       "difficulty":  "easy",
                        "targetCells":  [
                                            {
                                                "x":  8,
@@ -1175,6 +1204,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  "1/2",
+                       "parentId":  1,
                        "difficulty":  "fraction",
                        "nextId":  "1/3",
                        "targetCells":  [
@@ -1195,6 +1225,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  "1/3",
+                       "parentId":  1,
                        "difficulty":  "fraction",
                        "nextId":  "1/4",
                        "targetCells":  [
@@ -1218,6 +1249,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  "1/4",
+                       "parentId":  1,
                        "difficulty":  "fraction",
                        "nextId":  "1/5",
                        "targetCells":  [
@@ -1246,6 +1278,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  "1/5",
+                       "parentId":  1,
                        "difficulty":  "fraction",
                        "nextId":  "1/6",
                        "targetCells":  [
@@ -1321,6 +1354,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  "1/6",
+                       "parentId":  1,
                        "difficulty":  "fraction",
                        "nextId":  "1/7",
                        "targetCells":  [
@@ -1366,6 +1400,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  "1/7",
+                       "parentId":  1,
                        "difficulty":  "fraction",
                        "nextId":  "1/8",
                        "targetCells":  [
@@ -1486,6 +1521,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  "1/8",
+                       "parentId":  1,
                        "difficulty":  "fraction",
                        "nextId":  "1/9",
                        "targetCells":  [
@@ -1746,6 +1782,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  "1/9",
+                       "parentId":  1,
                        "difficulty":  "fraction",
                        "nextId":  "1/10",
                        "targetCells":  [
@@ -3123,6 +3160,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  "1/10",
+                       "parentId":  1,
                        "difficulty":  "fraction",
                        "nextId":  "1/11",
                        "targetCells":  [
@@ -3155,6 +3193,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  "1/11",
+                       "parentId":  1,
                        "difficulty":  "fraction",
                        "nextId":  "1/12",
                        "targetCells":  [
@@ -3187,6 +3226,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  "1/12",
+                       "parentId":  1,
                        "difficulty":  "fraction",
                        "nextId":  "1/13",
                        "targetCells":  [
@@ -3221,6 +3261,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  "1/13",
+                       "parentId":  1,
                        "difficulty":  "fraction",
                        "nextId":  "1/14",
                        "targetCells":  [
@@ -3487,6 +3528,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  "1/14",
+                       "parentId":  1,
                        "difficulty":  "fraction",
                        "nextId":  "1/15",
                        "targetCells":  [
@@ -3573,6 +3615,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  "1/15",
+                       "parentId":  1,
                        "difficulty":  "fraction",
                        "nextId":  "1/16",
                        "targetCells":  [
@@ -3611,6 +3654,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  "1/16",
+                       "parentId":  1,
                        "difficulty":  "fraction",
                        "nextId":  "1/17",
                        "targetCells":  [
@@ -4235,6 +4279,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  "1/17",
+                       "parentId":  1,
                        "difficulty":  "fraction",
                        "nextId":  "1/18",
                        "targetCells":  [
@@ -4868,6 +4913,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  "1/18",
+                       "parentId":  1,
                        "difficulty":  "fraction",
                        "nextId":  "1/19",
                        "targetCells":  [
@@ -4960,6 +5006,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  "1/19",
+                       "parentId":  1,
                        "difficulty":  "fraction",
                        "nextId":  "1/20",
                        "targetCells":  [
@@ -4997,6 +5044,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  "1/20",
+                       "parentId":  1,
                        "difficulty":  "fraction",
                        "nextId":  30,
                        "targetCells":  [
@@ -5015,6 +5063,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  30,
+                       "difficulty":  "normal",
                        "targetCells":  [
                                            {
                                                "x":  -1,
@@ -5039,6 +5088,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  31,
+                       "difficulty":  "normal",
                        "targetCells":  [
                                            {
                                                "x":  -4,
@@ -5063,6 +5113,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  32,
+                       "difficulty":  "normal",
                        "targetCells":  [
                                            {
                                                "x":  1,
@@ -5087,6 +5138,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  33,
+                       "difficulty":  "normal",
                        "targetCells":  [
                                            {
                                                "x":  0,
@@ -5115,6 +5167,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  34,
+                       "difficulty":  "normal",
                        "targetCells":  [
                                            {
                                                "x":  -5,
@@ -5143,6 +5196,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  35,
+                       "difficulty":  "normal",
                        "targetCells":  [
                                            {
                                                "x":  2,
@@ -5171,6 +5225,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  36,
+                       "difficulty":  "normal",
                        "targetCells":  [
                                            {
                                                "x":  4,
@@ -5211,6 +5266,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  37,
+                       "difficulty":  "normal",
                        "targetCells":  [
                                            {
                                                "x":  -2,
@@ -5238,6 +5294,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  38,
+                       "difficulty":  "normal",
                        "targetCells":  [
                                            {
                                                "x":  -6,
@@ -5269,6 +5326,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  39,
+                       "difficulty":  "normal",
                        "targetCells":  [
                                            {
                                                "x":  8,
@@ -5297,6 +5355,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  40,
+                       "difficulty":  "normal",
                        "targetCells":  [
                                            {
                                                "x":  -3,
@@ -5325,6 +5384,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  41,
+                       "difficulty":  "normal",
                        "targetCells":  [
                                            {
                                                "x":  -5,
@@ -5357,6 +5417,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                                 {
                       "id":  42,
+                      "difficulty":  "normal",
                       "targetCells":  [
                                           {
                                               "x":  0,
@@ -5380,6 +5441,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                   },
                                 {
                       "id":  43,
+                      "difficulty":  "normal",
                       "targetCells":  [
                                           {
                                               "x":  -2,
@@ -5403,6 +5465,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                   },
                    {
                        "id":  44,
+                       "difficulty":  "normal",
                        "targetCells":  [
                                            {
                                                "x":  -6,
@@ -5513,6 +5576,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  45,
+                       "difficulty":  "normal",
                        "targetCells":  [
                                            {
                                                "x":  -1,
@@ -5569,6 +5633,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  46,
+                       "difficulty":  "normal",
                        "targetCells":  [
                                            {
                                                "x":  -1,
@@ -5625,6 +5690,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  47,
+                       "difficulty":  "normal",
                        "targetCells":  [
                                            {
                                                "x":  2,
@@ -5769,6 +5835,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  48,
+                       "difficulty":  "normal",
                        "targetCells":  [
                                            {
                                                "x":  -1,
@@ -5937,6 +6004,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  49,
+                       "difficulty":  "normal",
                        "targetCells":  [
                                            {
                                                "x":  -1,
@@ -6121,6 +6189,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  50,
+                       "difficulty":  "normal",
                        "targetCells":  [
                                            {
                                                "x":  2,
@@ -6166,6 +6235,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  51,
+                       "difficulty":  "normal",
                        "targetCells":  [
                                            {
                                                "x":  -2,
@@ -6330,6 +6400,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  52,
+                       "difficulty":  "normal",
                        "targetCells":  [
                                            {
                                                "x":  -3,
@@ -6498,6 +6569,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  53,
+                       "difficulty":  "normal",
                        "targetCells":  [
                                            {
                                                "x":  -6,
@@ -6674,6 +6746,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  54,
+                       "difficulty":  "hard",
                        "targetCells":  [
                                            {
                                                "x":  0,
@@ -6698,6 +6771,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  55,
+                       "difficulty":  "hard",
                        "targetCells":  [
                                            {
                                                "x":  4,
@@ -6726,6 +6800,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  56,
+                       "difficulty":  "hard",
                        "targetCells":  [
                                            {
                                                "x":  -9,
@@ -6758,6 +6833,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  57,
+                       "difficulty":  "hard",
                        "targetCells":  [
                                            {
                                                "x":  1,
@@ -6794,6 +6870,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  58,
+                       "difficulty":  "hard",
                        "targetCells":  [
                                            {
                                                "x":  -3,
@@ -6823,9 +6900,11 @@ window.CAMPAIGN_LEVEL_PACK = {
                                               }
                                           ],
                        
+                       "lockedElements":  [],
                    },
                    {
                        "id":  59,
+                       "difficulty":  "hard",
                        "targetCells":  [
                                            {
                                                "x":  -2,
@@ -6882,6 +6961,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  60,
+                       "difficulty":  "hard",
                        "targetCells":  [
                                            {
                                                "x":  0,
@@ -6942,6 +7022,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  61,
+                       "difficulty":  "hard",
                        "targetCells":  [
                                            {
                                                "x":  4,
@@ -6975,9 +7056,11 @@ window.CAMPAIGN_LEVEL_PACK = {
                                               }
                                           ],
                        
+                       "lockedElements":  [],
                    },
                    {
                        "id":  62,
+                       "difficulty":  "hard",
                        "targetCells":  [
                                            {
                                                "x":  -6,
@@ -7011,9 +7094,11 @@ window.CAMPAIGN_LEVEL_PACK = {
                                               }
                                           ],
                        
+                       "lockedElements":  [],
                    },
                    {
                        "id":  63,
+                       "difficulty":  "hard",
                        "targetCells":  [
                                            {
                                                "x":  5,
@@ -7046,6 +7131,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  64,
+                       "difficulty":  "hard",
                        "targetCells":  [
                                            {
                                                "x":  -9,
@@ -7086,6 +7172,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  65,
+                       "difficulty":  "hard",
                        "targetCells":  [
                                            {
                                                "x":  0,
@@ -7282,6 +7369,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  66,
+                       "difficulty":  "hard",
                        "targetCells":  [
                                            {
                                                "x":  3,
@@ -7350,6 +7438,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  67,
+                       "difficulty":  "hard",
                        "targetCells":  [
                                            {
                                                "x":  -5,
@@ -7430,6 +7519,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  68,
+                       "difficulty":  "hard",
                        "targetCells":  [
                                            {
                                                "x":  0,
@@ -7538,6 +7628,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  69,
+                       "difficulty":  "hard",
                        "targetCells":  [
                                            {
                                                "x":  -1,
@@ -7618,6 +7709,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  70,
+                       "difficulty":  "expert",
                        "targetCells":  [
                                            {
                                                "x":  8,
@@ -7740,6 +7832,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  71,
+                       "difficulty":  "expert",
                        "targetCells":  [
                                            {
                                                "x":  0,
@@ -7834,6 +7927,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  72,
+                       "difficulty":  "expert",
                        "targetCells":  [
                                            {
                                                "x":  1,
@@ -7881,6 +7975,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  73,
+                       "difficulty":  "expert",
                        "targetCells":  [
                                            {
                                                "x":  -5,
@@ -8027,6 +8122,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  74,
+                       "difficulty":  "expert",
                        "targetCells":  [
                                            {
                                                "x":  -5,
@@ -8085,6 +8181,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  75,
+                       "difficulty":  "expert",
                        "targetCells":  [
                                            {
                                                "x":  -8,
@@ -8379,6 +8476,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  76,
+                       "difficulty":  "expert",
                        "targetCells":  [
                                            {
                                                "x":  -1,
@@ -8404,9 +8502,11 @@ window.CAMPAIGN_LEVEL_PACK = {
                                               }
                                           ],
                        
+                       "lockedElements":  [],
                    },
                    {
                        "id":  77,
+                       "difficulty":  "expert",
                        "targetCells":  [
                                            {
                                                "x":  0,
@@ -8448,9 +8548,11 @@ window.CAMPAIGN_LEVEL_PACK = {
                                               }
                                           ],
                        
+                       "lockedElements":  [],
                    },
                    {
                        "id":  78,
+                       "difficulty":  "expert",
                        "targetCells":  [
                                            {
                                                "x":  -5,
@@ -8565,6 +8667,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  79,
+                       "difficulty":  "expert",
                        "targetCells":  [
                                            {
                                                "x":  -6,
@@ -8723,6 +8826,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  80,
+                       "difficulty":  "expert",
                        "targetCells":  [
                                            {
                                                "x":  -2,
@@ -8833,6 +8937,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  81,
+                       "difficulty":  "expert",
                        "targetCells":  [
                                            {
                                                "x":  -2,
@@ -8927,6 +9032,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  82,
+                       "difficulty":  "unsolvable",
                        "targetCells":  [
                                            {
                                                "x":  4,
@@ -9045,6 +9151,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  83,
+                       "difficulty":  "unsolvable",
                        "targetCells":  [
                                            {
                                                "x":  -2,
@@ -9179,6 +9286,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  84,
+                       "difficulty":  "unsolvable",
                        "targetCells":  [
                                            {
                                                "x":  -2,
@@ -9501,6 +9609,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  85,
+                       "difficulty":  "unsolvable",
                        "targetCells":  [
                                            {
                                                "x":  8,
@@ -9999,6 +10108,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  86,
+                       "difficulty":  "unsolvable",
                        "targetCells":  [
                                            {
                                                "x":  1,
@@ -10641,6 +10751,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  87,
+                       "difficulty":  "unsolvable",
                        "targetCells":  [
                                            {
                                                "x":  -7,
@@ -11063,6 +11174,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  88,
+                       "difficulty":  "unsolvable",
                        "targetCells":  [
                                            {
                                                "x":  0,
@@ -11178,6 +11290,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  89,
+                       "difficulty":  "unsolvable",
                        "targetCells":  [
                                            {
                                                "x":  -6,
@@ -11632,6 +11745,7 @@ window.CAMPAIGN_LEVEL_PACK = {
                    },
                    {
                        "id":  90,
+                       "difficulty":  "unsolvable",
                        "targetCells":  [
                                            {
                                                "x":  -8,

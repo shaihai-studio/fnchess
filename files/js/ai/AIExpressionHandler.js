@@ -97,34 +97,8 @@ class AIExpressionHandler {
     }
 
     tokenizeExpression(expr) {
-        const tokens = [];
-        let i = 0;
-        const len = expr.length;
-
-        // 多字母函数名列表
-        const multiCharFuncs = ['sin', 'cos', 'tan', 'asin', 'acos', 'atan', 'abs', 'exp', 'ln', 'log', 'sqrt'];
-
-        while (i < len) {
-            let matched = false;
-
-            // 尝试匹配多字母函数
-            for (const func of multiCharFuncs) {
-                if (expr.substring(i, i + func.length) === func) {
-                    tokens.push(func);
-                    i += func.length;
-                    matched = true;
-                    break;
-                }
-            }
-
-            if (matched) continue;
-
-            // 匹配单个字符（变量、数字、运算符、括号等）
-            tokens.push(expr[i]);
-            i++;
-        }
-
-        return tokens;
+        // #41 收敛：委托 UIController（最终走 FunctionParser.tokenizeExpression 单一来源），消除与 UIInput 的重复实现
+        return this.ai.uiController.tokenizeExpression(expr);
     }
 
     normalizeExpressionInput(expression) {

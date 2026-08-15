@@ -474,8 +474,9 @@ class P2PController {
                 if (initGen !== undefined) {
                     // 始终回执，让 Host 立即停止重发
                     this.send({ type: 'game_init_ack', gen: initGen });
-                    // 同 gen 的重复 init（Host 重发）直接忽略，避免重复重置对局
-                    if (initGen === this._handledInitGen) break;
+                    // 同 gen 或更低 gen 的 init（Host 重发 / 跨局重放包）直接忽略，
+                    // 避免重复重置对局；仅严格更大的 gen 才处理（防御性加固）。
+                    if (initGen <= this._handledInitGen) break;
                     this._gen = initGen;
                     this._handledInitGen = initGen;
                 }
@@ -913,9 +914,6 @@ class P2PController {
         console.warn('[P2P] 检测到对方状态落后，主动推送全量快照');
         if (this.onSyncRequest) this.onSyncRequest();
     }
-
-    /** Rematch 时翻转 isHost（myPlayerId 不变） */
-    flipRoleForRematch() { this.isHost = !this.isHost; }
 
     // ─── 查询 ────────────────────────────────────────────────
 

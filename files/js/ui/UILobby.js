@@ -319,9 +319,7 @@ if (typeof UIController === 'undefined') {
         // 「删除房间」按钮（仅房主可见）：销毁房间并关闭建房等待
         const deleteBtn = $('lobby-delete-btn');
         if (deleteBtn) deleteBtn.onclick = () => this._lobbyDeleteRoom();
-        // 长效模式开关（30 分钟，房间号以 00 开头）
-        const longToggle = $('lobby-long-lived-toggle');
-        if (longToggle) longToggle.onchange = () => {};
+        // 长效模式开关（30 分钟，房间号以 00 开头）；状态在 _lobbyHostRegister 时直接读取 .checked，无需 onchange 监听
         // 对局中观战开关（开局后状态条显示；关闭 → 立即隐藏房间并踢观众）
         const spectateToggle = $('lobby-spectate-toggle');
         if (spectateToggle) spectateToggle.onchange = () => this._toggleSpectate(spectateToggle.checked);

@@ -73,9 +73,9 @@ class AIPersistence {
             case 'normal':
                 return ['x^2+{c}', '{n}*x+{c}', 'abs(x-{c})', 'sin(x)+{c}'];
             case 'hard':
-                return ['x^2-{n}*x+{c}', 'sin({n}*x)', 'exp(x/{n})', 'abs(x^2-{c})'];
+                return ['x^2-{n}*x+{c}', 'sin({n}*x)', 'x/{n}+sin(x)', 'abs(x^2-{c})'];
             case 'expert':
-                return ['x^3-{n}*x', 'sin(x)*cos(x)', 'exp(-x^2)+{c}', 'ln(abs(x)+1)*{n}'];
+                return ['x^3-{n}*x', 'sin(x)*cos(x)', 'ln(abs(x)+1)*{n}', 'x^3/({n}+abs(x))'];
             default:
                 return ['x'];
         }

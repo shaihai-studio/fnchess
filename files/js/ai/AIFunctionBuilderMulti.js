@@ -264,12 +264,8 @@ class AIFunctionBuilderMulti {
                     }
                     break;
 
-                case 9: // log/ln函数 (不适合多目标)
-                    // log函数很难同时穿过两个点，跳过
-                    break;
-
-                case 10: // 指数函数 (不适合多目标)
-                    // 指数函数很难同时穿过两个点，跳过
+                case 9: // ln函数 (不适合多目标)
+                    // ln函数很难同时穿过两个点，跳过
                     break;
 
                 case 11: // 高次绝对值 y = a*|x-h|^n + k (n>=4)

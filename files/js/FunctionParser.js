@@ -25,11 +25,6 @@ class FunctionParser {
             operators: ['.', '^', '!', '(', ')'],
             functions: ['sin', 'cos', 'tan', 'asin', 'acos', 'atan', 'abs', 'ln', 'sqrt']
         };
-
-        // 初始化函数复杂度分析器
-        if (typeof FunctionComplexityAnalyzer !== 'undefined') {
-            this.complexityAnalyzer = new FunctionComplexityAnalyzer();
-        }
     }
 
     // ========== 复数运算体系（与 geogebra-lite 同步） ==========
@@ -158,6 +153,30 @@ class FunctionParser {
             throw new Error(`无法识别字符: ${ch}`);
         }
         return this.insertImplicitMultiplication(tokens);
+    }
+
+    // ========== 编辑器扁平 token 化（单一来源；UIInput/AI 旧实现已收敛到此） ==========
+    // 返回扁平字符串数组：多字母函数名 + 单字符（变量/数字/运算符/括号），供 expressionElements 使用。
+    tokenizeExpression(expr) {
+        const tokens = [];
+        let i = 0;
+        const len = expr.length;
+        const multiCharFuncs = this.functions; // ['sin','cos',...,'abs','ln','sqrt']，与白名单一致（无 exp/log）
+        while (i < len) {
+            let matched = false;
+            for (const func of multiCharFuncs) {
+                if (expr.substring(i, i + func.length) === func) {
+                    tokens.push(func);
+                    i += func.length;
+                    matched = true;
+                    break;
+                }
+            }
+            if (matched) continue;
+            tokens.push(expr[i]);
+            i++;
+        }
+        return tokens;
     }
 
     // ========== 隐式乘法（与 geogebra-lite 同步） ==========
@@ -337,10 +356,6 @@ class FunctionParser {
         }
     }
 
-    clearCache() {
-        // 预留给渲染器调用；当前解析器无持久缓存，保留接口用于统一清理
-    }
-
     // ========== 锁定元素管理 ==========
 
     clearLockedElements() {
@@ -351,10 +366,17 @@ class FunctionParser {
         return this.lockedElements.includes(element);
     }
 
+    // 转义正则特殊字符（#43 修复：锁定元素可能是 + - * / ^ ! 等运算符，
+    // 直接拼进 RegExp 会抛 SyntaxError 或误匹配）
+    escapeRegExp(str) {
+        return String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
     validateExpressionForLocks(expression) {
         const cleanExpr = expression.replace(/\s/g, '');
         for (const locked of this.lockedElements) {
-            const pattern = new RegExp(`(^|[^a-zA-Z0-9])${locked}([^a-zA-Z0-9]|$)`);
+            // #43 修复：locked 可能含正则特殊字符，构造 pattern 前先转义
+            const pattern = new RegExp(`(^|[^a-zA-Z0-9])${this.escapeRegExp(locked)}([^a-zA-Z0-9]|$)`, 'i');
             if (pattern.test(cleanExpr) || cleanExpr.includes(locked)) {
                 if (this.containsElement(cleanExpr, locked)) {
                     return { valid: false, lockedElement: locked };
@@ -365,11 +387,15 @@ class FunctionParser {
     }
 
     containsElement(expression, element) {
-        if (/^\d+$/.test(element)) {
-            return expression.includes(element);
+        // #43 修复：按 token 类型分类判定，避免未转义正则崩溃与误匹配。
+        // 字母词（sin/exp/ln/log/e/i 等函数名与单字母常量）：用边界正则，防止 exp 误判含 e。
+        // 数字、运算符（+ - * / ^ !）、π 等特殊符号：直接子串包含判定（天然无需转义）。
+        if (/^[a-zA-Z]+$/.test(element)) {
+            const escaped = this.escapeRegExp(element);
+            const regex = new RegExp(`(^|[^a-zA-Z0-9_])${escaped}([^a-zA-Z0-9_]|$)`, 'i');
+            return regex.test(expression);
         }
-        const regex = new RegExp(`\\b${element}\\b`, 'i');
-        return regex.test(expression);
+        return expression.includes(element);
     }
 
     // ========== 阶乘（兼容保留） ==========
@@ -433,7 +459,7 @@ class FunctionParser {
     analyzeFunctionType(expression) {
         const cleanExpr = expression.replace(/\s+/g, '').replace(/[()（）]/g, '');
         let length = 0;
-        const tokenRegex = /(sin|cos|tan|asin|acos|atan|abs|exp|ln|log|sqrt|factorial)|(\d+(?:\.\d+)?)|(PI|π|e|i)|([+\-*/^!])|(x)/gi;
+        const tokenRegex = /(sin|cos|tan|asin|acos|atan|abs|ln|sqrt|factorial)|(\d+(?:\.\d+)?)|(PI|π|e|i)|([+\-*/^!])|(x)/gi;
         while (tokenRegex.exec(cleanExpr) !== null) {
             length++;
         }
@@ -454,7 +480,7 @@ class FunctionParser {
     getPolynomialDegree(expression) {
         const cleanExpr = expression.toLowerCase().replace(/\s/g, '');
 
-        const nonPolyPattern = /(sin|cos|tan|asin|acos|atan|exp|ln|log|sqrt|abs)/;
+        const nonPolyPattern = /(sin|cos|tan|asin|acos|atan|ln|sqrt|abs)/;
         if (nonPolyPattern.test(cleanExpr)) return -1;
         if (cleanExpr.includes('!')) return -1;
         if (cleanExpr.includes('(-1)^(1/2)') || cleanExpr.includes('(-1)^0.5') || cleanExpr.includes('i')) return -1;

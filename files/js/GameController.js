@@ -617,7 +617,7 @@ class GameController {
         // 自定义关卡：未启用反三角函数时，从锁定候选池中剔除 asin/acos/atan（锁定上限随之收紧）
         const arcAvailable = !!(this.raceState && this.raceState.customConfig && this.raceState.customConfig.arcEnabled);
         const _arcSet = new Set(['asin', 'acos', 'atan']);
-        const allElements = ['+','-','*','/','^','!','sin','cos','tan','asin','acos','atan','abs','sqrt','ln','log','exp','factorial','0','1','2','3','4','5','6','7','8','9','π','e','i'].filter(e => arcAvailable || !_arcSet.has(e));
+        const allElements = ['+','-','*','/','^','!','sin','cos','tan','asin','acos','atan','abs','sqrt','ln','factorial','0','1','2','3','4','5','6','7','8','9','π','e','i'].filter(e => arcAvailable || !_arcSet.has(e));
         const banned = new Set(['x', '(', ')']);
         let pool = allElements.filter(el => !banned.has(el) && !lockedElements.includes(el));
 
@@ -1253,9 +1253,10 @@ class GameController {
             this.bumpStateVersion();
             this._maybeSync();
             if (!hasSelected) {
-                // 2026-08-12 需求：B 超时未选目标格 → 扣分后进入 A 的回合让 A 选格子，
-                //（而不是直接让 A 输入函数，因为对面根本没选，无从针对构造）
-                this.currentPlayer = 'A';
+                // 2026-08-12 需求：某方超时未选目标格 → 扣分后进入对面玩家的回合让对面选格子，
+                //（而不是直接让对面输入函数，因为本回合根本没选，无从针对构造）
+                // 2026-08-15 修复 #7：原先硬编码 'A'，导致偶数回合 A 超时后不换人、白扣分。改为对称轮换。
+                this.currentPlayer = this.currentPlayer === 'A' ? 'B' : 'A';
                 this.setPhase(this.phases.SELECT_TARGET);
             } else {
                 // 已选目标格（未确认）：跳过禁止区/锁定区设置，直接进入对面玩家（A）的输入回合
@@ -1620,8 +1621,10 @@ class GameController {
         // 记录回合历史
         this.recordRoundHistory({
             round: this.currentRound,
-            selector: this.currentPlayer,
-            constructor: this.currentPlayer === 'A' ? 'B' : 'A',
+            // 2026-08-15 修复 #8：selector=选目标格方（currentPlayer 的对方），constructor=写函数方（currentPlayer）。
+            // 原先两字段写反，导致复盘报告"选择方/构建方"角色互换。
+            selector: this.currentPlayer === 'A' ? 'B' : 'A',
+            constructor: this.currentPlayer,
             targetCells: this.roundState.targetCells,
             forbiddenCells: this.roundState.forbiddenCells,
             lockedElements: this.roundState.lockedElements,
@@ -2219,7 +2222,9 @@ class GameController {
                 
             case 'locks_confirmed':
                 // 远程玩家确认了锁定元素
-                if (this.currentPhase !== this.phases.SET_LOCKS) return false;
+                // 2026-08-15 修复 #9：阶段不符时与其余分支保持一致返回 true（忽略），
+                // 原先返回 false 与其余分支不一致。
+                if (this.currentPhase !== this.phases.SET_LOCKS) return true;
                 if (payload.lockedElements) {
                     this.roundState.lockedElements = payload.lockedElements;
                 }
@@ -2266,7 +2271,8 @@ class GameController {
                         this.roundState.score = (payload && typeof payload.score === 'number') ? payload.score : 0;
                         // 2) 本端尚未推进回合（currentRound 仍等于对端评估回合）→ 补齐 finalizeRound 被跳过的推进。
                         //    用 _suppressP2PSync 抑制推送（被动方复制推进不推回操作方，避免旧状态覆盖）。
-                        if (this.currentRound === payload.currentRound) {
+                        // 2026-08-15 修复 #10：改用已做空安全的 remoteRound 变量，避免 payload 为 undefined 时访问 payload.currentRound 抛错。
+                        if (this.currentRound === remoteRound) {
                             console.warn(`[GC][P2P] 本端仍在本回合（round=${this.currentRound}），执行 switchPlayer 补齐推进`);
                             this._suppressP2PSync = true;
                             try { this.switchPlayer(); }
@@ -2337,8 +2343,10 @@ class GameController {
 
         this.recordRoundHistory({
             round: this.currentRound,
-            selector: this.currentPlayer,
-            constructor: this.currentPlayer === 'A' ? 'B' : 'A',
+            // 2026-08-15 修复 #8：selector=选目标格方（currentPlayer 的对方），constructor=写函数方（currentPlayer）。
+            // 原先两字段写反，导致复盘报告"选择方/构建方"角色互换。
+            selector: this.currentPlayer === 'A' ? 'B' : 'A',
+            constructor: this.currentPlayer,
             targetCells: this.roundState.targetCells,
             forbiddenCells: this.roundState.forbiddenCells,
             lockedElements: this.roundState.lockedElements,

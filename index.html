@@ -562,7 +562,7 @@
     <!-- Summa训练选择弹窗 -->
     <div class="modal" id="summa-train-dialog" style="display: none;">
         <div class="modal-content summa-dialog-content">
-            <img class="summa-dialog-icon" src="files/Summa形象处理/summa_image/happy.PNG" alt="Summa 图标">
+            <img class="summa-dialog-icon" src="files/Summa形象处理/summa_image/happy.png" alt="Summa 图标">
             <h2 class="summa-dialog-title" id="summa-dialog-title">唤醒 Summa</h2>
             <p class="summa-dialog-message" id="summa-dialog-message"></p>
             
@@ -937,8 +937,8 @@
             <h2>检测到未结束的对局</h2>
             <p class="p2p-resume-text" id="p2p-resume-detail">你有一局排位对战因断线未结束，是否恢复？</p>
             <div style="display:flex;flex-direction:column;gap:10px;margin-top:16px;">
-                <button class="btn btn-primary" id="p2p-resume-btn" onclick="uiController.confirmP2PResume()">恢复对局</button>
-                <button class="btn btn-secondary" id="p2p-resume-cancel-btn" onclick="uiController.cancelP2PResume()">放弃（返回主菜单）</button>
+                <button class="btn btn-primary" id="p2p-resume-btn">恢复对局</button>
+                <button class="btn btn-secondary" id="p2p-resume-cancel-btn">放弃（返回主菜单）</button>
             </div>
             <p class="p2p-resume-tip" style="margin-top:12px;font-size:12px;color:#888;">提示：房主端仅在断开后 60 秒内等待重连，请尽快恢复。</p>
         </div>
@@ -950,8 +950,8 @@
             <h2>检测到未结束的竞速对局</h2>
             <p class="p2p-resume-text" id="race-resume-detail">你有一局竞速排位对局因断线未结束，是否恢复？</p>
             <div style="display:flex;flex-direction:column;gap:10px;margin-top:16px;">
-                <button class="btn btn-primary" id="race-resume-btn" onclick="uiController.confirmRaceBattleResume()">恢复对局</button>
-                <button class="btn btn-secondary" id="race-resume-cancel-btn" onclick="uiController.cancelRaceBattleResume()">放弃（返回主菜单）</button>
+                <button class="btn btn-primary" id="race-resume-btn">恢复对局</button>
+                <button class="btn btn-secondary" id="race-resume-cancel-btn">放弃（返回主菜单）</button>
             </div>
             <p class="p2p-resume-tip" style="margin-top:12px;font-size:12px;color:#888;">提示：房主端仅在断开后 60 秒内等待重连，请尽快恢复。</p>
         </div>
@@ -1035,15 +1035,15 @@
           <button class="panel-close" id="btnCloseLeft" title="隐藏左栏">×</button>
           <div class="section">
             <label>关卡 ID</label>
-            <input id="id" value="1/2" />
+            <input id="editor-id" value="1/2" />
             <div class="row" style="margin-top:8px;">
               <div>
                 <label>难度</label>
-                <input id="difficulty" value="fraction" />
+                <input id="editor-difficulty" value="fraction" />
               </div>
               <div>
                 <label>nextId</label>
-                <input id="nextId" value="1/3" />
+                <input id="editor-nextId" value="1/3" />
               </div>
             </div>
           </div>
@@ -1150,17 +1150,17 @@
           </div>
           <div class="section export-section stretch">
             <label>导出内容</label>
-            <textarea id="exportBox" class="export-box" wrap="soft" placeholder="点击「复制导出文本」生成"></textarea>
+            <textarea id="editor-exportBox" class="export-box" wrap="soft" placeholder="点击「复制导出文本」生成"></textarea>
             <div style="display:flex; gap:6px; align-items:center; margin: 6px 0;">
               <label style="flex:0 0 auto; margin:0;">下载文件名</label>
-              <input id="fileNameInput" value="campaignLevels.fragment.js" style="flex:1;" />
+              <input id="editor-fileNameInput" value="campaignLevels.fragment.js" style="flex:1;" />
             </div>
             <div class="toolbar">
               <button class="primary" id="btnCopyExport">复制导出文本</button>
               <button class="ghost" id="btnDownload">下载 .js 片段</button>
               <button class="ghost" id="btnImportFile">导入 .js 文件</button>
               <button class="ghost" id="btnImportText">粘贴导入</button>
-              <div class="status" id="status"></div>
+              <div class="status" id="editor-status"></div>
             </div>
             <input type="file" id="editorImportFile" accept=".js,.json,application/javascript,text/javascript" style="display:none;" />
           </div>
@@ -1183,7 +1183,6 @@
     <script src="files/js/GridSystem.js"></script>
     <script src="files/js/CollisionDetector.js"></script>
     <script src="files/js/ComplexMath.js"></script>
-    <script src="files/js/ExpressionAnalyzer.js"></script>
     <script src="files/js/FunctionParser.js"></script>
     <!-- MathLatex：表达式 → LaTeX 转换器（运行时依赖 FunctionParser） -->
     <script src="files/js/MathLatex.js"></script>
@@ -1247,8 +1246,27 @@
     <script src="files/js/ui/UICampaign.js"></script>
     <script src="files/js/ui/UICampaignImport.js"></script>
     <script src="files/js/ui/UIRace.js"></script>
-    <script src="files/js/ui/UIRaceBattle.js"></script>
-    <script src="files/js/ui/UIP2P.js"></script>
+    <!-- 竞速对战 UI（批次11 拆分：原 UIRaceBattle.js 3054 行 → 9 个连续切片，全部挂载 UIController.prototype）
+         UIRaceBattleBase 必须最先加载（含 RACE_BATTLE_DIFFICULTIES / RACE_BATTLE_STAMINA 顶层 const） -->
+    <script src="files/js/ui/racebattle/UIRaceBattleBase.js"></script>
+    <script src="files/js/ui/racebattle/UIRaceBattleRoom.js"></script>
+    <script src="files/js/ui/racebattle/UIRaceBattlePanel.js"></script>
+    <script src="files/js/ui/racebattle/UIRaceBattleResult.js"></script>
+    <script src="files/js/ui/racebattle/UIRaceBattleResume.js"></script>
+    <script src="files/js/ui/racebattle/UIRaceBattleMatch.js"></script>
+    <script src="files/js/ui/racebattle/UIRaceBattlePlay.js"></script>
+    <script src="files/js/ui/racebattle/UIRaceBattleView.js"></script>
+    <script src="files/js/ui/racebattle/UIRaceBattleLobby.js"></script>
+    <!-- P2P 联机 UI（批次11 拆分：原 UIP2P.js 1777 行/64 方法 → 9 个连续切片，全部挂载 UIController.prototype，无加载期依赖，按职责分组） -->
+    <script src="files/js/ui/uip2p/UIP2PRoom.js"></script>
+    <script src="files/js/ui/uip2p/UIP2PSelectors.js"></script>
+    <script src="files/js/ui/uip2p/UIP2PEmoji.js"></script>
+    <script src="files/js/ui/uip2p/UIP2PDisconnect.js"></script>
+    <script src="files/js/ui/uip2p/UIP2PSpectate.js"></script>
+    <script src="files/js/ui/uip2p/UIP2PVSIntro.js"></script>
+    <script src="files/js/ui/uip2p/UIP2PSync.js"></script>
+    <script src="files/js/ui/uip2p/UIP2PHealth.js"></script>
+    <script src="files/js/ui/uip2p/UIP2PResume.js"></script>
     <script src="files/js/ui/UILobby.js"></script>
     <!-- 排行榜：身份 + 数据服务 + UI（UILeaderboard 依赖 UIController 原型） -->
     <script src="files/js/PlayerProfile.js"></script>
@@ -1259,7 +1277,15 @@
     <script src="files/js/ui/UISpectator.js"></script>
     <script src="files/js/GameVersion.js"></script>
     <script src="files/js/ui/UINotice.js"></script>
-<script src="files/js/ui/UICore.js"></script>
+    <!-- 核心对战 UI（批次11 拆分：原 UICore.js 2327 行/53 方法 → 8 个连续切片，全部挂载 UIController.prototype，无加载期依赖，按职责分组） -->
+    <script src="files/js/ui/uicore/UICoreInit.js"></script>
+    <script src="files/js/ui/uicore/UICoreGameEvents.js"></script>
+    <script src="files/js/ui/uicore/UICoreEvents.js"></script>
+    <script src="files/js/ui/uicore/UICoreTestFunc.js"></script>
+    <script src="files/js/ui/uicore/UICoreAI.js"></script>
+    <script src="files/js/ui/uicore/UICoreP2PSync.js"></script>
+    <script src="files/js/ui/uicore/UICoreBattle.js"></script>
+    <script src="files/js/ui/uicore/UICoreMisc.js"></script>
 <script src="files/js/ui/UIEditor.js"></script>
 <script src="files/js/ui/UIFloatKeypad.js"></script>
     <script src="files/js/SummaTrainer.js"></script>

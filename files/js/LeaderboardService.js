@@ -21,6 +21,7 @@ class LeaderboardService {
         this._nonce = null;               // 当前可用的一次性 nonce
         this._nonceExp = 0;
         this._nonceWaiters = [];          // 等待 nonce 的 Promise resolve 队列
+        this._signChain = Promise.resolve(); // 2026-08-15 修复 #65：签名上报串行化链，避免并发抢同一一次性 nonce
         this.onSubmitResult = null;       // (data) => void（verify_failed / rate_limited / too_fast 等）
         if (this.lobby) {
             const self = this;
@@ -32,8 +33,9 @@ class LeaderboardService {
                 if (data && !data.ok) {
                     console.warn(`[LB] 上报被拒: code=${data.code || '?'} reason=${data.reason || '?'} level=${data.level || ''} waitMs=${data.waitMs || ''} boardType=${data.boardType || '?'}`);
                 }
-                // 竞速积分上报结果（submit_result）：按等待队列分发（服务器不回 id，按先进先出配对）
-                if (self._raceScoreWaiters && self._raceScoreWaiters.length && data && data.boardType === 'rsc') {
+                // 2026-08-15 修复 #65：所有签名上报（rsc/lr/rtN/elo/wipe）统一按 FIFO 配对 submit_result。
+                // 因 _withFreshNonce 已串行化，先进先出即正确配对，无需按 boardType 过滤（原仅 rsc 分发会导致其它榜等待 6s 超时）。
+                if (self._raceScoreWaiters && self._raceScoreWaiters.length) {
                     const w = self._raceScoreWaiters.shift();
                     try { w(data); } catch (e) { /* 忽略 */ }
                 }
@@ -114,25 +116,60 @@ class LeaderboardService {
         });
     }
 
+    // 2026-08-15 修复 #65：以下三个方法用于串行化所有签名上报，杜绝并发抢同一一次性 nonce。
+    // 关键点：每步都先申请全新 nonce 并等上一次上报的 submit_result 回来后再申请下一个，
+    // 否则服务器会在 verify 前因新的 request_challenge 覆盖 ws._nonce，导致在途提交验签失败（nonce_mismatch）。
+    _requestFreshNonce() {
+        return new Promise((resolve) => {
+            if (!this.lobby) { resolve(null); return; }
+            let done = false;
+            const cleanup = () => { const i = this._nonceWaiters.indexOf(onChallenge); if (i >= 0) this._nonceWaiters.splice(i, 1); };
+            const onChallenge = () => { if (done) return; done = true; cleanup(); resolve(this._nonce || null); };
+            this._nonceWaiters.push(onChallenge);
+            this._send({ type: 'request_challenge' });
+            setTimeout(() => { if (done) return; done = true; cleanup(); resolve((this._nonce && Date.now() < this._nonceExp) ? this._nonce : null); }, 3000);
+        });
+    }
+
+    _withFreshNonce(buildMsg) {
+        const run = async () => {
+            const nonce = await this._requestFreshNonce();
+            if (!nonce) { console.warn('[LB] 签名上报已放弃：无法获取 nonce'); return { ok: false, code: 'no_nonce' }; }
+            return buildMsg(nonce);
+        };
+        this._signChain = this._signChain.then(run, run);
+        return this._signChain;
+    }
+
+    _awaitSubmitResult(msg) {
+        return new Promise((resolve) => {
+            const waiter = (res) => resolve(res);
+            this._raceScoreWaiters.push(waiter);
+            this._send(msg);
+            setTimeout(() => {
+                const i = this._raceScoreWaiters.indexOf(waiter);
+                if (i >= 0) { this._raceScoreWaiters.splice(i, 1); resolve({ ok: false, code: 'timeout' }); }
+            }, 6000);
+        });
+    }
+
     /** 带签名的上报（lr / rtN）；payload 随签名一起锁定，防篡改 */
     async _submitSigned(obj, payload) {
-        if (typeof VerifyCrypto === 'undefined') { console.warn('[LB] VerifyCrypto 缺失，上报已放弃'); return; }
-        await this._requestNonce();
-        if (!this._nonce || Date.now() >= this._nonceExp) {
-            console.warn('[LB] 上报已放弃：无法获取签名 nonce（服务器未启动？或连接超时）', String(obj.boardType || ''));
-            return;
-        }
-        const nonce = this._nonce;
-        this._nonce = null; // 一次性
+        if (typeof VerifyCrypto === 'undefined') { console.warn('[LB] VerifyCrypto 缺失，上报已放弃'); return { ok: false, code: 'no_crypto' }; }
         const playerId = typeof PlayerProfile !== 'undefined' ? PlayerProfile.getPlayerId() : '';
-        const sig = VerifyCrypto.sign(nonce, playerId, String(obj.boardType || ''), obj.value, payload || {});
-        // 诊断日志（与服务端 verifySig 对账）：打印签名输入摘要 + sig 前缀 + payload 摘要
-        try {
-            const payloadJson = JSON.stringify(payload || {});
-            const sigInput = [String(nonce || ''), String(playerId || ''), String(obj.boardType || ''), String(obj.value === undefined ? '' : obj.value)].join('|');
-            console.log(`[LB] sign input: boardType=${obj.boardType} playerId="${String(playerId).slice(0, 24)}" value=${obj.value} nonce="${String(nonce).slice(0, 16)}..." sig=${sig.slice(0, 24)}... payload=${payloadJson.slice(0, 120)} | sigInput="${sigInput.slice(0, 120)}"`);
-        } catch (e) { /* 忽略诊断日志异常 */ }
-        this._send(Object.assign({ type: 'submit_score' }, obj, { playerId, nonce, sig, payload: payload || {} }));
+        const boardType = String(obj.boardType || '');
+        const value = obj.value;
+        const self = this;
+        return this._withFreshNonce((nonce) => {
+            const sig = VerifyCrypto.sign(nonce, playerId, boardType, value, payload || {});
+            // 诊断日志（与服务端 verifySig 对账）
+            try {
+                const payloadJson = JSON.stringify(payload || {});
+                const sigInput = [String(nonce || ''), String(playerId || ''), boardType, String(value === undefined ? '' : value)].join('|');
+                console.log(`[LB] sign input: boardType=${boardType} playerId="${String(playerId).slice(0, 24)}" value=${value} nonce="${String(nonce).slice(0, 16)}..." sig=${sig.slice(0, 24)}... payload=${payloadJson.slice(0, 120)} | sigInput="${sigInput.slice(0, 120)}"`);
+            } catch (e) { /* 忽略诊断日志异常 */ }
+            return self._awaitSubmitResult(Object.assign({ type: 'submit_score' }, obj, { playerId, nonce, sig, payload: payload || {} }));
+        });
     }
 
     /** 通用上报（不签名消息用；ELO 走 submitEloScore 签名版） */
@@ -187,30 +224,18 @@ class LeaderboardService {
         const p = payload || {};
         const playerId = typeof PlayerProfile !== 'undefined' ? PlayerProfile.getPlayerId() : '';
         const self = this;
-        return this._requestNonce().then(() => {
-            if (!this._nonce || Date.now() >= this._nonceExp) {
-                console.warn('[LB] 竞速积分上报失败：无法获取签名 nonce（服务器未启动？）');
-                return { ok: false, code: 'no_nonce' };
-            }
-            const nonce = this._nonce;
-            this._nonce = null;
+        // 2026-08-15 修复 #65：走串行化链，确保竞速结算的 nonce 独占且等结果回来再发下一个
+        return this._withFreshNonce((nonce) => {
             const sig = VerifyCrypto.sign(nonce, playerId, 'rsc', 0, p);
-            return new Promise((resolve) => {
-                this._raceScoreWaiters.push(resolve);
-                this._send({
-                    type: 'submit_score',
-                    boardType: 'rsc',
-                    value: 0,
-                    nickname: String(p.nickname || '') || '',
-                    playerId,
-                    nonce,
-                    sig,
-                    payload: p
-                });
-                setTimeout(() => {
-                    const i = this._raceScoreWaiters.indexOf(resolve);
-                    if (i >= 0) { this._raceScoreWaiters.splice(i, 1); resolve({ ok: false, code: 'timeout' }); }
-                }, 5000);
+            return self._awaitSubmitResult({
+                type: 'submit_score',
+                boardType: 'rsc',
+                value: 0,
+                nickname: String(p.nickname || '') || '',
+                playerId,
+                nonce,
+                sig,
+                payload: p
             });
         });
     }
@@ -225,12 +250,11 @@ class LeaderboardService {
         if (typeof VerifyCrypto === 'undefined') return;
         const playerId = typeof PlayerProfile !== 'undefined' ? PlayerProfile.getPlayerId() : '';
         if (!playerId || !target || target === playerId) return;
-        await this._requestNonce();
-        if (!this._nonce || Date.now() >= this._nonceExp) return;
-        const nonce = this._nonce;
-        this._nonce = null;
-        const sig = VerifyCrypto.sign(nonce, playerId, '', '', {});
-        this._send({ type: 'report', target: String(target || ''), playerId, reason: String(reason || ''), nonce, sig });
+        // 2026-08-15 修复 #65：走串行化链
+        return this._withFreshNonce((nonce) => {
+            const sig = VerifyCrypto.sign(nonce, playerId, '', '', {});
+            return this._awaitSubmitResult({ type: 'report', target: String(target || ''), playerId, reason: String(reason || ''), nonce, sig });
+        });
     }
 
     /**
@@ -243,20 +267,10 @@ class LeaderboardService {
         if (typeof VerifyCrypto === 'undefined') return Promise.resolve({ ok: false });
         const playerId = typeof PlayerProfile !== 'undefined' ? PlayerProfile.getPlayerId() : '';
         if (!playerId) return Promise.resolve({ ok: false });
-        return this._requestNonce().then(() => {
-            if (!this._nonce || Date.now() >= this._nonceExp) {
-                console.warn('[LB] 清除成绩失败：无法获取签名 nonce（服务器未连接？）');
-                return { ok: false };
-            }
-            const nonce = this._nonce;
-            this._nonce = null;
+        // 2026-08-15 修复 #65：走串行化链（原用 _pendingQueries[id]，现统一 FIFO 配对 submit_result）
+        return this._withFreshNonce((nonce) => {
             const sig = VerifyCrypto.sign(nonce, playerId, '', '', {});
-            return new Promise((resolve) => {
-                const id = 'wipe' + (++this._querySeq);
-                this._pendingQueries.set(id, resolve);
-                this._send({ type: 'delete_my_scores', playerId, mode: String(mode || ''), nonce, sig, id });
-                setTimeout(() => { if (this._pendingQueries.delete(id)) resolve({ ok: false, code: 'timeout' }); }, 3000);
-            });
+            return this._awaitSubmitResult({ type: 'delete_my_scores', playerId, mode: String(mode || ''), nonce, sig });
         });
     }
 

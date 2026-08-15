@@ -4,7 +4,9 @@ class AudioManager {
         this.masterVolume = 1.0;
         this.sfxVolume = 1.0;
         this.bgmVolume = 0.33;
-        this.sfxBoost = 3.2;
+        // #11：原 3.2 会把 sfxVolume*volume 放大后全部 Math.min 到 1，
+        // 抹平音效层级且使滑杆仅 <31% 区间有区分度。降为 1.0 让滑杆与 volume 参数生效。
+        this.sfxBoost = 1.0;
         this.bgmEnabled = true;
         
         // 本地音效文件目录
@@ -91,7 +93,7 @@ class AudioManager {
             this._bgmAudio = new Audio();
             this._bgmAudio.preload = 'auto';
             this._bgmAudio.loop = false;
-            this._bgmAudio.volume = this.bgmVolume;
+            this._bgmAudio.volume = this.masterVolume * this.bgmVolume;
             this._bgmAudio.addEventListener('ended', () => this._playNextBgm());
             this._bgmAudio.addEventListener('error', () => this._playNextBgm(true));
         }
@@ -109,13 +111,21 @@ class AudioManager {
         if (this._audioPool && this._audioPool[key]) {
             try {
                 const snd = this._audioPool[key].cloneNode(true);
-                snd.volume = Math.min(1, this.sfxVolume * this.sfxBoost * volume);
+                snd.volume = this._sfxGain(volume);
                 snd.play().catch(() => {});
                 snd.onended = () => snd.remove();
             } catch (e) {
                 console.warn('[Audio] 播放异常:', e);
             }
         }
+    }
+
+    /**
+     * 统一计算音效增益：主音量 × 音效音量 × 补偿增益 × 单音 volume 参数，钳到 [0,1]。
+     * 集中处理避免 4 处手写 Math.min 重复（#11 修复点统一在此）。
+     */
+    _sfxGain(volume = 1.0) {
+        return Math.min(1, this.masterVolume * this.sfxVolume * this.sfxBoost * volume);
     }
 
     _pickRandomBgmIndex(excludeIndex = -1) {
@@ -144,7 +154,7 @@ class AudioManager {
         if (nextIndex < 0) return;
         this._currentBgmIndex = nextIndex;
         this._bgmAudio.src = this.bgmBaseUrl + this._bgmPlaylist[nextIndex];
-        this._bgmAudio.volume = this.bgmVolume;
+        this._bgmAudio.volume = this.masterVolume * this.bgmVolume;
         this._bgmAudio.play().catch(() => {
             // 用户未交互前可能被浏览器拦截，后续交互时会自动恢复
         });
@@ -206,13 +216,20 @@ class AudioManager {
         this.sfxVolume = v;
     }
 
+    // #12：实现主音量控制（此前 masterVolume 为死字段，全库未使用）
+    setMasterVolume(volume) {
+        const v = Math.max(0, Math.min(1, Number(volume)));
+        this.masterVolume = v;
+        if (this._bgmAudio) this._bgmAudio.volume = this.masterVolume * this.bgmVolume;
+    }
+
     playSyntheticRaceSound(key, volume = 1.0) {
         const ctx = this._audioCtx;
         if (!ctx) return;
         try {
             if (ctx.state === 'suspended') ctx.resume();
             const now = ctx.currentTime;
-            const master = Math.min(1, this.sfxVolume * this.sfxBoost * volume);
+            const master = this._sfxGain(volume);
             const out = ctx.createGain();
             out.gain.value = master;
             out.connect(ctx.destination);
@@ -303,7 +320,7 @@ class AudioManager {
             filter.Q.value = 0.9;
 
             gain.gain.setValueAtTime(0.0001, now);
-            gain.gain.linearRampToValueAtTime(Math.min(1, this.sfxVolume * this.sfxBoost * 0.045 * intensity), now + 0.004);
+            gain.gain.linearRampToValueAtTime(this._sfxGain(0.045 * intensity), now + 0.004);
             gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
 
             osc.connect(filter);
@@ -389,7 +406,7 @@ class AudioManager {
             // 包络
             const gain = ctx.createGain();
             gain.gain.setValueAtTime(0.001, ctx.currentTime);
-            gain.gain.linearRampToValueAtTime(Math.min(1, this.sfxVolume * this.sfxBoost * 0.65), ctx.currentTime + 0.03);
+            gain.gain.linearRampToValueAtTime(this._sfxGain(0.65), ctx.currentTime + 0.03);
             gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
             
             source.connect(filter);

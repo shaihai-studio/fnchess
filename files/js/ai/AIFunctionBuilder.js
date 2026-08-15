@@ -304,12 +304,11 @@ class AIFunctionBuilder {
                 return 11; // 高次绝对值 (3次)
 
             case 'expert':
-                // 专家模式：优先4次+函数、!、log、ln等特殊函数
-                // 25%四次函数，20%log/ln函数，20%三角函数，15%指数函数，10%高次绝对值，10%五次函数
+                // 专家模式：优先4次+函数、!、ln等特殊函数
+                // 25%四次函数，30%ln函数，25%三角函数，10%高次绝对值，10%五次函数
                 if (rand < 0.25) return 8; // 四次函数
-                if (rand < 0.45) return 9; // log/ln函数
-                if (rand < 0.65) return 7; // 三角函数
-                if (rand < 0.80) return 10; // 指数函数 (exp)
+                if (rand < 0.55) return 9; // ln函数
+                if (rand < 0.80) return 7; // 三角函数
                 if (rand < 0.90) return 11; // 高次绝对值 (4次+)
                 return 12; // 五次函数
 
@@ -398,8 +397,14 @@ class AIFunctionBuilder {
     }
 
     isValidExpression(expression, lockedElements) {
+        // 2026-08-15 修复 #55：改用边界匹配（复用 FunctionParser.containsElement，#43 已转义+分类），
+        // 原 expression.includes(locked) 子串匹配会把 arcsin 误判为含 sin、把 'e' 误杀 'exp' 等，
+        // 导致锁定元素子串误杀合法表达式。
+        const parser = this.ai && this.ai.parser;
         for (const locked of lockedElements) {
-            if (expression.includes(locked)) {
+            if (parser && typeof parser.containsElement === 'function') {
+                if (parser.containsElement(expression, locked)) return false;
+            } else if (expression.includes(locked)) {
                 return false;
             }
         }
