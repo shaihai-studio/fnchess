@@ -124,6 +124,87 @@ if (typeof UIController === 'undefined') {
     }
 ;
 
+// initModeConfigModal —— 本地/人机对战 配置确认弹窗事件绑定
+    UIController.prototype.initModeConfigModal = function() {
+        if (!this.modeConfigModal || this._modeConfigModalBound) return;
+        this._modeConfigModalBound = true;
+        this.modeConfigTitle = document.getElementById('mode-config-title');
+        this.modeConfigDifficultyValue = document.getElementById('mode-config-difficulty-value');
+        this.modeConfigRoundValue = document.getElementById('mode-config-round-value');
+        this.modeConfigTimeValue = document.getElementById('mode-config-time-value');
+        const cfgPrevDiff = document.getElementById('mode-config-difficulty-prev');
+        const cfgNextDiff = document.getElementById('mode-config-difficulty-next');
+        const cfgPrevRound = document.getElementById('mode-config-round-prev');
+        const cfgNextRound = document.getElementById('mode-config-round-next');
+        const cfgPrevTime = document.getElementById('mode-config-time-prev');
+        const cfgNextTime = document.getElementById('mode-config-time-next');
+        const cancelBtn = document.getElementById('mode-config-cancel');
+        const confirmBtn = document.getElementById('mode-config-confirm');
+        if (cfgPrevDiff) cfgPrevDiff.addEventListener('click', () => { this.stepDifficulty(-1); this._syncModeConfigDisplay(); });
+        if (cfgNextDiff) cfgNextDiff.addEventListener('click', () => { this.stepDifficulty(1); this._syncModeConfigDisplay(); });
+        if (cfgPrevRound) cfgPrevRound.addEventListener('click', () => { this.stepRound(-1); this._syncModeConfigDisplay(); });
+        if (cfgNextRound) cfgNextRound.addEventListener('click', () => { this.stepRound(1); this._syncModeConfigDisplay(); });
+        if (cfgPrevTime) cfgPrevTime.addEventListener('click', () => { this.stepTimeLimit(-1); this._syncModeConfigDisplay(); });
+        if (cfgNextTime) cfgNextTime.addEventListener('click', () => { this.stepTimeLimit(1); this._syncModeConfigDisplay(); });
+        if (cancelBtn) cancelBtn.addEventListener('click', () => this._cancelModeConfig());
+        if (confirmBtn) confirmBtn.addEventListener('click', () => this._confirmModeConfig());
+        // 点击遮罩（弹窗外部）→ 取消
+        this.modeConfigModal.addEventListener('click', (e) => {
+            if (e.target === this.modeConfigModal) this._cancelModeConfig();
+        });
+    }
+;
+
+// _openModeConfigModal —— 打开本地/人机对战配置确认弹窗
+    UIController.prototype._openModeConfigModal = function(subMode) {
+        if (!this.modeConfigModal) return;
+        const isAi = subMode === 'ai';
+        this._modeConfigTarget = subMode;
+        if (this.modeConfigTitle) this.modeConfigTitle.textContent = isAi ? '人机对战' : '本地对战';
+        this._syncModeConfigDisplay();
+        this.showModal(this.modeConfigModal);
+    }
+;
+
+// _syncModeConfigDisplay —— 同步配置确认弹窗内三个选择器的显示
+    UIController.prototype._syncModeConfigDisplay = function() {
+        if (!this.modeConfigModal) return;
+        if (this.modeConfigRoundValue && this.roundOptions && this.roundOptions.length) {
+            const idx = Math.min(this.roundOptions.length - 1, Math.max(0, this.currentRoundIndex || 0));
+            const option = this.roundOptions[idx];
+            this.modeConfigRoundValue.textContent = this.getSelectorLabel(option);
+            this.modeConfigRoundValue.style.color = this.getRoundColor(option.value);
+        }
+        if (this.modeConfigDifficultyValue && this.difficultyOptions && this.difficultyOptions.length) {
+            const idx = Math.min(this.difficultyOptions.length - 1, Math.max(0, this.currentDifficultyIndex || 0));
+            const option = this.difficultyOptions[idx];
+            this.modeConfigDifficultyValue.textContent = this.getSelectorLabel(option);
+            this.modeConfigDifficultyValue.style.color = this.getDifficultyColor(option.value);
+        }
+        if (this.modeConfigTimeValue && this.timeLimitOptions && this.timeLimitOptions.length) {
+            const idx = Math.min(this.timeLimitOptions.length - 1, Math.max(0, this.currentTimeLimitIndex ?? 2));
+            const option = this.timeLimitOptions[idx];
+            this.modeConfigTimeValue.textContent = this.getSelectorLabel(option);
+            this.modeConfigTimeValue.style.color = this.getTimeLimitColor(option.value);
+        }
+    }
+;
+
+// _confirmModeConfig —— 配置确认：关闭弹窗并按当前配置开局
+    UIController.prototype._confirmModeConfig = function() {
+        if (window.audioManager) window.audioManager.playClick();
+        if (this.modeConfigModal) this.hideModal(this.modeConfigModal);
+        this.handleStart();
+    }
+;
+
+// _cancelModeConfig —— 取消配置弹窗，返回主界面
+    UIController.prototype._cancelModeConfig = function() {
+        if (window.audioManager) window.audioManager.playClick();
+        if (this.modeConfigModal) this.hideModal(this.modeConfigModal);
+    }
+;
+
 // syncStartSelectionState
     UIController.prototype.syncStartSelectionState = function() {
         this.syncModeButtonsFromDifficulty();
@@ -137,24 +218,13 @@ if (typeof UIController === 'undefined') {
     UIController.prototype.syncModeButtonsFromDifficulty = function() {
         if (!this.modeAiBtn || !this.modeLocalBtn || !this.modeCampaignBtn || !this.modeRaceBtn || !this.modeTestBtn) return;
 
-        // 修复 #23：selectedMode 恒为 'battle'，子模式高亮应依据 _battleSubMode
+        // 子模式按钮不做默认高亮（本地/人机/联机对战、经典闯关/编辑器、标准竞速/试炼场/联机竞速），仅 CSS :hover 悬停高亮
         const isBattle = this.selectedMode === 'battle';
         this.modeBattleBtn.classList.toggle('active', isBattle);
-        this.modeLocalBtn.classList.toggle('active', isBattle && this._battleSubMode === 'local');
-        this.modeAiBtn.classList.toggle('active', isBattle && this._battleSubMode === 'ai');
-        if (this.modeP2PBtn) this.modeP2PBtn.classList.toggle('active', isBattle && this._battleSubMode === 'p2p');
         this.modeCampaignBtn.classList.toggle('active', this.selectedMode === 'campaign');
         this.modeRaceBtn.classList.toggle('active', this.selectedMode === 'race');
         this.modeTestBtn.classList.toggle('active', this.selectedMode === 'test');
-        // 闯关子菜单高亮：经典闯关 / 关卡编辑器
         const isCampaign = this.selectedMode === 'campaign';
-        if (this.modeCampaignClassicBtn) this.modeCampaignClassicBtn.classList.toggle('active', isCampaign && this._campaignSubMode === 'classic');
-        if (this.modeEditorBtn) this.modeEditorBtn.classList.toggle('active', isCampaign && this._campaignSubMode === 'editor');
-        // 竞速子菜单高亮：标准竞速 / 竞速试炼场 / 联机竞速
-        const isRace = this.selectedMode === 'race';
-        if (this.modeRaceStandardBtn) this.modeRaceStandardBtn.classList.toggle('active', isRace && this._raceSubMode === 'standard');
-        if (this.modeRaceCustomBtn) this.modeRaceCustomBtn.classList.toggle('active', isRace && this._raceSubMode === 'custom');
-        if (this.modeRaceBattleBtn) this.modeRaceBattleBtn.classList.toggle('active', isRace && this._raceSubMode === 'battle');
 
         if (this.modeAiBtn) {
             this.modeAiBtn.disabled = false;

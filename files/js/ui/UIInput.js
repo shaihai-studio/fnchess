@@ -1157,12 +1157,10 @@ if (typeof UIController === 'undefined') {
                 }
                 return;
             }
-            // 空格/回车：开始界面 → 进入主界面；主界面回车 → 开始游戏
+            // 空格/回车：开始界面 → 进入主界面（主界面已改为右侧模式按钮直接进入，不再响应回车）
             if (e.key === 'Enter' || e.key === ' ' || e.code === 'Space') {
                 e.preventDefault();
-                if (mainVisible) {
-                    if (e.key === 'Enter') this.handleStart();
-                } else {
+                if (!mainVisible) {
                     this.showMainPage();
                 }
             }

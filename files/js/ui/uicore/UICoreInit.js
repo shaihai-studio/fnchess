@@ -107,7 +107,8 @@ if (typeof UIController === 'undefined') {
         
         // 开始界面
         this.startModal = document.getElementById('start-modal');
-        this.startBtn = document.getElementById('start-btn');
+        // 本地/人机对战 配置确认弹窗
+        this.modeConfigModal = document.getElementById('mode-config-modal');
         this.roundSelect = document.getElementById('round-select');
         this.difficultySelect = document.getElementById('difficulty-select');
         this.roundStepper = document.getElementById('round-stepper');
@@ -224,21 +225,30 @@ if (typeof UIController === 'undefined') {
             this.showStartPage();
         });
         this.refreshStartSelectorDisplay();
+        this.initModeConfigModal();
         
         
         // 绑定模式切换按钮
-        if (this.modeBattleBtn && this.modeCampaignBtn && this.modeRaceBtn && this.modeTestBtn) {
+        if (this.modeBattleBtn && this.modeCampaignBtn && this.modeRaceBtn) {
             this.modeBattleBtn.addEventListener('click', () => this.selectMode('battle'));
             this.modeCampaignBtn.addEventListener('click', () => this.selectMode('campaign'));
             this.modeRaceBtn.addEventListener('click', () => this.selectMode('race'));
-            this.modeTestBtn.addEventListener('click', () => this.selectMode('test'));
         }
-        // 对战子菜单按钮
+        // 测试模式：点击直接进入测试对局（无需开始游戏按钮）
+        if (this.modeTestBtn) {
+            this.modeTestBtn.addEventListener('click', () => {
+                this.selectMode('test');
+                this.handleStart();
+            });
+        }
+        // 对战子菜单按钮：点击后直接进入对应流程
+        // 本地对战 / 人机对战 → 弹配置确认弹窗；联机对战 → 直接打开房间弹窗
         if (this.modeLocalBtn) {
             this.modeLocalBtn.addEventListener('click', () => {
                 this._battleSubMode = 'local';
                 this.selectMode('battle');
                 this.modeHint.textContent = '本地对战：两位玩家轮流操作';
+                this._openModeConfigModal('local');
             });
         }
         if (this.modeAiBtn) {
@@ -246,6 +256,7 @@ if (typeof UIController === 'undefined') {
                 this._battleSubMode = 'ai';
                 this.selectMode('battle');
                 this.modeHint.textContent = '人机对战：你将对抗AI Summa';
+                this._openModeConfigModal('ai');
             });
         }
         if (this.modeP2PBtn) {
@@ -253,14 +264,16 @@ if (typeof UIController === 'undefined') {
                 this._battleSubMode = 'p2p';
                 this.selectMode('battle');
                 this.modeHint.textContent = '联机对战：与远方好友同台竞技';
+                this.handleStart();
             });
         }
-        // 闯关子菜单按钮：经典闯关 / 关卡编辑器
+        // 闯关子菜单按钮：经典闯关 → 选关界面；关卡编辑器 → 直接打开编辑器
         if (this.modeCampaignClassicBtn) {
             this.modeCampaignClassicBtn.addEventListener('click', () => {
                 this._campaignSubMode = 'classic';
                 this.selectMode('campaign');
                 this.modeHint.textContent = '经典闯关：通关解锁下一关';
+                this.handleStart();
             });
         }
         if (this.modeEditorBtn) {
@@ -268,14 +281,16 @@ if (typeof UIController === 'undefined') {
                 this._campaignSubMode = 'editor';
                 this.selectMode('campaign');
                 this.modeHint.textContent = '关卡编辑器：创造属于你自己的关卡';
+                this.handleStart();
             });
         }
-        // 竞速子菜单按钮：标准竞速 / 竞速试炼场
+        // 竞速子菜单按钮：标准竞速 → 选关界面；试炼场 → 自定义弹窗；联机竞速 → 房间弹窗
         if (this.modeRaceStandardBtn) {
             this.modeRaceStandardBtn.addEventListener('click', () => {
                 this._raceSubMode = 'standard';
                 this.selectMode('race');
                 this.modeHint.textContent = '标准竞速：通过 30 个关卡，追求更快速度';
+                this.handleStart();
             });
         }
         if (this.modeRaceCustomBtn) {
@@ -283,6 +298,7 @@ if (typeof UIController === 'undefined') {
                 this._raceSubMode = 'custom';
                 this.selectMode('race');
                 this.modeHint.textContent = '竞速试炼场：自定义允许区/禁止区，打造专属竞速关卡';
+                this.handleStart();
             });
         }
         if (this.modeRaceBattleBtn) {
@@ -290,6 +306,7 @@ if (typeof UIController === 'undefined') {
                 this._raceSubMode = 'battle';
                 this.selectMode('race');
                 this.modeHint.textContent = '联机竞速：2-4 人同场竞速，实时比拼速度与排名';
+                this.handleStart();
             });
         }
         if (this.raceBackBtn) this.raceBackBtn.addEventListener('click', () => this.showRaceLevelList());

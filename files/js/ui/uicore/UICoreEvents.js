@@ -77,7 +77,6 @@
             if (gc && gc.skipSubPhase) gc.skipSubPhase();
         });
         this.restartBtn.addEventListener('click', () => this.handleRestart());
-        this.startBtn.addEventListener('click', () => this.handleStart());
         this.bindStartKeyboardSupport();
         this._bindModalDismissals();
         this._bindP2PDisconnectButtons();

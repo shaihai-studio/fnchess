@@ -2439,68 +2439,6 @@ body::before {
     width: 100%;
 }
 
-.start-image-btn {
-    display: block;
-    width: min(100%, 448px);
-    max-width: 100%;
-    margin: 0;
-    padding: 0;
-    border: none;
-    background: transparent;
-    cursor: pointer;
-    outline: none;
-    animation: startButtonPulse 2.6s ease-in-out infinite;
-    transform-origin: center;
-    filter: none;
-    box-shadow: none;
-    position: relative;
-}
-
-#start-modal .start-image-btn {
-    width: min(70%, 420px);
-    margin-top: 8px;
-}
-
-.start-image-btn::before {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: calc(100% + 160px);
-    height: calc(100% + 120px);
-    background: 
-        radial-gradient(ellipse at center, rgba(255, 255, 255, 0.08) 0%, transparent 60%),
-        radial-gradient(ellipse at center, rgba(59, 130, 246, 0.18) 0%, rgba(59, 130, 246, 0.06) 50%, transparent 80%);
-    filter: blur(40px);
-    z-index: -1;
-    pointer-events: none;
-    border-radius: 16px;
-}
-
-.start-image-btn img {
-    display: block;
-    width: 100%;
-    height: auto;
-    pointer-events: none;
-    user-select: none;
-    filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.25));
-    box-shadow: none;
-}
-
-.start-image-btn:hover {
-    animation-duration: 4.4s;
-}
-
-.start-image-btn:active {
-    transform: scale(0.995);
-}
-
-@keyframes startButtonPulse {
-    0%, 100% { transform: scale(1); }
-    50% { transform: scale(1.03); }
-}
-
 @keyframes selectorFlash {
     0% { transform: scale(1); box-shadow: 0 0 0 rgba(255,255,255,0); }
     50% { transform: scale(1.04); box-shadow: 0 0 18px rgba(255,255,255,0.18); }
@@ -2739,20 +2677,6 @@ body::before {
     font-size: 15px;
 }
 
-.start-action-area {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    margin-top: 4px;
-}
-
-.start-enter-text {
-    color: #e5e7eb;
-    opacity: 0.85;
-    margin-bottom: 6px;
-    font-size: 18px;
-}
-
 .round-select label,
 .difficulty-select label {
     display: block;
@@ -2944,11 +2868,9 @@ body::before {
     align-items: center;
     justify-content: center;
 }
-.battle-submenu .mode-btn-sub:hover {
-    background: rgba(251, 191, 36, 0.15);
-    border-color: rgba(251, 191, 36, 0.3);
-}
-.battle-submenu .mode-btn-sub.active {
+/* 必须带 #start-modal 提高特异性：shaihai-theme.css 的 .mode-btn:hover:not(:disabled)（!important 同级、后加载）会覆盖无 ID 前缀的 hover 背景 */
+#start-modal .battle-submenu .mode-btn-sub:hover,
+#start-modal .battle-submenu .mode-btn-sub.active {
     background: rgba(251, 191, 36, 0.24) !important;
     border-color: rgba(251, 191, 36, 0.5) !important;
     color: #fff7dc !important;
@@ -2988,11 +2910,8 @@ body::before {
     align-items: center;
     justify-content: center;
 }
-.race-submenu .mode-btn-sub:hover {
-    background: rgba(34, 211, 238, 0.15);
-    border-color: rgba(34, 211, 238, 0.3);
-}
-.race-submenu .mode-btn-sub.active {
+#start-modal .race-submenu .mode-btn-sub:hover,
+#start-modal .race-submenu .mode-btn-sub.active {
     background: rgba(34, 211, 238, 0.24) !important;
     border-color: rgba(34, 211, 238, 0.5) !important;
     color: #d6fbff !important;
@@ -3030,11 +2949,9 @@ body::before {
     align-items: center;
     justify-content: center;
 }
-.campaign-submenu .mode-btn-sub:hover {
-    background: rgba(59, 130, 246, 0.15);
-    border-color: rgba(59, 130, 246, 0.3);
-}
-.campaign-submenu .mode-btn-sub.active {
+/* 必须带 #start-modal 提高特异性：shaihai-theme.css 的 .mode-btn:hover:not(:disabled)（!important 同级、后加载）会覆盖无 ID 前缀的 hover 背景 */
+#start-modal .campaign-submenu .mode-btn-sub:hover,
+#start-modal .campaign-submenu .mode-btn-sub.active {
     background: rgba(59, 130, 246, 0.24) !important;
     border-color: rgba(59, 130, 246, 0.5) !important;
     color: #dbeafe !important;
@@ -3944,10 +3861,6 @@ body::before {
         font-size: 28px;
     }
 
-    #start-modal .start-image-btn {
-        width: min(60%, 260px);
-    }
-
     #start-modal small {
         font-size: 12px;
     }
@@ -4138,7 +4051,8 @@ body::before {
     #report-modal .modal-content,
     #bgm-modal .modal-content,
     #game-over-modal .modal-content,
-    #campaign-victory-modal .modal-content {
+    #campaign-victory-modal .modal-content,
+    #mode-config-modal .modal-content {
         max-height: 85vh;
         max-height: 85dvh;
         overflow-y: auto !important;
@@ -4268,9 +4182,6 @@ body::before {
         font-size: 24px;
     }
     
-    #start-modal .start-image-btn {
-        width: min(50%, 200px);
-    }
 }
 
 /* ============================================
@@ -5145,6 +5056,10 @@ button.btn-back-circle.round-back-abs {
     border-color: #22c55e;
     box-shadow: 0 0 0 2px rgba(34, 197, 94, .25);
     color: #e2e8f0;
+}
+/* 配置确认弹窗：stepper 值显示与输入框同款外观 */
+.race-custom-content .stepper-value {
+    background: rgba(2, 6, 23, 0.8);
 }
 
 /* 闯关选关界面头部（返回难度圆形箭头已绝对定位在左上角） */
