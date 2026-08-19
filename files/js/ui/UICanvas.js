@@ -53,11 +53,18 @@ if (typeof UIController === 'undefined') {
             return;
         }
         for (const item of catElements) {
-            // 反三角函数：简单难度/分数关或开关关闭时直接不显示
-            const isInverseTrig = Array.isArray(this.inverseTrigElements) && this.inverseTrigElements.includes(item.value);
-            if (isInverseTrig && this.shouldHideInverseTrigElement()) {
+            // 面板中禁用该函数 → 直接隐藏（对所有可选函数生效）
+            if (typeof this.getFunctionEnabled === 'function' && !this.getFunctionEnabled(item.value)) {
                 continue;
             }
+            // 反三角函数：简单难度/分数关或面板中关闭时直接不显示
+            const isInverseTrig = Array.isArray(this.inverseTrigElements) && this.inverseTrigElements.includes(item.value);
+            if (isInverseTrig && this.shouldHideInverseTrigElement(item.value)) {
+                continue;
+            }
+            // sgn / floor：难度太低/模式不适用时直接隐藏
+            if (item.value === 'sgn' && typeof this.shouldHideSgnElement === 'function' && this.shouldHideSgnElement()) continue;
+            if (item.value === 'floor' && typeof this.shouldHideFloorElement === 'function' && this.shouldHideFloorElement()) continue;
 
             const btn = document.createElement('button');
             btn.className = 'element-btn';
@@ -73,6 +80,23 @@ if (typeof UIController === 'undefined') {
                 btn.innerHTML = `${displayValue} <span class="lock-icon"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></span>`;
                 btn.title = '需通关全部分数关解锁';
                 btn.addEventListener('click', () => this.showInverseTrigLockedDialog());
+                this.inlineElementsBody.appendChild(btn);
+                continue;
+            }
+            // sgn / floor：当前难度适用但未解锁时，显示锁定态并可点击弹出解锁提示
+            if (item.value === 'sgn' && typeof this.isSgnUnlocked === 'function' && !this.isSgnUnlocked()) {
+                btn.classList.add('locked', 'inverse-trig-locked');
+                btn.innerHTML = `${displayValue} <span class="lock-icon"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></span>`;
+                btn.title = '需通关专家难度解锁';
+                btn.addEventListener('click', () => this.showSgnLockedDialog());
+                this.inlineElementsBody.appendChild(btn);
+                continue;
+            }
+            if (item.value === 'floor' && typeof this.isFloorUnlocked === 'function' && !this.isFloorUnlocked()) {
+                btn.classList.add('locked', 'inverse-trig-locked');
+                btn.innerHTML = `${displayValue} <span class="lock-icon"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></span>`;
+                btn.title = '需通关无解难度解锁';
+                btn.addEventListener('click', () => this.showFloorLockedDialog());
                 this.inlineElementsBody.appendChild(btn);
                 continue;
             }

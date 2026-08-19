@@ -362,11 +362,13 @@ class GridSystem {
             this.drawUsedCells();
         }
         
+        // 图层关系：允许区（目标格）在下，禁止区在上。
+        // 先绘制允许区，再绘制禁止区，保证两者重叠时禁止区覆盖在允许区上方。
+        // 绘制目标网格（允许区）
+        this.drawTargetCell();
+        
         // 绘制禁止区
         this.drawForbiddenCells();
-        
-        // 绘制目标网格
-        this.drawTargetCell();
         
         // 绘制网格线
         this.drawGridLines();

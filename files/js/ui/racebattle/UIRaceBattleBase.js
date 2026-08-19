@@ -226,7 +226,6 @@ UIController.prototype._proceedRaceBattleModal = function() {
     }
 
     this.hideRaceUI();
-    if (this._raceSubmenu) this._raceSubmenu.style.display = '';
     this.raceBattleSwitchTab('create');
     this.raceBattleRenderParams();
     this.raceBattleRenderMembers();

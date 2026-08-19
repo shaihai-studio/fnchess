@@ -216,22 +216,14 @@ if (typeof UIController === 'undefined') {
 
 // syncModeButtonsFromDifficulty
     UIController.prototype.syncModeButtonsFromDifficulty = function() {
-        if (!this.modeAiBtn || !this.modeLocalBtn || !this.modeCampaignBtn || !this.modeRaceBtn || !this.modeTestBtn) return;
+        if (!this.modeBattleBtn || !this.modeCampaignBtn || !this.modeRaceBtn || !this.modeTestBtn) return;
 
-        // 子模式按钮不做默认高亮（本地/人机/联机对战、经典闯关/编辑器、标准竞速/试炼场/联机竞速），仅 CSS :hover 悬停高亮
-        const isBattle = this.selectedMode === 'battle';
-        this.modeBattleBtn.classList.toggle('active', isBattle);
+        // 子模式由「子模式选择弹窗」承载，此处仅维护父模式按钮高亮
+        this.modeBattleBtn.classList.toggle('active', this.selectedMode === 'battle');
         this.modeCampaignBtn.classList.toggle('active', this.selectedMode === 'campaign');
         this.modeRaceBtn.classList.toggle('active', this.selectedMode === 'race');
         this.modeTestBtn.classList.toggle('active', this.selectedMode === 'test');
         const isCampaign = this.selectedMode === 'campaign';
-
-        if (this.modeAiBtn) {
-            this.modeAiBtn.disabled = false;
-            this.modeAiBtn.style.opacity = '1';
-            this.modeAiBtn.style.cursor = 'pointer';
-            this.modeAiBtn.title = '';
-        }
 
         const lockSelectors = isCampaign || this.selectedMode === 'test' || this.selectedMode === 'race' || (this.selectedMode === 'battle' && this._battleSubMode === 'p2p');
         this.setStartSelectorsEnabled(!lockSelectors);
@@ -327,14 +319,12 @@ if (typeof UIController === 'undefined') {
 
 // selectMode
     UIController.prototype.selectMode = function(mode) {
-        // Mode toggle might happen before user interacts, but if they click it we should play sound.
-        // It's safe to just call playClick here.
+        // 内部流程函数：不直接播点击音效，由入口（按钮/弹窗点击）负责，避免调用链重复播放
         if (window.audioManager) {
             // Re-init audioContext on user interaction just in case
             if (window.audioManager.audioCtx && window.audioManager.audioCtx.state === 'suspended') {
                 window.audioManager.audioCtx.resume();
             }
-            window.audioManager.playClick();
             window.audioManager.startBgm();
         }
         
@@ -368,9 +358,6 @@ if (typeof UIController === 'undefined') {
 
         if (mode === 'battle') {
             this.modeBattleBtn.classList.add('active');
-            if (this._battleSubmenu) this._battleSubmenu.style.display = '';
-            if (this._campaignSubmenu) this._campaignSubmenu.style.display = 'none';
-            if (this._raceSubmenu) this._raceSubmenu.style.display = 'none';
             this.modeHint.textContent = 
                 this._battleSubMode === 'local' ? '本地对战：两位玩家轮流操作' :
                 this._battleSubMode === 'ai' ? '人机对战：你将对抗AI Summa' :
@@ -380,9 +367,6 @@ if (typeof UIController === 'undefined') {
             this.restoreBattleUI();
         } else if (mode === 'campaign') {
             this.modeCampaignBtn.classList.add('active');
-            if (this._battleSubmenu) this._battleSubmenu.style.display = 'none';
-            if (this._campaignSubmenu) this._campaignSubmenu.style.display = '';
-            if (this._raceSubmenu) this._raceSubmenu.style.display = 'none';
             // hint 按闯关子模式显示
             this.modeHint.textContent = this._campaignSubMode === 'editor'
                 ? '关卡编辑器：创造属于你自己的关卡'
@@ -393,9 +377,6 @@ if (typeof UIController === 'undefined') {
             return;
         } else if (mode === 'race') {
             this.modeRaceBtn.classList.add('active');
-            if (this._battleSubmenu) this._battleSubmenu.style.display = 'none';
-            if (this._campaignSubmenu) this._campaignSubmenu.style.display = 'none';
-            if (this._raceSubmenu) this._raceSubmenu.style.display = '';
             // hint 按竞速子模式显示
             this.modeHint.textContent = this._raceSubMode === 'custom'
                 ? '竞速试炼场：自定义允许区/禁止区，打造专属竞速关卡'
@@ -408,15 +389,116 @@ if (typeof UIController === 'undefined') {
             return;
         } else if (mode === 'test') {
             this.modeTestBtn.classList.add('active');
-            if (this._battleSubmenu) this._battleSubmenu.style.display = 'none';
-            if (this._campaignSubmenu) this._campaignSubmenu.style.display = 'none';
-            if (this._raceSubmenu) this._raceSubmenu.style.display = 'none';
             this.modeHint.textContent = '测试模式：自由绘图，已绘制函数会保留在画布上';
             if (this.campaignPanel) this.campaignPanel.style.display = 'none';
             this.hideRaceUI();
             this.setStartSelectorsEnabled(false);
             this.restoreBattleUI();
         }
+    }
+;
+
+// _modeSubmenuConfig — 子模式选择弹窗配置：父模式 → 子模式列表
+    UIController.prototype._modeSubmenuConfig = function() {
+        return {
+            battle: {
+                title: '对战模式 · 选择对战方式',
+                modes: [
+                    { key: 'local', label: '本地对战', hint: '两位玩家轮流操作' },
+                    { key: 'ai', label: '人机对战', hint: '你将对抗AI Summa' },
+                    { key: 'p2p', label: '联机对战', hint: '与远方好友同台竞技' }
+                ]
+            },
+            campaign: {
+                title: '闯关模式 · 选择闯关方式',
+                modes: [
+                    { key: 'classic', label: '经典闯关', hint: '通关解锁下一关' },
+                    { key: 'editor', label: '关卡编辑器', hint: '创造属于你自己的关卡' }
+                ]
+            },
+            race: {
+                title: '竞速模式 · 选择竞速方式',
+                modes: [
+                    { key: 'standard', label: '标准竞速', hint: '通过 30 个关卡，追求更快速度' },
+                    { key: 'custom', label: '竞速试炼场', hint: '自定义允许区/禁止区，打造专属竞速关卡' },
+                    { key: 'battle', label: '联机竞速', hint: '2-4 人同场竞速，实时比拼速度与排名' }
+                ]
+            }
+        };
+    }
+;
+
+// openModeSubmenuModal — 点击父模式：弹出子模式选择弹窗
+    UIController.prototype.openModeSubmenuModal = function(mode) {
+        if (window.audioManager) {
+            if (window.audioManager.audioCtx && window.audioManager.audioCtx.state === 'suspended') {
+                window.audioManager.audioCtx.resume();
+            }
+            window.audioManager.playClick();
+        }
+        this.selectMode(mode);
+        const cfg = this._modeSubmenuConfig()[mode];
+        if (!cfg) return;
+        const modal = document.getElementById('mode-submenu-modal');
+        const list = document.getElementById('mode-submenu-list');
+        const title = document.getElementById('mode-submenu-title');
+        if (!modal || !list) return;
+        if (title) title.textContent = cfg.title;
+        list.innerHTML = '';
+        cfg.modes.forEach(item => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'mode-btn mode-submenu-btn';
+            btn.dataset.submode = item.key;
+            btn.innerHTML = `<span class="mode-submenu-label">${item.label}</span>` +
+                `<span class="mode-submenu-hint">${item.hint}</span>`;
+            btn.addEventListener('click', () => this._pickModeSubmenu(mode, item.key));
+            list.appendChild(btn);
+        });
+        // 返回按钮：只绑定一次
+        const closeBtn = document.getElementById('mode-submenu-close');
+        if (closeBtn && !closeBtn._modeSubmenuBound) {
+            closeBtn._modeSubmenuBound = true;
+            closeBtn.addEventListener('click', () => {
+                if (window.audioManager) window.audioManager.playClick();
+                this.closeModeSubmenuModal();
+            });
+        }
+        // 点击遮罩 / ESC 同样关闭弹窗
+        if (typeof this.bindModalDismiss === 'function') {
+            this.bindModalDismiss(modal, () => this.closeModeSubmenuModal());
+        }
+        this.showModal(modal);
+    }
+;
+
+// _pickModeSubmenu — 在弹窗中选择某个子模式：执行与原来子菜单按钮相同的流程
+    UIController.prototype._pickModeSubmenu = function(mode, sub) {
+        if (window.audioManager) window.audioManager.playClick();
+        const modal = document.getElementById('mode-submenu-modal');
+        if (modal) this.hideModal(modal);
+        if (mode === 'battle') {
+            this._battleSubMode = sub;
+            this.selectMode('battle');
+            if (sub === 'p2p') this.handleStart();
+            else this._openModeConfigModal(sub);
+        } else if (mode === 'campaign') {
+            this._campaignSubMode = sub;
+            this.selectMode('campaign');
+            this.handleStart();
+        } else if (mode === 'race') {
+            this._raceSubMode = sub;
+            this.selectMode('race');
+            this.handleStart();
+        }
+    }
+;
+
+// closeModeSubmenuModal — 关闭子模式选择弹窗
+    UIController.prototype.closeModeSubmenuModal = function() {
+        // 仅负责关闭弹窗，不播放音效（避免 showMainPage 等流程调用时额外响一声）
+        const modal = document.getElementById('mode-submenu-modal');
+        if (modal) this.hideModal(modal);
     }
 ;
 
@@ -551,13 +633,10 @@ if (typeof UIController === 'undefined') {
         this.showMessage('');
         
         // ★ 修复需求 13：退出测试模式后恢复主菜单布局。
-        // 进入测试模式时 selectMode('test') 会把 selectedMode 置为 'test'、隐藏所有子菜单、
-        // 禁用 steppers；此处必须全部复位，否则回到开始界面排版错乱。
+        // 进入测试模式时 selectMode('test') 会把 selectedMode 置为 'test'、禁用 steppers；
+        // 此处必须全部复位，否则回到开始界面排版错乱。
         this.selectedMode = 'battle';
         this._battleSubMode = 'local';
-        if (this._battleSubmenu) this._battleSubmenu.style.display = '';
-        if (this._campaignSubmenu) this._campaignSubmenu.style.display = 'none';
-        if (this._raceSubmenu) this._raceSubmenu.style.display = 'none';
         if (this.campaignPanel) this.campaignPanel.style.display = 'none';
         if (this.modeHint) this.modeHint.textContent = '本地对战：两位玩家轮流操作';
         this.syncStartSelectionState();
@@ -572,7 +651,6 @@ if (typeof UIController === 'undefined') {
             if (window.audioManager.audioCtx && window.audioManager.audioCtx.state === 'suspended') {
                 window.audioManager.audioCtx.resume();
             }
-            window.audioManager.playClick();
         }
 
         // 闯关模式子模式：经典闯关进入关卡选择界面；关卡编辑器就地打开

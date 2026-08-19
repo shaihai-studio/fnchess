@@ -102,6 +102,8 @@ window.MathLatex = (function () {
                     case 'asin': return '\\operatorname{asin}\\left(' + arg + '\\right)';
                     case 'acos': return '\\operatorname{acos}\\left(' + arg + '\\right)';
                     case 'atan': return '\\operatorname{atan}\\left(' + arg + '\\right)';
+                    case 'floor': return '\\lfloor ' + arg + '\\rfloor';
+                    case 'sgn': return '\\operatorname{sgn}\\left(' + arg + '\\right)';
                     case 'ln': return '\\ln\\left(' + arg + '\\right)';
                     case 'sqrt': return '\\sqrt{' + arg + '}';
                     case 'abs': return '\\left|' + arg + '\\right|';
@@ -234,6 +236,7 @@ window.MathLatex = (function () {
     const FUNC_MAP = {
         sin: '\\sin', cos: '\\cos', tan: '\\tan',
         asin: '\\operatorname{asin}', acos: '\\operatorname{acos}', atan: '\\operatorname{atan}',
+        floor: '\\lfloor', sgn: '\\operatorname{sgn}',
         ln: '\\ln',
         sqrt: '\\sqrt', abs: '\\operatorname{abs}'
     };

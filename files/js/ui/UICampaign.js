@@ -134,23 +134,6 @@ if (typeof UIController === 'undefined') {
     }
 ;
 
-// renderCampaignStarProgress
-    UIController.prototype.renderCampaignStarProgress = function(starCount) {
-        if (!this.campaignStarProgress) return;
-        const totalSlots = 500;
-        const filled = Math.max(0, Math.min(totalSlots, Number(starCount) || 0));
-        const pct = Math.max(0, Math.min(100, (filled / totalSlots) * 100));
-        const starSvg = `<svg class="star filled race-star" viewBox="0 0 120 120" aria-hidden="true"><path d="M60 10l14.5 27.7L102 43l-20 19.5L86.7 90 60 75.8 33.3 90 38 62.5 18 43l27.5-5.3L60 10Z"/></svg>`;
-        this.campaignStarProgress.innerHTML = `
-            <div class="campaign-star-bar">
-                <div class="campaign-star-bar-fill" style="width:${pct}%;"></div>
-                <div class="campaign-star-bar-glow" style="width:${pct}%;"></div>
-            </div>
-            <span class="star-count">${filled}/${totalSlots}${starSvg}</span>
-        `;
-    }
-;
-
 // refreshCampaignStartUI
     UIController.prototype.refreshCampaignStartUI = async function() {
         if (!this.campaignLevelSelect || !this.campaignProgressText) return;
@@ -233,31 +216,49 @@ if (typeof UIController === 'undefined') {
         const length = Number.isFinite(Number(data.expressionLength)) ? Number(data.expressionLength) : this.getCurrentExpressionLength();
         const levelText = isCustom ? `关卡 ${levelId}` : (isFraction ? `分数关 ${levelId}` : `第 ${levelId} 关`);
         if (this.campaignVictoryText) {
-            if (bestRecord === null || !Number.isFinite(bestRecord)) {
-                this.campaignVictoryText.innerHTML = `${levelText} 记录：<span style="color:#fff">${length}</span>`;
-            } else if (data.isNewRecord) {
-                const previousBest = Number(data.previousBest);
-                const diff = previousBest > 0 ? previousBest - length : null;
-                this.campaignVictoryText.innerHTML = Number.isFinite(diff)
-                    ? `new record：${length} <span style="color:#22c55e;">（-${diff}）</span>`
-                    : `new record：${length}`;
-            } else {
-                const diff = length - bestRecord;
-                this.campaignVictoryText.innerHTML = `best record：${bestRecord} &nbsp;&nbsp;&nbsp; score：${length} <span style="color:#ef4444;">(+${diff})</span>`;
+            // 排行榜最佳：该关全服最短 token（彗星缓存，pl 榜查询时回传 + 本地存）
+            let lbBest = null;
+            if (!isCustom) {
+                try {
+                    const n = Number(localStorage.getItem('function_chess_comet_best_' + levelId));
+                    if (Number.isFinite(n) && n > 0) lbBest = n;
+                } catch (e3) { /* 忽略 */ }
             }
+            const lines = [];
+            const curLine = `本次：${length} token`;
+            const hasBest = bestRecord !== null && Number.isFinite(bestRecord);
+            if (data.unlockedPlay) {
+                // 解锁通关：不保存最佳、不上榜、无彗星，LRΣ 扣 10 分
+                lines.push(curLine);
+                lines.push('<span style="color:#facc15;">解锁通关：LRΣ -10</span>');
+                lines.push('<span style="color:#f59e0b;">未保存最佳纪录 · 未上榜 · 无彗星</span>');
+            } else if (hasBest && data.isNewRecord) {
+                const prevBest = Number(data.previousBest);
+                if (prevBest > 0) lines.push(`你的最佳：${prevBest} token`);
+                lines.push(curLine + ' <span style="color:#22c55e;">（新纪录）</span>');
+            } else if (hasBest) {
+                const diff = length - bestRecord;
+                lines.push(`你的最佳：${bestRecord} token`);
+                lines.push(diff > 0 ? curLine + ` <span style="color:#ef4444;">(+${diff})</span>` : curLine);
+            } else {
+                lines.push(curLine);
+            }
+            if (lbBest !== null && !data.unlockedPlay) lines.push(`排行榜最佳：${lbBest} token`);
+            if (data.unlockRestored) {
+                lines.push('<span style="color:#22c55e;">已正常通关，LRΣ 已恢复（+10）</span>');
+            }
+            this.campaignVictoryText.innerHTML = `${levelText}<br>` + lines.join('<br>');
         }
-        const starCount = Math.max(1, Math.min(5, Number(data.score) || 1));
-        this.renderCampaignVictoryStars(starCount);
-        // 彗星条（满分 10 颗，缓存全服最优 → 本地算 plv；首次通关缓存为空则取 10）
-        if (!isCustom) this.renderCampaignVictoryComet(levelId, Number(length) || 0);
+        // 彗星结算（满分 10 颗，缓存全服最优 → 本地算 plv；首次通关缓存为空则取 10）
+        // 解锁通关：无彗星
+        if (!isCustom && !data.unlockedPlay) this.renderCampaignVictoryComet(levelId, Number(length) || 0);
         this.campaignVictoryModal.dataset.levelId = String(levelId);
         this.campaignVictoryModal.dataset.totalLevels = String(data.totalLevels || (this.campaignPack && this.campaignPack.levels ? this.campaignPack.levels.length : 0));
         this.campaignVictoryModal.dataset.difficulty = data.difficulty || this.campaignDifficulty || '';
-        this.campaignVictoryModal.dataset.stars = String(starCount);
         this.campaignVictoryModal.dataset.length = String(length);
         this.campaignVictoryModal.dataset.isFraction = isFraction ? '1' : '0';
-        // 保存该关最短表达式（供方案B核验 / 彗星）：仅当本次长度 ≤ 历史最佳
-        if (!isCustom) {
+        // 保存该关最短表达式（供方案B核验 / 彗星）：仅当本次长度 ≤ 历史最佳；解锁通关不保存
+        if (!isCustom && !data.unlockedPlay) {
             try {
                 const prevBestNum = (this.campaignCurrentLevelBestRecord !== null && Number.isFinite(Number(this.campaignCurrentLevelBestRecord)))
                     ? Number(this.campaignCurrentLevelBestRecord) : null;
@@ -268,8 +269,21 @@ if (typeof UIController === 'undefined') {
             } catch (e2) { /* 忽略 */ }
         }
         // 排行榜：闯关 LR∑ 积分变化时自动上报（官方关卡；自制关卡不参与官方排行榜）
-        // 记录上次已上报值，仅当积分高于它才上报，避免重复请求（排行榜保留历史最高分）
-        if (!isCustom && this._leaderboardService && typeof PlayerProfile !== 'undefined') {
+        // 记录上次已上报值，仅当积分高于它才上报，避免重复请求（排行榜保留历史最高分）。
+        // 解锁通关：LRΣ 应同步扣 10 分到排行榜（提交扣分后的值，即使低于已上报值也强制上报）；
+        // 但不提交分关最佳纪录（minTokens/levels 载荷传空，避免把解锁关的纪录写进榜单）。
+        if (!isCustom && data.unlockedPlay && this._leaderboardService && typeof PlayerProfile !== 'undefined') {
+            // 解锁通关：强制同步被扣 10 分后的 LRΣ，不提交分关纪录
+            try {
+                const lrSigma = this.calculateLRSigma(this.getCampaignClearedMax());
+                if (Number.isFinite(lrSigma) && lrSigma >= 0) {
+                    const profile = PlayerProfile.getProfile();
+                    console.log(`[LB] 解锁通关同步 LRΣ=${lrSigma}（已扣解锁惩罚，不提交分关纪录）`);
+                    this._leaderboardService.submitLRSigma(lrSigma, profile.nickname, {}, []);
+                    this.refreshLeaderboardIfOpen();
+                }
+            } catch (e) { /* 上报失败静默降级，不影响结算界面 */ console.error('[LB] 解锁通关 LRΣ 同步异常:', e); }
+        } else if (!isCustom && !data.unlockedPlay && this._leaderboardService && typeof PlayerProfile !== 'undefined') {
             try {
                 const lrSigma = this.calculateLRSigma(this.getCampaignClearedMax());
                 if (Number.isFinite(lrSigma) && lrSigma > 0) {
@@ -336,25 +350,51 @@ if (typeof UIController === 'undefined') {
     }
 ;
 
-// renderCampaignVictoryComet — 胜利弹窗内的彗星条（10 颗制）
-//   读本地缓存的该关全服最短 token（服务器 pl 榜查询时回传 + 本地存）；
-//   无缓存（首次通关/未查榜）时视为"全服最优 = 自己"，plv = 10 颗。
-    UIController.prototype.renderCampaignVictoryComet = function(levelId, minToken) {
+// renderCampaignVictoryComet — 胜利弹窗内的彗星结算（10 颗制，白色五角星，支持非整数显示）
+//   彗星等级 plv = 本关服务器最优 ÷ 本次解 × 10（即本次解相对全服最短的达成度）。
+//   serverBest 为该关全服最短 token（服务器 pl 榜查询时回传 + 本地存），curTokens 为本次解 token 数；
+//   无缓存（首次通关/未查榜）时视为"服务器最优 = 自己"，plv = 10 颗。
+//   显示在原先星星结算的位置（胜利文本上方），并同时显示具体数量（如 8.5/10）。
+    UIController.prototype.renderCampaignVictoryComet = function(levelId, curTokens) {
         if (!this.campaignVictoryModal) return;
-        let best = null;
-        try { const v = localStorage.getItem('function_chess_comet_best_' + levelId); best = Number(v) || null; } catch (e) { /* 忽略 */ }
-        const plv = (!best || best <= 0) ? 10 : Math.round(10 * best / minToken * 10) / 10;
-        const pct = Math.max(0, Math.min(100, Math.round(plv / 10 * 100)));
+        let serverBest = null;
+        try { const v = localStorage.getItem('function_chess_comet_best_' + levelId); serverBest = Number(v) || null; } catch (e) { /* 忽略 */ }
+        // plv = 服务器最优 ÷ 本次解 × 10（非整数保留一位小数）
+        const plv = (!serverBest || serverBest <= 0 || !Number.isFinite(Number(curTokens)) || Number(curTokens) <= 0)
+            ? 10
+            : Math.round(10 * serverBest / Number(curTokens) * 10) / 10;
+        const clamped = Math.max(0, Math.min(10, plv));
+        const whole = Math.floor(clamped);
+        const frac = clamped - whole;
+        const starPath = 'M60 14c3.1 0 5.6 1.6 6.9 4.3l11.3 22.9 25.3 3.7c3 .5 5.5 2.5 6.5 5.4 1 2.9.3 6-1.9 8.2L90 74.5l4.5 25.1c.5 3.1-.7 6.2-3.1 8-2.5 1.8-5.8 2.1-8.5.7L60 96.1 37.1 108.3c-2.7 1.4-6 .1-8.5-.7-2.4-1.8-3.6-4.9-3.1-8L30 74.5 12.9 54.5c-2.2-2.2-2.9-5.3-1.9-8.2 1-2.9 3.5-4.9 6.5-5.4l25.3-3.7L54.1 18.3C55.4 15.6 57.9 14 61 14Z"';
         let cometEl = this.campaignVictoryModal.querySelector('.campaign-victory-comet');
         if (!cometEl) {
             cometEl = document.createElement('div');
             cometEl.className = 'campaign-victory-comet';
             const content = this.campaignVictoryModal.querySelector('.campaign-victory-content');
-            const stars = this.campaignVictoryModal.querySelector('.campaign-victory-stars');
-            if (content && stars && stars.parentNode === content) content.insertBefore(cometEl, stars.nextSibling);
-            else if (content) content.appendChild(cometEl);
+            if (content) {
+                // 显示在胜利文本上方（原先星星结算的位置）
+                const text = this.campaignVictoryModal.querySelector('#campaign-victory-text') || this.campaignVictoryText;
+                if (text && text.parentNode === content) content.insertBefore(cometEl, text);
+                else content.appendChild(cometEl);
+            }
         }
-        cometEl.innerHTML = `<div class="comet-bar"><div class="comet-bar-fill" style="width:${pct}%"></div></div>彗星：<b>${plv.toFixed(1)}</b> / 10 颗`;
+        cometEl.innerHTML = '';
+        for (let i = 1; i <= 10; i++) {
+            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.setAttribute('viewBox', '0 0 120 120');
+            svg.setAttribute('aria-hidden', 'true');
+            svg.classList.add('comet');
+            if (i <= whole) svg.classList.add('filled');
+            else if (i === whole + 1 && frac >= 0.5) svg.classList.add('half');
+            svg.innerHTML = '<path d="' + starPath + '"/>';
+            cometEl.appendChild(svg);
+        }
+        // 具体数量显示（如 8.5/10）
+        const count = document.createElement('span');
+        count.className = 'comet-count';
+        count.textContent = `${clamped.toFixed(1)}/10`;
+        cometEl.appendChild(count);
     }
 ;
 
@@ -364,7 +404,68 @@ if (typeof UIController === 'undefined') {
             localStorage.setItem(`function_chess_campaign_best_${levelId}`, String(length));
         } catch (e) { }
     }
+;
 
+// ─── 解锁通关（忽略本关锁定元素）相关 ─────────────────────────────
+
+// getCampaignUnlockedPlaySet — 读取通过"解锁通关"的关卡集合（JSON 数组）
+    UIController.prototype.getCampaignUnlockedPlaySet = function() {
+        try {
+            const raw = localStorage.getItem('function_chess_campaign_unlocked_play');
+            const arr = raw ? JSON.parse(raw) : [];
+            return Array.isArray(arr) ? arr : [];
+        } catch (e) {
+            return [];
+        }
+    }
+;
+
+// addCampaignUnlockedPlay — 记录某关通过解锁通关
+    UIController.prototype.addCampaignUnlockedPlay = function(levelId) {
+        try {
+            const key = String(levelId);
+            const arr = this.getCampaignUnlockedPlaySet();
+            if (!arr.includes(key)) {
+                arr.push(key);
+                localStorage.setItem('function_chess_campaign_unlocked_play', JSON.stringify(arr));
+            }
+        } catch (e) { /* 忽略 */ }
+    }
+;
+
+// removeCampaignUnlockedPlay — 某关恢复正常通关后移除（LRΣ 扣分随之恢复）
+    UIController.prototype.removeCampaignUnlockedPlay = function(levelId) {
+        try {
+            const key = String(levelId);
+            const arr = this.getCampaignUnlockedPlaySet().filter(x => x !== key);
+            localStorage.setItem('function_chess_campaign_unlocked_play', JSON.stringify(arr));
+        } catch (e) { /* 忽略 */ }
+    }
+;
+
+// handleCampaignUnlock — 点击解锁按钮：忽略本关锁定元素（如 +、* 等）
+//   反三角函数（asin/acos/atan）未解锁导致的禁用不属于本关锁定，不在 lockedElements 中，不受影响。
+//   之后通关将按"解锁通关"处理（LRΣ 扣10、不存最佳、不上榜、无彗星、下一关解锁）。
+    UIController.prototype.handleCampaignUnlock = function() {
+        const gc = this.gameController;
+        if (!gc) return;
+        const locked = gc.roundState && gc.roundState.lockedElements;
+        if (!locked || locked.length === 0) {
+            this.showMessage('本关没有锁定的元素', 'info');
+            return;
+        }
+        // 忽略本关所有锁定元素
+        gc.roundState.lockedElements = [];
+        if (gc.parser && typeof gc.parser.clearLockedElements === 'function') {
+            gc.parser.clearLockedElements();
+        }
+        // 重新渲染输入栏，使被锁元素解锁可用
+        if (typeof this.initDraggableElements === 'function') this.initDraggableElements();
+        this._campaignUnlockUsed = true;
+        if (window.audioManager) window.audioManager.playClick();
+        this.showMessage('已忽略本关锁定元素（此关通关将按解锁通关处理）', 'warning');
+    }
+;
 // buildLRSubmissionPayload — 组装防作弊上报载荷（遍历逻辑与 calculateLRSigma 完全一致）
 // levels 覆盖全部 minTokens 关；老玩家（旧版本通关）无 best_expr 的关以 expr:'' 占位，
 // 服务器对其做"已验证最优"边界检查（≥ 全服最优即接受），实现 1.0.0→2.0.0 升级无感、历史关卡保留。
@@ -385,29 +486,6 @@ if (typeof UIController === 'undefined') {
         const fracMax = (typeof this.getCampaignFractionClearedMax === 'function') ? this.getCampaignFractionClearedMax() : 0;
         for (let denom = 2; denom <= fracMax && denom <= 20; denom++) addLevel(`1/${denom}`, `1/${denom}`);
         return { minTokens, levels };
-    }
-;
-
-// renderCampaignVictoryStars
-    UIController.prototype.renderCampaignVictoryStars = function(count) {
-        if (!this.campaignVictoryModal) return;
-        let stars = this.campaignVictoryModal.querySelector('.campaign-victory-stars');
-        if (!stars) {
-            stars = document.createElement('div');
-            stars.className = 'campaign-victory-stars';
-            this.campaignVictoryModal.querySelector('.campaign-victory-content')?.insertBefore(stars, this.campaignVictoryText || null);
-        }
-        const filled = Math.max(1, Math.min(5, count));
-        stars.innerHTML = '';
-        for (let i = 1; i <= 5; i++) {
-            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-            svg.setAttribute('viewBox', '0 0 120 120');
-            svg.setAttribute('aria-hidden', 'true');
-            svg.classList.add('star');
-            if (i <= filled) svg.classList.add('filled');
-            svg.innerHTML = '<path d="M60 14c3.1 0 5.6 1.6 6.9 4.3l11.3 22.9 25.3 3.7c3 .5 5.5 2.5 6.5 5.4 1 2.9.3 6-1.9 8.2L90 74.5l4.5 25.1c.5 3.1-.7 6.2-3.1 8-2.5 1.8-5.8 2.1-8.5.7L60 96.1 37.1 108.3c-2.7 1.4-6 .1-8.5-.7-2.4-1.8-3.6-4.9-3.1-8L30 74.5 12.9 54.5c-2.2-2.2-2.9-5.3-1.9-8.2 1-2.9 3.5-4.9 6.5-5.4l25.3-3.7L54.1 18.3C55.4 15.6 57.9 14 61 14Z"/>';
-            stars.appendChild(svg);
-        }
     }
 ;
 
@@ -557,13 +635,9 @@ if (typeof UIController === 'undefined') {
         const cleared = this.getCampaignClearedMax();
         const total = this.campaignPack && Array.isArray(this.campaignPack.levels) ? this.campaignPack.levels.length : 0;
         const visibleTotal = cleared >= 81 ? total : Math.min(total, 81);
-        const starCount = stars === null ? this.getCampaignCollectedStars() : stars;
         this.campaignGlobalProgress.textContent = total > 0
             ? `已通关 ${cleared}/${visibleTotal}`
             : '未加载关卡：请导入 levels.json（本地打开HTML时浏览器可能拦截自动读取）';
-        if (this.campaignStarProgress) {
-            this.renderCampaignStarProgress(starCount);
-        }
         // 更新LRΣ显示
         this.updateCampaignLRSigmaDisplay(cleared);
     }
@@ -625,6 +699,7 @@ if (typeof UIController === 'undefined') {
             localStorage.removeItem('function_chess_campaign_cleared');
             localStorage.removeItem('function_chess_campaign_fraction_cleared');
             localStorage.removeItem('function_chess_campaign_stars');
+            localStorage.removeItem('function_chess_campaign_unlocked_play');
             for (let i = 1; i <= 90; i++) {
                 localStorage.removeItem(`function_chess_campaign_best_${i}`);
                 localStorage.removeItem(`function_chess_campaign_best_stars_${i}`);
@@ -781,21 +856,15 @@ if (typeof UIController === 'undefined') {
             if (locked) cell.classList.add('locked');
             if (isCleared) cell.classList.add('cleared');
 
-            // 星星
-            const stars = isFraction ? 0 : this.getCampaignLevelBestStars(id);
-            const hasStars = isCleared && stars > 0;
-            const starsContainer = document.createElement('div');
-            starsContainer.className = 'campaign-cell-stars';
-            for (let i = 1; i <= 5; i++) {
-                const star = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-                star.setAttribute('viewBox', '0 0 120 120');
-                star.setAttribute('aria-hidden', 'true');
-                star.classList.add('star');
-                if (hasStars && i <= stars) star.classList.add('filled');
-                star.innerHTML = '<path d="M60 14c3.1 0 5.6 1.6 6.9 4.3l11.3 22.9 25.3 3.7c3 .5 5.5 2.5 6.5 5.4 1 2.9.3 6-1.9 8.2L90 74.5l4.5 25.1c.5 3.1-.7 6.2-3.1 8-2.5 1.8-5.8 2.1-8.5.7L60 96.1 37.1 108.3c-2.7 1.4-6 .1-8.5-.7-2.4-1.8-3.6-4.9-3.1-8L30 74.5 12.9 54.5c-2.2-2.2-2.9-5.3-1.9-8.2 1-2.9 3.5-4.9 6.5-5.4l25.3-3.7L54.1 18.3C55.4 15.6 57.9 14 61 14Z"/>';
-                starsContainer.appendChild(star);
+            // 最佳纪录（替代原星星系统）：显示该关最短表达式长度，样式同经典竞速
+            const bestRecord = this.getCampaignLevelBestRecord(id);
+            const hasBestRecord = isCleared && bestRecord !== null && Number.isFinite(Number(bestRecord)) && Number(bestRecord) > 0;
+            if (hasBestRecord) {
+                const bestEl = document.createElement('div');
+                bestEl.className = 'race-level-best-record';
+                bestEl.textContent = `最佳 ${Number(bestRecord)} token`;
+                cell.appendChild(bestEl);
             }
-            cell.appendChild(starsContainer);
 
             const numberSpan = document.createElement('span');
             numberSpan.className = 'campaign-cell-number';
@@ -884,47 +953,39 @@ if (typeof UIController === 'undefined') {
             && this.getCampaignFractionClearedMax() >= 20;
     }
 
-// getInverseTrigEnabled — 显式开关（解锁后默认开启，可手动关闭）
+// getInverseTrigEnabled — 反三角是否启用（兼容旧接口：以面板中 asin 的启停为准）
     UIController.prototype.getInverseTrigEnabled = function() {
-        try {
-            const raw = localStorage.getItem('function_chess_inverse_trig_enabled');
-            if (raw === null) return true;
-            return raw !== '0' && raw !== 'false';
-        } catch (e) {
-            return true;
-        }
+        return this.getFunctionEnabled('asin');
     }
 
-// setInverseTrigEnabled — 写入显式开关
+// setInverseTrigEnabled — 兼容旧接口：写入 asin/acos/atan 三个函数的启停
     UIController.prototype.setInverseTrigEnabled = function(v) {
-        try {
-            localStorage.setItem('function_chess_inverse_trig_enabled', v ? '1' : '0');
-        } catch (e) { }
+        ['asin', 'acos', 'atan'].forEach(n => this.setFunctionEnabled(n, v));
     }
 
-// isInverseTrigHideContext — 简单难度 或 分数关模式：不显示这三个按钮
+// isInverseTrigHideContext — 简单难度不显示这三个按钮。
+// 分数关不再隐藏：反三角函数（未解锁显示锁定态、已解锁允许使用）与普通难度行为一致。
     UIController.prototype.isInverseTrigHideContext = function() {
         const gc = this.gameController;
         if (!gc) return true;
-        if (gc.difficulty === 'fraction') return true;
         if (typeof gc.isEasyMode === 'function' && gc.isEasyMode()) return true;
         return false;
     }
 
 // shouldHideInverseTrigElement — 输入面板是否隐藏反三角按钮
-// 简单/分数关 → 隐藏；未解锁 → 显示锁定态；已解锁 → 仅开关开启时显示
-    UIController.prototype.shouldHideInverseTrigElement = function() {
+// 简单 → 隐藏；未解锁 → 显示锁定态；已解锁 → 仅面板中启用时显示
+    UIController.prototype.shouldHideInverseTrigElement = function(name) {
         if (this.isInverseTrigHideContext()) return true;
         if (!this.isInverseTrigUnlocked()) return false;
-        return !this.getInverseTrigEnabled();
+        return !this.getFunctionEnabled(name || 'asin');
     }
 
 // _shouldSkipInverseTrigInLockView — 锁定阶段（set_locks）是否跳过反三角
-// 简单/分数关、未解锁、开关关闭均跳过（未解锁元素不可被锁定）
-    UIController.prototype._shouldSkipInverseTrigInLockView = function() {
+// 简单、面板中禁用均跳过（未解锁元素不可被锁定）
+    UIController.prototype._shouldSkipInverseTrigInLockView = function(name) {
         if (this.isInverseTrigHideContext()) return true;
         if (!this.isInverseTrigUnlocked()) return true;
-        return !this.getInverseTrigEnabled();
+        return !this.getFunctionEnabled(name || 'asin');
     }
 
 // showInverseTrigModal — 反三角函数提示弹窗（未解锁提示 / 解锁通知共用）
@@ -963,6 +1024,120 @@ if (typeof UIController === 'undefined') {
         );
     }
 
+// ─── sgn / floor 分难度解锁机制 ─────────────────────────────────
+
+// sgn 解锁条件：通关专家难度（专家末关 81 已通关）
+    UIController.prototype.isSgnUnlocked = function() {
+        const expertEnd = (typeof this.getDifficultyRange === 'function')
+            ? this.getDifficultyRange('expert').end : 81;
+        return this.getCampaignClearedMax() >= expertEnd;
+    }
+
+// floor 解锁条件：通关无解难度（无解末关 90 已通关）
+    UIController.prototype.isFloorUnlocked = function() {
+        const unsolvableEnd = (typeof this.getDifficultyRange === 'function')
+            ? this.getDifficultyRange('unsolvable').end : 90;
+        return this.getCampaignClearedMax() >= unsolvableEnd;
+    }
+
+// isSgnAllowedInContext — 当前模式/难度是否允许使用 sgn
+//   闯关：困难/专家/无解；对战（local/ai/p2p）：专家。test 模式始终允许。
+//   分数难度不在其中，因此分数关禁用。
+    UIController.prototype.isSgnAllowedInContext = function() {
+        const gc = this.gameController;
+        if (!gc) return false;
+        if (typeof gc.isTestMode === 'function' && gc.isTestMode()) return true;
+        if (gc.gameMode === 'campaign') {
+            return gc.difficulty === 'hard' || gc.difficulty === 'expert' || gc.difficulty === 'unsolvable';
+        }
+        return gc.difficulty === 'expert';
+    }
+
+// isFloorAllowedInContext — 当前模式/难度是否允许使用 floor（规则同 sgn）
+    UIController.prototype.isFloorAllowedInContext = function() {
+        const gc = this.gameController;
+        if (!gc) return false;
+        if (typeof gc.isTestMode === 'function' && gc.isTestMode()) return true;
+        if (gc.gameMode === 'campaign') {
+            return gc.difficulty === 'hard' || gc.difficulty === 'expert' || gc.difficulty === 'unsolvable';
+        }
+        return gc.difficulty === 'expert';
+    }
+
+// shouldHideSgnElement — 当前难度太低/模式不适用、或在面板中禁用则直接隐藏
+    UIController.prototype.shouldHideSgnElement = function() {
+        if (!this.isSgnAllowedInContext()) return true;
+        return !this.getFunctionEnabled('sgn');
+    }
+
+// shouldHideFloorElement — 当前难度太低/模式不适用、或在面板中禁用则直接隐藏
+    UIController.prototype.shouldHideFloorElement = function() {
+        if (!this.isFloorAllowedInContext()) return true;
+        return !this.getFunctionEnabled('floor');
+    }
+
+// _shouldSkipSgnInLockView — 锁定阶段是否跳过 sgn（未解锁或当前不适用时不可锁定）
+    UIController.prototype._shouldSkipSgnInLockView = function() {
+        if (!this.isSgnAllowedInContext()) return true;
+        return !this.isSgnUnlocked();
+    }
+
+// _shouldSkipFloorInLockView — 锁定阶段是否跳过 floor
+    UIController.prototype._shouldSkipFloorInLockView = function() {
+        if (!this.isFloorAllowedInContext()) return true;
+        return !this.isFloorUnlocked();
+    }
+
+// showSgnLockedDialog — 点击未解锁 sgn 的提示
+    UIController.prototype.showSgnLockedDialog = function() {
+        if (window.audioManager) window.audioManager.playError();
+        const expertEnd = (typeof this.getDifficultyRange === 'function')
+            ? this.getDifficultyRange('expert').end : 81;
+        const cleared = this.getCampaignClearedMax();
+        this.showInverseTrigModal(
+            'sgn 未解锁',
+            '函数 <b>sgn</b>（符号函数）需要通关<b>专家难度</b>后解锁。<br><br>'
+            + `当前最大通关：第 ${cleared} 关（需通关第 ${expertEnd} 关）`
+        );
+    }
+
+// showFloorLockedDialog — 点击未解锁 floor 的提示
+    UIController.prototype.showFloorLockedDialog = function() {
+        if (window.audioManager) window.audioManager.playError();
+        const unsolvableEnd = (typeof this.getDifficultyRange === 'function')
+            ? this.getDifficultyRange('unsolvable').end : 90;
+        const cleared = this.getCampaignClearedMax();
+        this.showInverseTrigModal(
+            'floor 未解锁',
+            '函数 <b>floor</b>（向下取整）需要通关<b>无解难度</b>才解锁。<br><br>'
+            + `当前最大通关：第 ${cleared} 关（需通关第 ${unsolvableEnd} 关）`
+        );
+    }
+
+// _checkSgnFloorUnlockBlock — 提交校验：表达式若使用了 sgn/floor，检查其在当前模式/难度是否可用且已解锁
+//   返回错误提示字符串（阻止提交），否则返回 null。
+    UIController.prototype._checkSgnFloorUnlockBlock = function(expression) {
+        if (typeof expression !== 'string' || !expression) return null;
+        const gc = this.gameController;
+        if (!gc) return null;
+        // 测试模式始终允许
+        if (typeof gc.isTestMode === 'function' && gc.isTestMode()) return null;
+        const lower = expression.toLowerCase();
+        const usesSgn = /\bsgn\b/.test(lower);
+        const usesFloor = /\bfloor\b/.test(lower);
+        if (usesSgn) {
+            const allowed = typeof this.isSgnAllowedInContext === 'function' && this.isSgnAllowedInContext();
+            const unlocked = typeof this.isSgnUnlocked === 'function' && this.isSgnUnlocked();
+            if (!allowed || !unlocked) return '当前模式/难度下无法使用 sgn（需通关专家难度，且仅困难及以上/对战专家难度可用）';
+        }
+        if (usesFloor) {
+            const allowed = typeof this.isFloorAllowedInContext === 'function' && this.isFloorAllowedInContext();
+            const unlocked = typeof this.isFloorUnlocked === 'function' && this.isFloorUnlocked();
+            if (!allowed || !unlocked) return '当前模式/难度下无法使用 floor（需通关无解难度，且仅困难及以上/对战专家难度可用）';
+        }
+        return null;
+    }
+
 // _updateFractionClearedAndNotify — 更新分数关进度，并在首次全通时弹出解锁提示
     UIController.prototype._updateFractionClearedAndNotify = function(denom) {
         const before = (typeof this.getCampaignFractionClearedMax === 'function')
@@ -975,36 +1150,112 @@ if (typeof UIController === 'undefined') {
         }
     }
 
-// refreshInverseTrigToggle — 同步开始界面「反三角函数」开关状态与可用性
-    UIController.prototype.refreshInverseTrigToggle = function() {
-        const toggle = this.inverseTrigToggle;
-        if (!toggle) return;
-        const unlocked = this.isInverseTrigUnlocked();
-        toggle.checked = unlocked && this.getInverseTrigEnabled();
-        toggle.disabled = !unlocked;
-        if (this.inverseTrigToggleWrap) {
-            this.inverseTrigToggleWrap.classList.toggle('disabled', !unlocked);
-        }
+// ─── 对战函数启用设置 ─────────────────────────────────────────
 
-        // 已解锁但当前难度是"简单"时，对战元素面板的反三角按钮会被隐藏
-        // （isInverseTrigHideContext → isEasyMode() true → shouldHideInverseTrigElement true）。
-        // 玩家勾了开关却看不到按钮会困惑，所以在开关下方追加一行黄字提示。
-        const _diffVal = (this.difficultySelect && this.difficultySelect.value)
-            || (this.difficultyOptions && this.difficultyOptions[this.currentDifficultyIndex]
-                && this.difficultyOptions[this.currentDifficultyIndex].value);
-        const _isEasyNow = unlocked && _diffVal === 'easy';
-        let _hint = document.getElementById('inverse-trig-difficulty-hint');
-        if (_isEasyNow && this.inverseTrigToggleWrap && this.inverseTrigToggleWrap.parentNode) {
-            if (!_hint) {
-                _hint = document.createElement('div');
-                _hint.id = 'inverse-trig-difficulty-hint';
-                _hint.style.cssText = 'font-size:12px;color:#f59e0b;margin-top:6px;line-height:1.4;';
-                this.inverseTrigToggleWrap.parentNode.insertBefore(_hint, this.inverseTrigToggleWrap.nextSibling);
-            }
-            _hint.textContent = '⚠️ 当前为简单难度，不显示反三角函数。请切换至普通或专家难度。';
-        } else if (_hint) {
-            _hint.remove();
+// getFunctionEnabled — 读取某个函数是否启用（默认开启）
+    UIController.prototype.getFunctionEnabled = function(name) {
+        try {
+            const raw = localStorage.getItem('function_chess_function_enabled_' + name);
+            if (raw === null) return true;
+            return raw === '1';
+        } catch (e) {
+            return true;
         }
+    }
+;
+
+// setFunctionEnabled — 写入某个函数是否启用
+    UIController.prototype.setFunctionEnabled = function(name, v) {
+        try {
+            localStorage.setItem('function_chess_function_enabled_' + name, v ? '1' : '0');
+        } catch (e) { }
+    }
+;
+
+// getFunctionSettingList — 对战可选函数列表（仅需解锁的函数：反三角 / sgn / floor）
+    UIController.prototype.getFunctionSettingList = function() {
+        return [
+            { name: 'asin', display: 'asin', desc: '反正弦（通关全部分数关解锁）' },
+            { name: 'acos', display: 'acos', desc: '反余弦（通关全部分数关解锁）' },
+            { name: 'atan', display: 'atan', desc: '反正切（通关全部分数关解锁）' },
+            { name: 'sgn', display: 'sgn', desc: '符号函数（专家难度通关解锁）' },
+            { name: 'floor', display: 'floor', desc: '向下取整（无解难度通关解锁）' }
+        ];
+    }
+;
+
+// isFunctionSettingLocked — 该函数在当前是否未解锁（未解锁则即使勾选也无法使用）
+    UIController.prototype.isFunctionSettingLocked = function(name) {
+        if (name === 'asin' || name === 'acos' || name === 'atan') return !this.isInverseTrigUnlocked();
+        if (name === 'sgn') return !this.isSgnUnlocked();
+        if (name === 'floor') return !this.isFloorUnlocked();
+        return false; // 其余基础函数始终可用
+    }
+;
+
+// refreshFunctionPanelBtn — 同步开始界面「对战函数设置」按钮文案（显示禁用数量）
+    UIController.prototype.refreshFunctionPanelBtn = function() {
+        const btn = this.functionPanelBtn || document.getElementById('function-panel-btn');
+        if (!btn) return;
+        const list = this.getFunctionSettingList();
+        const disabledCount = list.filter(f => !this.getFunctionEnabled(f.name)).length;
+        const label = btn.querySelector('span') || btn;
+        // 按钮已有 svg 图标，直接更新文字
+        if (!btn.querySelector('span')) {
+            const icon = btn.querySelector('svg');
+            const span = document.createElement('span');
+            if (icon) btn.insertBefore(span, icon.nextSibling);
+            else btn.appendChild(span);
+        }
+        const span = btn.querySelector('span');
+        if (span) {
+            span.textContent = disabledCount > 0
+                ? `对战函数设置（${disabledCount} 个已禁用）`
+                : '对战函数设置';
+        }
+    }
+;
+
+// showFunctionSettingsModal — 打开对战函数设置面板（按钮式：点击切换启用/禁用）
+    UIController.prototype.showFunctionSettingsModal = function() {
+        const modal = document.getElementById('function-settings-modal');
+        if (!modal) return;
+        const listEl = document.getElementById('function-settings-list');
+        if (listEl) {
+            listEl.innerHTML = '';
+            this.getFunctionSettingList().forEach(f => {
+                const locked = this.isFunctionSettingLocked(f.name);
+                const enabled = !locked && this.getFunctionEnabled(f.name);
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'function-setting-item' + (enabled ? ' active' : '') + (locked ? ' locked' : '');
+                btn.disabled = locked;
+                btn.innerHTML =
+                    `<span class="fs-text"><span class="fs-name">${f.display}</span><span class="fs-desc">${f.desc}</span></span>` +
+                    `<span class="fs-state">${locked ? '未解锁' : (enabled ? '已启用' : '已禁用')}</span>`;
+                btn.addEventListener('click', () => {
+                    if (window.audioManager) window.audioManager.playClick();
+                    this.setFunctionEnabled(f.name, !this.getFunctionEnabled(f.name));
+                    const nEn = this.getFunctionEnabled(f.name);
+                    btn.classList.toggle('active', nEn);
+                    const st = btn.querySelector('.fs-state');
+                    if (st) st.textContent = nEn ? '已启用' : '已禁用';
+                    this.refreshFunctionPanelBtn();
+                });
+                listEl.appendChild(btn);
+            });
+        }
+        const closeBtn = document.getElementById('function-settings-close');
+        if (closeBtn) {
+            const onClose = () => {
+                if (window.audioManager) window.audioManager.playClick();
+                this.hideModal(modal);
+                this.refreshFunctionPanelBtn();
+            };
+            closeBtn.onclick = onClose;
+        }
+        if (typeof this.bindModalDismiss === 'function') this.bindModalDismiss(modal);
+        this.showModal(modal);
     }
 ;
 

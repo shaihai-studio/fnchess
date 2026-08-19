@@ -595,7 +595,7 @@ if (typeof UIController === 'undefined') {
         const notMyTurn = this.isP2PMode && !this._isMyTurn();
         const blockInput = spectating || isAiTurn || notMyTurn;
 
-        const funcNames = { 'sin': 'sin', 'cos': 'cos', 'tan': 'tan', 'asin': 'asin', 'acos': 'acos', 'atan': 'atan', 'abs': 'abs', 'ln': 'ln', 'sqrt': '√' };
+        const funcNames = { 'sin': 'sin', 'cos': 'cos', 'tan': 'tan', 'asin': 'asin', 'acos': 'acos', 'atan': 'atan', 'floor': 'floor', 'sgn': 'sgn', 'abs': 'abs', 'ln': 'ln', 'sqrt': '√' };
         const lockBtn = (btn, display) => {
             btn.classList.add('locked');
             btn.innerHTML = `${display} <span class="lock-icon">${LOCK_SVG}</span>`;
@@ -618,6 +618,7 @@ if (typeof UIController === 'undefined') {
         // —— 左侧函数面板（3×3 网格，默认隐藏；fx 展开时显示） ——
         const funcValues = ['sin', 'cos', 'tan', 'ln', 'sqrt', 'abs'];
         const inverseTrig = ['asin', 'acos', 'atan'];
+        const extraFuncs = ['sgn', 'floor'];
         const fxPanel = document.createElement('div');
         fxPanel.className = 'float-keypad-fx-panel';
         const addFuncBtn = (v, item) => {
@@ -636,15 +637,17 @@ if (typeof UIController === 'undefined') {
             fxPanel.appendChild(btn);
         };
         for (const v of funcValues) {
+            if (typeof this.getFunctionEnabled === 'function' && !this.getFunctionEnabled(v)) continue;
             const item = (elements.functions || []).find(f => f.value === v);
             if (item) addFuncBtn(v, item);
         }
         // 反三角函数：可见才显示；未解锁时锁定样式但可点击弹解锁提示
         for (const v of inverseTrig) {
+            if (typeof this.getFunctionEnabled === 'function' && !this.getFunctionEnabled(v)) continue;
             const item = (elements.functions || []).find(f => f.value === v);
             if (!item) continue;
             const isInverseTrig = Array.isArray(this.inverseTrigElements) && this.inverseTrigElements.includes(v);
-            if (isInverseTrig && this.shouldHideInverseTrigElement()) continue;
+            if (isInverseTrig && this.shouldHideInverseTrigElement(v)) continue;
             const display = funcNames[v] || v;
             const btn = document.createElement('button');
             btn.className = 'element-btn';
@@ -655,6 +658,30 @@ if (typeof UIController === 'undefined') {
                 btn.innerHTML = `${display} <span class="lock-icon">${LOCK_SVG}</span>`;
                 btn.title = '需通关全部分数关解锁';
                 if (!blockInput) btn.addEventListener('click', () => this.showInverseTrigLockedDialog());
+                fxPanel.appendChild(btn);
+                continue;
+            }
+            addFuncBtn(v, item);
+        }
+        // 新函数（floor / sgn）：位于反三角函数之后；难度太低/模式不适用时隐藏，未解锁时显示锁定态
+        for (const v of extraFuncs) {
+            const item = (elements.functions || []).find(f => f.value === v);
+            if (!item) continue;
+            if (v === 'sgn' && typeof this.shouldHideSgnElement === 'function' && this.shouldHideSgnElement()) continue;
+            if (v === 'floor' && typeof this.shouldHideFloorElement === 'function' && this.shouldHideFloorElement()) continue;
+            const display = funcNames[v] || v;
+            const btn = document.createElement('button');
+            btn.className = 'element-btn';
+            btn.textContent = display;
+            btn.dataset.value = v;
+            const locked =
+                (v === 'sgn' && typeof this.isSgnUnlocked === 'function' && !this.isSgnUnlocked()) ||
+                (v === 'floor' && typeof this.isFloorUnlocked === 'function' && !this.isFloorUnlocked());
+            if (locked) {
+                btn.classList.add('locked', 'inverse-trig-locked');
+                btn.innerHTML = `${display} <span class="lock-icon">${LOCK_SVG}</span>`;
+                btn.title = v === 'sgn' ? '需通关专家难度解锁' : '需通关无解难度解锁';
+                if (!blockInput) btn.addEventListener('click', () => v === 'sgn' ? this.showSgnLockedDialog() : this.showFloorLockedDialog());
                 fxPanel.appendChild(btn);
                 continue;
             }
@@ -811,10 +838,19 @@ if (typeof UIController === 'undefined') {
             if (elements.functions && elements.functions.some(f => f.value === v)) addFuncBtn(v);
         }
         for (const v of ['asin', 'acos', 'atan']) {
+            if (typeof this.getFunctionEnabled === 'function' && !this.getFunctionEnabled(v)) continue;
             const item = (elements.functions || []).find(f => f.value === v);
             if (!item) continue;
             const isInverseTrig = Array.isArray(this.inverseTrigElements) && this.inverseTrigElements.includes(v);
-            if (isInverseTrig && this._shouldSkipInverseTrigInLockView()) continue;
+            if (isInverseTrig && this._shouldSkipInverseTrigInLockView(v)) continue;
+            addFuncBtn(v);
+        }
+        // 新函数（floor / sgn）：位于反三角函数之后；当前难度不适用或未解锁时不参与锁定
+        for (const v of ['sgn', 'floor']) {
+            if (!elements.functions || !elements.functions.some(f => f.value === v)) continue;
+            if (typeof this.getFunctionEnabled === 'function' && !this.getFunctionEnabled(v)) continue;
+            if (v === 'sgn' && typeof this._shouldSkipSgnInLockView === 'function' && this._shouldSkipSgnInLockView()) continue;
+            if (v === 'floor' && typeof this._shouldSkipFloorInLockView === 'function' && this._shouldSkipFloorInLockView()) continue;
             addFuncBtn(v);
         }
         main.appendChild(fxPanel);

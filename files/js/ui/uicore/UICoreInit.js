@@ -50,27 +50,15 @@ if (typeof UIController === 'undefined') {
         // 「提交失败后保留解析式」开关
         this.keepExprToggle = document.getElementById('keep-expr-toggle');
         
-        // 「反三角函数」开关（开始界面，需通关全部分数关解锁）
-        this.inverseTrigToggle = document.getElementById('inverse-trig-toggle');
-        this.inverseTrigToggleWrap = document.getElementById('inverse-trig-toggle-wrap');
-        if (this.inverseTrigToggle) {
-            this.inverseTrigToggle.addEventListener('change', () => {
-                this.setInverseTrigEnabled(this.inverseTrigToggle.checked);
+        // 「对战函数设置」按钮：点击打开函数启用面板（可启停所有可选函数，含反三角/sgn/floor）
+        this.functionPanelBtn = document.getElementById('function-panel-btn');
+        if (this.functionPanelBtn) {
+            this.functionPanelBtn.addEventListener('click', () => {
+                if (window.audioManager) window.audioManager.playClick();
+                this.showFunctionSettingsModal();
             });
-            // 未解锁时 checkbox 是 disabled（点击无任何反应），用户会困惑"勾了开关为什么没用"。
-            // 拦截 label 点击：未解锁 → 阻止默认行为并弹出解锁提示，给出明确反馈。
-            if (this.inverseTrigToggleWrap) {
-                this.inverseTrigToggleWrap.addEventListener('click', (e) => {
-                    if (this.inverseTrigToggle.disabled) {
-                        e.preventDefault();
-                        if (typeof this.showInverseTrigLockedDialog === 'function') {
-                            this.showInverseTrigLockedDialog();
-                        }
-                    }
-                });
-            }
         }
-        this.refreshInverseTrigToggle();
+        this.refreshFunctionPanelBtn();
         
         // 退出气泡框元素
         this.exitPopover = document.getElementById('exit-confirm-popover');
@@ -125,18 +113,6 @@ if (typeof UIController === 'undefined') {
         this.modeCampaignBtn = document.getElementById('mode-campaign');
         this.modeRaceBtn = document.getElementById('mode-race');
         this.modeTestBtn = document.getElementById('mode-test');
-        // 对战子模式
-        this.modeLocalBtn = document.getElementById('mode-local');
-        this.modeAiBtn = document.getElementById('mode-ai');
-        this.modeP2PBtn = document.getElementById('mode-p2p');
-        this.modeEditorBtn = document.getElementById('mode-editor');
-        this.modeCampaignClassicBtn = document.getElementById('mode-campaign-classic');
-        this.modeRaceStandardBtn = document.getElementById('mode-race-standard');
-        this.modeRaceCustomBtn = document.getElementById('mode-race-custom');
-        this.modeRaceBattleBtn = document.getElementById('mode-race-battle');
-        this._battleSubmenu = document.getElementById('battle-submenu');
-        this._campaignSubmenu = document.getElementById('campaign-submenu');
-        this._raceSubmenu = document.getElementById('race-submenu');
         this.modeHint = document.getElementById('mode-hint');
         this.selectedMode = 'battle'; // 默认对战模式
         this._battleSubMode = 'local'; // 默认子模式：本地对战
@@ -163,7 +139,6 @@ if (typeof UIController === 'undefined') {
         this.campaignStepDifficulty = document.getElementById('campaign-step-difficulty');
         this.campaignStepLevels = document.getElementById('campaign-step-levels');
         this.campaignGlobalProgress = document.getElementById('campaign-global-progress');
-        this.campaignStarProgress = document.getElementById('campaign-star-progress');
         
         // Summa训练弹窗
         this.summaDialog = document.getElementById('summa-train-dialog');
@@ -224,88 +199,47 @@ if (typeof UIController === 'undefined') {
             if (window.audioManager) window.audioManager.playClick();
             this.showStartPage();
         });
+        // 开始界面角落按钮：公告 / 版本（左上），网站 / bug / 土星（右上）
+        // 公告/版本按钮：与刚进游戏时一致，直接触发 checkNotice / checkVersion
+        // （数据源为 p2p 信令服务器，CORS 已配好，本地 file:// 直开也不会报错）
+        // force=true：点击时总是弹出服务器当前公告 / 最新版本与本地版本
+        const announcementBtn = document.getElementById('announcement-btn');
+        if (announcementBtn) announcementBtn.addEventListener('click', () => {
+            if (window.audioManager) window.audioManager.playClick();
+            if (typeof this.checkNotice === 'function') this.checkNotice(true);
+        });
+        const versionBtn = document.getElementById('version-btn');
+        if (versionBtn) versionBtn.addEventListener('click', () => {
+            if (window.audioManager) window.audioManager.playClick();
+            if (typeof this.checkVersion === 'function') this.checkVersion(true);
+        });
+        const websiteBtn = document.getElementById('website-btn');
+        if (websiteBtn) websiteBtn.addEventListener('click', () => { window.open('https://shaihai.cn', '_blank'); });
+        const bugBtn = document.getElementById('bug-btn');
+        if (bugBtn) bugBtn.addEventListener('click', () => { window.open('https://docs.qq.com/form/page/DWFV3THBkVEhNa0xT', '_blank'); });
+        const saturnBtn = document.getElementById('saturn-btn');
+        if (saturnBtn) saturnBtn.addEventListener('click', () => { window.open('https://shaihai.cn/light.html', '_blank'); });
+        const startInfoCloseBtn = document.getElementById('start-info-close-btn');
+        if (startInfoCloseBtn) startInfoCloseBtn.addEventListener('click', () => {
+            const m = document.getElementById('start-info-modal');
+            if (m && typeof this.hideModal === 'function') this.hideModal(m);
+            else if (m) m.style.display = 'none';
+        });
         this.refreshStartSelectorDisplay();
         this.initModeConfigModal();
         
         
-        // 绑定模式切换按钮
+        // 绑定模式切换按钮：点击父模式 → 弹出子模式选择弹窗
         if (this.modeBattleBtn && this.modeCampaignBtn && this.modeRaceBtn) {
-            this.modeBattleBtn.addEventListener('click', () => this.selectMode('battle'));
-            this.modeCampaignBtn.addEventListener('click', () => this.selectMode('campaign'));
-            this.modeRaceBtn.addEventListener('click', () => this.selectMode('race'));
+            this.modeBattleBtn.addEventListener('click', () => this.openModeSubmenuModal('battle'));
+            this.modeCampaignBtn.addEventListener('click', () => this.openModeSubmenuModal('campaign'));
+            this.modeRaceBtn.addEventListener('click', () => this.openModeSubmenuModal('race'));
         }
         // 测试模式：点击直接进入测试对局（无需开始游戏按钮）
         if (this.modeTestBtn) {
             this.modeTestBtn.addEventListener('click', () => {
+                if (window.audioManager) window.audioManager.playClick();
                 this.selectMode('test');
-                this.handleStart();
-            });
-        }
-        // 对战子菜单按钮：点击后直接进入对应流程
-        // 本地对战 / 人机对战 → 弹配置确认弹窗；联机对战 → 直接打开房间弹窗
-        if (this.modeLocalBtn) {
-            this.modeLocalBtn.addEventListener('click', () => {
-                this._battleSubMode = 'local';
-                this.selectMode('battle');
-                this.modeHint.textContent = '本地对战：两位玩家轮流操作';
-                this._openModeConfigModal('local');
-            });
-        }
-        if (this.modeAiBtn) {
-            this.modeAiBtn.addEventListener('click', () => {
-                this._battleSubMode = 'ai';
-                this.selectMode('battle');
-                this.modeHint.textContent = '人机对战：你将对抗AI Summa';
-                this._openModeConfigModal('ai');
-            });
-        }
-        if (this.modeP2PBtn) {
-            this.modeP2PBtn.addEventListener('click', () => {
-                this._battleSubMode = 'p2p';
-                this.selectMode('battle');
-                this.modeHint.textContent = '联机对战：与远方好友同台竞技';
-                this.handleStart();
-            });
-        }
-        // 闯关子菜单按钮：经典闯关 → 选关界面；关卡编辑器 → 直接打开编辑器
-        if (this.modeCampaignClassicBtn) {
-            this.modeCampaignClassicBtn.addEventListener('click', () => {
-                this._campaignSubMode = 'classic';
-                this.selectMode('campaign');
-                this.modeHint.textContent = '经典闯关：通关解锁下一关';
-                this.handleStart();
-            });
-        }
-        if (this.modeEditorBtn) {
-            this.modeEditorBtn.addEventListener('click', () => {
-                this._campaignSubMode = 'editor';
-                this.selectMode('campaign');
-                this.modeHint.textContent = '关卡编辑器：创造属于你自己的关卡';
-                this.handleStart();
-            });
-        }
-        // 竞速子菜单按钮：标准竞速 → 选关界面；试炼场 → 自定义弹窗；联机竞速 → 房间弹窗
-        if (this.modeRaceStandardBtn) {
-            this.modeRaceStandardBtn.addEventListener('click', () => {
-                this._raceSubMode = 'standard';
-                this.selectMode('race');
-                this.modeHint.textContent = '标准竞速：通过 30 个关卡，追求更快速度';
-                this.handleStart();
-            });
-        }
-        if (this.modeRaceCustomBtn) {
-            this.modeRaceCustomBtn.addEventListener('click', () => {
-                this._raceSubMode = 'custom';
-                this.selectMode('race');
-                this.modeHint.textContent = '竞速试炼场：自定义允许区/禁止区，打造专属竞速关卡';
-                this.handleStart();
-            });
-        }
-        if (this.modeRaceBattleBtn) {
-            this.modeRaceBattleBtn.addEventListener('click', () => {
-                this._raceSubMode = 'battle';
-                this.selectMode('race');
-                this.modeHint.textContent = '联机竞速：2-4 人同场竞速，实时比拼速度与排名';
                 this.handleStart();
             });
         }
@@ -410,8 +344,8 @@ if (typeof UIController === 'undefined') {
         this.refreshStartSelectorDisplay();
         this.updateDifficultyHint();
         this.syncStartSelectionState();
-        // 难度切换后刷新反三角函数开关的提示（简单难度会隐藏反三角按钮，需即时更新）
-        if (typeof this.refreshInverseTrigToggle === 'function') this.refreshInverseTrigToggle();
+        // 难度切换后刷新对战函数设置按钮（简单难度会隐藏部分函数，需即时更新）
+        if (typeof this.refreshFunctionPanelBtn === 'function') this.refreshFunctionPanelBtn();
     }
 ;
 

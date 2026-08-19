@@ -70,8 +70,10 @@
         // 右下角圆形按钮：✓ 确认 / ← 返回退出
         this.confirmFabBtn = document.getElementById('confirm-fab-btn');
         this.exitFabBtn = document.getElementById('exit-fab-btn');
+        this.unlockFabBtn = document.getElementById('unlock-fab-btn');
         if (this.confirmFabBtn) this.confirmFabBtn.addEventListener('click', () => this.handleConfirm());
         if (this.exitFabBtn) this.exitFabBtn.addEventListener('click', () => this.handleExitClick());
+        if (this.unlockFabBtn) this.unlockFabBtn.addEventListener('click', () => this.handleCampaignUnlock());
         if (this.skipBtn) this.skipBtn.addEventListener('click', () => {
             const gc = this.gameController;
             if (gc && gc.skipSubPhase) gc.skipSubPhase();

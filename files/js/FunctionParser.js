@@ -10,7 +10,7 @@ class FunctionParser {
     constructor() {
         // 支持的运算符和函数
         this.operators = ['+', '-', '*', '/', '^'];
-        this.functions = ['sin', 'cos', 'tan', 'asin', 'acos', 'atan', 'abs', 'ln', 'sqrt'];
+        this.functions = ['sin', 'cos', 'tan', 'asin', 'acos', 'atan', 'floor', 'sgn', 'abs', 'ln', 'sqrt'];
         // 复数常量（与 geogebra-lite 一致）
         this.constants = { pi: { re: Math.PI, im: 0 }, e: { re: Math.E, im: 0 }, i: { re: 0, im: 1 } };
 
@@ -23,7 +23,7 @@ class FunctionParser {
             numbers: ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'π', 'e', 'i'],
             basicOperators: ['+', '-', '*', '/'],
             operators: ['.', '^', '!', '(', ')'],
-            functions: ['sin', 'cos', 'tan', 'asin', 'acos', 'atan', 'abs', 'ln', 'sqrt']
+            functions: ['sin', 'cos', 'tan', 'asin', 'acos', 'atan', 'floor', 'sgn', 'abs', 'ln', 'sqrt']
         };
     }
 
@@ -84,6 +84,20 @@ class FunctionParser {
         const iMinusZ = { re: -a.re, im: 1 - a.im };
         const ln = this.cLn(this.cDiv(iPlusZ, iMinusZ));
         return { re: -ln.im / 2, im: ln.re / 2 };
+    }
+    cFloor(a) {
+        a = this.toComplex(a);
+        // floor 仅对实部取整（复数虚部取整无标准定义，按 0 处理）
+        return { re: Math.floor(a.re), im: 0 };
+    }
+    cSgn(a) {
+        a = this.toComplex(a);
+        // 符号函数：实数 sgn(x)；复数取其模的符号（x=0 → 0）
+        const re = a.re, im = a.im;
+        if (re === 0 && im === 0) return { re: 0, im: 0 };
+        if (im === 0) return { re: Math.sign(re), im: 0 };
+        const mag = Math.hypot(re, im);
+        return { re: re / mag, im: im / mag };
     }
     cSqrt(a) {
         a = this.toComplex(a);
@@ -320,6 +334,8 @@ class FunctionParser {
                     case 'asin': return this.cAsin(v);
                     case 'acos': return this.cAcos(v);
                     case 'atan': return this.cAtan(v);
+                    case 'floor': return this.cFloor(v);
+                    case 'sgn': return this.cSgn(v);
                     case 'abs': return this.cAbs(v);
                     case 'ln': return this.cLn(v);
                     case 'sqrt': {
@@ -431,11 +447,24 @@ class FunctionParser {
             return { valid: false, error: '括号不匹配' };
         }
 
+        // 先做语法解析：真正的"语法错误"在此捕获（括号/操作符/token 等非法）
+        let ast = null;
+        try {
+            ast = this.parse(expression);
+        } catch (e) {
+            return { valid: false, error: '语法错误：' + (e.message || '表达式无法解析') };
+        }
+
         // 尝试计算多个测试点（包括定义域外的复数情况）
         const testPoints = [0, 1, -1, 0.5, 1.5, -1.5, 2, -2, 2.5, -2.5, 3, -3, 5, -5, 10, -10];
         let validCount = 0;
         for (const x of testPoints) {
-            const result = this.evaluate(expression, x);
+            let result;
+            try {
+                result = this.evalAst(ast, x);
+            } catch (e) {
+                result = null;
+            }
             // 正确处理复数：null表示NaN/无穷大，复数对象（虚部为0）表示有效实数值
             if (result !== null) {
                 if (typeof result === 'object') {
@@ -449,6 +478,14 @@ class FunctionParser {
             }
         }
         if (validCount === 0) {
+            // 所有测试点都计算失败：可能是定义域很窄但语法合法的函数
+            // （如 (-2x-1)!·(2x-1)!，其定义域恰好避开测试点），也可能是恒未定义的常量表达式（如 1/0）。
+            // 含变量 x 的表达式已通过语法解析 → 视为合法（仅定义域窄），不应误判为语法错误；
+            // 不含 x 的常量表达式若测试点全部无效 → 判定为计算错误。
+            const hasVariable = expression.indexOf('x') !== -1;
+            if (hasVariable) {
+                return { valid: true, error: null };
+            }
             return { valid: false, error: '表达式计算错误，请检查语法' };
         }
         return { valid: true, error: null };
@@ -459,7 +496,7 @@ class FunctionParser {
     analyzeFunctionType(expression) {
         const cleanExpr = expression.replace(/\s+/g, '').replace(/[()（）]/g, '');
         let length = 0;
-        const tokenRegex = /(sin|cos|tan|asin|acos|atan|abs|ln|sqrt|factorial)|(\d+(?:\.\d+)?)|(PI|π|e|i)|([+\-*/^!])|(x)/gi;
+        const tokenRegex = /(sin|cos|tan|asin|acos|atan|floor|sgn|abs|ln|sqrt|factorial)|(\d+(?:\.\d+)?)|(PI|π|e|i)|([+\-*/^!])|(x)/gi;
         while (tokenRegex.exec(cleanExpr) !== null) {
             length++;
         }
@@ -480,7 +517,7 @@ class FunctionParser {
     getPolynomialDegree(expression) {
         const cleanExpr = expression.toLowerCase().replace(/\s/g, '');
 
-        const nonPolyPattern = /(sin|cos|tan|asin|acos|atan|ln|sqrt|abs)/;
+        const nonPolyPattern = /(sin|cos|tan|asin|acos|atan|floor|sgn|ln|sqrt|abs)/;
         if (nonPolyPattern.test(cleanExpr)) return -1;
         if (cleanExpr.includes('!')) return -1;
         if (cleanExpr.includes('(-1)^(1/2)') || cleanExpr.includes('(-1)^0.5') || cleanExpr.includes('i')) return -1;

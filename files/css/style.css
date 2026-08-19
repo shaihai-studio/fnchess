@@ -72,7 +72,8 @@ body::before {
 .campaign-level-cell.race-level-cell .campaign-cell-number {
     line-height: 1.1;
 }
-.campaign-level-cell.race-level-cell .race-level-best-record {
+.campaign-level-cell.race-level-cell .race-level-best-record,
+.campaign-level-cell .race-level-best-record {
     margin-top: 3px;
     font-size: 11px;
     line-height: 1.1;
@@ -249,20 +250,54 @@ body::before {
 
 .start-top-actions {
     display: flex;
-    justify-content: flex-end;
-    margin-bottom: 10px;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 0;
 }
 
 .start-bgm-btn {
-    margin-left: auto;
+    margin-left: 0;
 }
 
-/* 主界面右上角音量/排行榜按钮改为胶囊形（局内 #bgm-open-btn 保持圆形） */
-#start-bgm-open-btn,
-#leaderboard-open-btn {
-    width: 62px;
-    height: 38px;
+/* 主界面顶部音量按钮保持胶囊形（局内 #bgm-open-btn 保持圆形） */
+#start-bgm-open-btn {
+    width: 93px;
+    height: 57px;
     border-radius: 999px;
+}
+#start-bgm-open-btn .bgm-float-icon-img {
+    width: 36px;
+    height: 36px;
+}
+
+/* 排行榜按钮：正式大按钮（带文字），与游戏内其他按钮同款风格 */
+#leaderboard-open-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 20px;
+    width: auto;
+    height: 64px;
+    border-radius: 999px;
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: none;
+    color: #fde68a;
+    background: rgba(251, 191, 36, 0.12);
+    border: 1px solid rgba(251, 191, 36, 0.45);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
+    flex: 0 0 auto;
+}
+#leaderboard-open-btn:hover {
+    background: rgba(251, 191, 36, 0.22);
+    transform: translateY(-2px);
+}
+#leaderboard-open-btn .leaderboard-open-icon {
+    width: 52px;
+    height: 52px;
 }
 
 .bgm-float-btn:hover {
@@ -377,76 +412,49 @@ body::before {
     line-height: 1.6;
 }
 
-.campaign-victory-stars {
+.campaign-victory-comet {
     display: flex;
     justify-content: center;
-    gap: 10px;
+    align-items: center;
+    gap: 8px;
     margin: 8px 0 6px;
     line-height: 1;
 }
-
-.campaign-victory-stars .star {
-    width: 40px;
-    height: 40px;
+.campaign-victory-comet .comet {
+    width: 30px;
+    height: 30px;
     display: inline-block;
-    color: rgba(255, 255, 255, 0.18);
-    overflow: visible;
+    color: #fff;
+    overflow: hidden;
 }
-
-.campaign-victory-stars .star path {
-    fill: currentColor;
-    stroke: rgba(255, 255, 255, 0.95);
-    stroke-width: 4.2;
+.campaign-victory-comet .comet path {
+    fill: none;
+    stroke: rgba(255, 255, 255, 0.9);
+    stroke-width: 3;
     stroke-linejoin: round;
     stroke-linecap: round;
     paint-order: stroke fill;
 }
-
-.campaign-victory-stars .star.filled {
-    color: #facc15;
-    filter: drop-shadow(0 0 10px rgba(250, 204, 21, 0.25));
+.campaign-victory-comet .comet.filled path,
+.campaign-victory-comet .comet.half path {
+    fill: #fff;
+}
+/* 半颗：只显示左侧一半实心 */
+.campaign-victory-comet .comet.half {
+    clip-path: inset(0 50% 0 0);
+}
+.campaign-victory-comet .comet-count {
+    margin-left: 6px;
+    font-size: 15px;
+    font-weight: 700;
+    color: #fff;
 }
 
-.campaign-victory-comet {
-    margin: 4px 0 8px;
-    font-size: 14px;
-    color: #e5e7eb;
-}
-.campaign-victory-comet b {
-    color: #fbbf24;
-    font-size: 16px;
-    margin: 0 2px;
-}
-.comet-bar {
-    width: 100%;
-    height: 5px;
-    background: rgba(255,255,255,0.12);
-    border-radius: 3px;
-    margin-bottom: 4px;
-    overflow: hidden;
-}
-.comet-bar-fill {
-    height: 100%;
-    background: linear-gradient(90deg, #fbbf24, #f59e0b);
-    border-radius: 3px;
-    transition: width 0.4s ease;
-}
-
-.campaign-star-progress {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex: 1;
-    min-width: 220px;
-}
 #race-modal .campaign-level-grid {
     margin-top: 0;
 }
 #race-modal .campaign-level-cell {
     background: rgba(15, 23, 42, 0.74);
-}
-#race-modal .campaign-star-progress {
-    min-width: 220px;
 }
 #race-modal .campaign-cell-number,
 #race-modal .campaign-level-cell {
@@ -889,77 +897,6 @@ body::before {
     }
 }
 
-.campaign-star-bar {
-    position: relative;
-    flex: 1;
-    height: 12px;
-    border-radius: 999px;
-    background: rgba(148, 163, 184, 0.18);
-    overflow: hidden;
-    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08);
-}
-
-.campaign-star-bar-fill {
-    position: absolute;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    border-radius: 999px;
-    background: linear-gradient(90deg, #c2a040, #d4c070, #b8943a);
-    box-shadow: 0 0 10px rgba(200, 180, 80, 0.3);
-}
-.campaign-star-bar.race-star-bar {
-    background: rgba(20, 184, 166, 0.16);
-    margin-top: 8px;
-}
-.campaign-star-bar.race-star-bar .campaign-star-bar-fill,
-.campaign-star-bar.race-star-bar .campaign-star-bar-glow {
-    background: linear-gradient(90deg, #14b8a6, #2dd4bf);
-}
-.campaign-star-bar.race-star-bar .campaign-star-bar-glow {
-    box-shadow: 0 0 12px rgba(45, 212, 191, 0.4);
-}
-
-.campaign-star-bar-glow {
-    position: absolute;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    border-radius: 999px;
-    background: linear-gradient(90deg, rgba(255,255,255,0.28), rgba(255,255,255,0));
-    mix-blend-mode: screen;
-    pointer-events: none;
-}
-
-.campaign-star-progress .star-count {
-    color: #f8fafc;
-    font-weight: 700;
-    font-size: 13px;
-    white-space: nowrap;
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-}
-
-.campaign-star-progress .star-count .star {
-    width: 14px;
-    height: 14px;
-    display: inline-block;
-    color: #facc15;
-    overflow: visible;
-    vertical-align: middle;
-}
-
-.campaign-star-progress .star-count .star path {
-    fill: currentColor;
-    stroke: rgba(255, 255, 255, 0.9);
-    stroke-width: 4;
-    stroke-linejoin: round;
-    stroke-linecap: round;
-    paint-order: stroke fill;
-    filter: drop-shadow(0 0 2px rgba(250, 204, 21, 0.4));
-}
-
 /* LRΣ 显示样式 */
 #campaign-lrsigma-container {
     display: flex;
@@ -1324,6 +1261,18 @@ body::before {
     right: 14px;
     background: rgba(239, 68, 68, 0.5);
     color: #fff;
+}
+/* 闯关解锁按钮：右下角位于退出按钮左侧，黄色圆形锁图标 */
+.canvas-fab-btn.unlock-fab {
+    right: 142px;
+    background: rgba(234, 179, 8, 0.65);
+    color: #fff;
+}
+.canvas-fab-btn.unlock-fab:hover {
+    background: rgba(234, 179, 8, 0.85);
+}
+.canvas-fab-btn.unlock-fab:active {
+    background: rgba(250, 204, 21, 0.9);
 }
 .canvas-fab-btn.confirm-fab:hover { background: rgba(34, 197, 94, 0.7); }
 .canvas-fab-btn.exit-fab:hover { background: rgba(239, 68, 68, 0.7); }
@@ -2628,7 +2577,7 @@ body::before {
     transform: scale(1.12);
 }
 
-#start-modal .mode-toggle-vertical .mode-btn {
+#main-mode-toggle .mode-btn {
     text-align: center;
 }
 
@@ -2698,22 +2647,24 @@ body::before {
 
 /* 游戏模式切换 */
 .start-settings-layout {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
+    display: flex;
+    flex-direction: column;
     gap: 24px;
-    align-items: start;
+    align-items: stretch;
+    justify-content: center;
     margin-top: 0;
     margin-bottom: 0;
+    width: 100%;
+    min-width: 0;
 }
 
 #start-modal .start-settings-layout {
-    grid-template-columns: 1fr 1.05fr;
-    gap: 48px;
+    gap: 28px;
     margin-top: 0;
     margin-bottom: 0;
     align-items: stretch;
     flex: 1;
-    display: grid;
+    display: flex;
 }
 
 .mode-select {
@@ -2725,8 +2676,17 @@ body::before {
     gap: 12px;
 }
 
-.mode-toggle-vertical {
-    flex-direction: column;
+/* 主界面模式按钮：根据屏幕长宽比自动 2×2（横屏/桌面）或 1×4（竖屏/手机） */
+#main-mode-toggle {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    width: 100%;
+}
+@media (orientation: portrait) {
+    #main-mode-toggle {
+        grid-template-columns: 1fr;
+    }
 }
 
 /* 测试模式 / 关卡编辑器：横向并列放置 */
@@ -2802,9 +2762,9 @@ body::before {
 }
 
 #start-modal .mode-btn {
-    padding: 22px 24px;
-    font-size: 28px;
-    border-radius: 32px;
+    padding: 30px 28px;
+    font-size: 34px;
+    border-radius: 36px;
     width: 100%;
 }
 
@@ -2835,126 +2795,43 @@ body::before {
     box-shadow: 0 0 24px rgba(34, 211, 238, 0.42);
 }
 
-/* 对战模式子菜单 */
-.battle-submenu {
-    display: grid;
-    grid-template-columns: 1fr 1fr 1fr !important;
-    align-items: stretch;
-    width: 100% !important;
-    box-sizing: border-box !important;
-    gap: 6px;
-    margin-top: 4px;
-    padding: 6px;
-    background: rgba(0, 0, 0, 0.3);
-    border-radius: 12px;
-    border: 1px solid rgba(251, 191, 36, 0.2);
-}
-#start-modal .battle-submenu .mode-btn-sub,
-.battle-submenu .mode-btn-sub {
-    width: 100% !important;
-    min-width: 0 !important;
-    box-sizing: border-box !important;
-    padding: 12px 10px !important;
-    font-size: 14px !important;
-    border-radius: 8px !important;
-    border: 1px solid rgba(255,255,255,0.08);
-    background: rgba(255,255,255,0.04);
-    color: #cbd5e1;
-    cursor: pointer;
-    transition: all 0.2s;
-    text-align: center;
-    white-space: nowrap;
-    display: flex !important;
-    align-items: center;
-    justify-content: center;
-}
-/* 必须带 #start-modal 提高特异性：shaihai-theme.css 的 .mode-btn:hover:not(:disabled)（!important 同级、后加载）会覆盖无 ID 前缀的 hover 背景 */
-#start-modal .battle-submenu .mode-btn-sub:hover,
-#start-modal .battle-submenu .mode-btn-sub.active {
-    background: rgba(251, 191, 36, 0.24) !important;
-    border-color: rgba(251, 191, 36, 0.5) !important;
-    color: #fff7dc !important;
-    box-shadow: 0 0 24px rgba(251, 191, 36, 0.4) !important;
-}
-
-/* 竞速模式子菜单（标准竞速 / 竞速试炼场） */
-.race-submenu {
-    display: grid;
-    grid-template-columns: 1fr 1fr 1fr !important;
-    align-items: stretch;
-    width: 100% !important;
-    box-sizing: border-box !important;
-    gap: 6px;
-    margin-top: 4px;
-    padding: 6px;
-    background: rgba(0, 0, 0, 0.3);
-    border-radius: 12px;
-    border: 1px solid rgba(34, 211, 238, 0.2);
-}
-#start-modal .race-submenu .mode-btn-sub,
-.race-submenu .mode-btn-sub {
-    width: 100% !important;
-    min-width: 0 !important;
-    box-sizing: border-box !important;
-    padding: 12px 10px !important;
-    font-size: 14px !important;
-    border-radius: 8px !important;
-    border: 1px solid rgba(255,255,255,0.08);
-    background: rgba(255,255,255,0.04);
-    color: #cbd5e1;
-    cursor: pointer;
-    transition: all 0.2s;
-    text-align: center;
-    white-space: nowrap;
-    display: flex !important;
-    align-items: center;
-    justify-content: center;
-}
-#start-modal .race-submenu .mode-btn-sub:hover,
-#start-modal .race-submenu .mode-btn-sub.active {
-    background: rgba(34, 211, 238, 0.24) !important;
-    border-color: rgba(34, 211, 238, 0.5) !important;
-    color: #d6fbff !important;
-    box-shadow: 0 0 24px rgba(34, 211, 238, 0.4) !important;
-}
-
-/* 闯关模式子菜单（经典闯关 / 关卡编辑器） */
-.campaign-submenu {
-    display: grid;
-    grid-template-columns: 1fr 1fr !important;
-    align-items: stretch;
-    width: 100% !important;
-    box-sizing: border-box !important;
-    gap: 6px;
-    margin-top: 4px;
-    padding: 6px;
-    background: rgba(0, 0, 0, 0.3);
-    border-radius: 12px;
-    border: 1px solid rgba(59, 130, 246, 0.2);
-}
-#start-modal .campaign-submenu .mode-btn-sub,
-.campaign-submenu .mode-btn-sub {
-    width: 100% !important;
-    min-width: 0 !important;
-    box-sizing: border-box !important;
-    padding: 12px 10px !important;
-    font-size: 14px !important;
-    border-radius: 8px !important;
-    border: 1px solid rgba(255,255,255,0.08);
-    background: rgba(255,255,255,0.04);
-    color: #cbd5e1;
-    cursor: pointer;
-    transition: background 0.2s, border-color 0.2s, color 0.2s;
+/* 子模式选择弹窗：点击主界面模式按钮后弹出，从中选择具体子模式 */
+.mode-submenu-content { max-width: 380px; }
+.mode-submenu-list {
     display: flex;
-    align-items: center;
-    justify-content: center;
+    flex-direction: column;
+    gap: 10px;
 }
-/* 必须带 #start-modal 提高特异性：shaihai-theme.css 的 .mode-btn:hover:not(:disabled)（!important 同级、后加载）会覆盖无 ID 前缀的 hover 背景 */
-#start-modal .campaign-submenu .mode-btn-sub:hover,
-#start-modal .campaign-submenu .mode-btn-sub.active {
-    background: rgba(59, 130, 246, 0.24) !important;
-    border-color: rgba(59, 130, 246, 0.5) !important;
-    color: #dbeafe !important;
+.mode-submenu-btn {
+    flex: none !important;
+    width: 100% !important;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    padding: 12px 14px !important;
+    border-radius: 12px !important;
+    border: 1px solid rgba(255,255,255,0.1) !important;
+    background: rgba(255,255,255,0.05) !important;
+    color: #e5e7eb !important;
+    text-align: left;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.mode-submenu-label {
+    font-size: 15px;
+    font-weight: bold;
+}
+.mode-submenu-hint {
+    font-size: 12px;
+    color: #94a3b8;
+}
+#mode-submenu-modal .mode-submenu-btn:hover {
+    background: rgba(59, 130, 246, 0.16) !important;
+    border-color: rgba(59, 130, 246, 0.45) !important;
+}
+#mode-submenu-modal .mode-submenu-btn:hover .mode-submenu-hint {
+    color: #b7c9e6;
 }
 
 /* P2P 联机房间模态框 */
@@ -3312,6 +3189,18 @@ body::before {
     border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+/* 开始界面 公告/版本 信息弹窗 */
+.start-info-modal-content {
+    max-width: 520px;
+    width: 92%;
+    max-height: 80vh;
+    overflow-y: auto;
+}
+.start-info-modal-content h2 {
+    text-align: center;
+    margin-bottom: 14px;
+}
+
 /* 游戏报告样式 */
 .report-modal-content {
     max-width: 900px;
@@ -3639,7 +3528,11 @@ body::before {
 
 /* ── 桌面/平板布局：整块隐藏控制面板（普通与测试模式一致），
       坐标系面板撑满全部空间、画布居中 ── */
-@media (min-width: 768px) {
+/* ── 平板/桌面竖屏：main-container 改为 column（避免横屏误触发） ──
+   修复测试模式全屏（1280×720 landscape）下 main-container 错误变 column 导致函数面板跑到 Canvas 上方：
+   原条件 @media (min-width: 768px) 无 orientation 限制，桌面横屏 ≥1024 也命中 → column，覆盖基础 row。
+   加上 orientation: portrait 后仅竖屏生效，横屏走基础 row（测试模式函数面板靠左 260px）。 */
+@media (min-width: 768px) and (orientation: portrait) {
     .main-container {
         flex-direction: column !important;
     }
@@ -3800,15 +3693,12 @@ body::before {
        按钮以主页面为定位基准（position:relative），随入场动画与标题同步移动，不再跳变 */
     #start-modal .main-page {
         position: relative;
-        padding-top: 62px;
+        padding-top: 8px;
     }
-    /* 返回按钮：胶囊状，位于标题图片正上方居中，与标题位置联动：
-       top = 标题顶部相对主页面(48px) - 按钮高(32px) - 间隙(10px) = 6px
-       left = 左列中心(84.5px) - 按钮半宽(26px) = 58px
-       选择器提高特异性（多 .main-page），避免被文件后部的基础规则覆盖 */
+    /* 返回按钮：固定左上角（主标题与左侧选择栏已移除） */
     #start-modal .main-page .main-back-btn {
-        top: 6px;
-        left: 58px;
+        top: 8px;
+        left: 8px;
     }
 
     .start-settings-layout {
@@ -3834,20 +3724,9 @@ body::before {
     }
 
     #start-modal .mode-btn {
-        font-size: 24px;
-        padding: 16px 14px;
-        border-radius: 22px;
-    }
-
-    /* 竖屏：所有子模式按钮字体调小 */
-    .battle-submenu .mode-btn-sub,
-    .race-submenu .mode-btn-sub,
-    .campaign-submenu .mode-btn-sub,
-    #start-modal .battle-submenu .mode-btn-sub,
-    #start-modal .race-submenu .mode-btn-sub,
-    #start-modal .campaign-submenu .mode-btn-sub {
-        font-size: 12px !important;
-        padding: 10px 8px !important;
+        font-size: 26px;
+        padding: 20px 16px;
+        border-radius: 26px;
     }
 
     #start-modal .start-selectors-left .stepper-value {
@@ -3963,6 +3842,9 @@ body::before {
         right: 62px;
     }
     .canvas-fab-btn.emoji-fab {
+        right: 110px;
+    }
+    .canvas-fab-btn.unlock-fab {
         right: 110px;
     }
 
@@ -4166,9 +4048,9 @@ body::before {
     }
     
     #start-modal .mode-btn {
-        font-size: 20px;
-        padding: 14px 12px;
-        border-radius: 18px;
+        font-size: 22px;
+        padding: 16px 14px;
+        border-radius: 20px;
     }
     
     #start-modal .start-selectors-left .stepper-value {
@@ -4711,31 +4593,94 @@ body.device-mobile {
 /* ============================================
    反三角函数解锁机制
    ============================================ */
-/* 开始界面「反三角函数」开关 */
-.inverse-trig-toggle {
-    display: flex;
+/* 开始界面「对战函数设置」按钮：复用 .btn 基础样式，仅缩小为小号按钮 */
+.function-panel-btn {
+    flex: none !important;
+    display: inline-flex;
     align-items: center;
-    gap: 8px;
-    color: #94a3b8;
-    font-size: 13px;
+    font-size: 24px;
+    padding: 12px 24px;
+    height: 64px;
+    border-radius: 999px;
     cursor: pointer;
     user-select: none;
-    padding: 6px 2px;
-    flex-shrink: 0;
+    text-transform: none;
+    letter-spacing: 0.5px;
 }
-.inverse-trig-toggle input {
-    width: 16px;
-    height: 16px;
-    accent-color: #3b82f6;
+.function-panel-btn:active { transform: scale(0.98); }
+
+/* 对战函数设置面板 */
+.function-settings-modal-content {
+    max-width: 480px;
+    width: 92%;
+    max-height: 82vh;
+    overflow-y: auto;
+}
+.function-settings-modal-content h2 {
+    text-align: center;
+    margin-bottom: 4px;
+}
+.function-settings-list {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+}
+/* 每个函数项改为按钮式（参考关卡编辑器工具按钮）：点击切换启用/禁用 */
+.function-setting-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    color: #cbd5e1;
     cursor: pointer;
+    text-align: left;
+    font-family: inherit;
+    transition: all 0.2s;
+}
+.function-setting-item:hover:not(.locked) {
+    background: rgba(59, 130, 246, 0.14);
+    border-color: rgba(59, 130, 246, 0.45);
+}
+.function-setting-item.active {
+    background: rgba(34, 197, 94, 0.14);
+    border-color: #22c55e;
+}
+.function-setting-item.active .fs-name,
+.function-setting-item.active .fs-state {
+    color: #4ade80;
+}
+.function-setting-item .fs-text {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+    flex: 1;
+}
+.function-setting-item .fs-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: #e2e8f0;
+}
+.function-setting-item .fs-desc {
+    font-size: 11px;
+    color: #94a3b8;
+}
+.function-setting-item .fs-state {
     flex-shrink: 0;
+    font-size: 12px;
+    color: #64748b;
 }
-.inverse-trig-toggle.disabled {
-    opacity: 0.5;
+.function-setting-item.locked {
+    opacity: 0.6;
     cursor: not-allowed;
+    background: rgba(255, 255, 255, 0.03);
 }
-.inverse-trig-toggle.disabled input {
-    cursor: not-allowed;
+.function-setting-item.locked .fs-state {
+    color: #f59e0b;
 }
 
 /* 反三角函数未解锁按钮：保持锁定外观但可点击（弹出解锁提示） */
@@ -6154,6 +6099,68 @@ body.float-keypad-mode #clear-btn { display: none !important; }
 }
 .start-page .start-page-btn:active { transform: scale(0.97); }
 
+/* 开始界面角落圆形图标按钮（左上：公告/版本；右上：网站/bug/土星） */
+#start-modal .start-page {
+    position: relative;
+}
+.start-page-corner {
+    position: absolute;
+    top: 18px;
+    display: flex;
+    gap: 10px;
+    z-index: 20;
+}
+.start-page-corner-tl { left: 18px; }
+.start-page-corner-tr { right: 18px; }
+.start-corner-btn {
+    position: relative;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    background: rgba(15, 23, 42, 0.55);
+    color: rgba(255, 255, 255, 0.85);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+}
+.start-corner-btn:hover {
+    transform: translateY(-1px) scale(1.06);
+    background: rgba(255, 255, 255, 0.14);
+    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.3);
+}
+.start-corner-btn:active { transform: scale(0.95); }
+/* 土星按钮左上角的 NEW 角标：红底白字、倾斜 */
+.new-badge {
+    position: absolute;
+    top: -7px;
+    left: -9px;
+    background: #ef4444;
+    color: #fff;
+    font-size: 9px;
+    font-weight: 800;
+    line-height: 1;
+    padding: 2px 5px;
+    border-radius: 6px;
+    transform: rotate(-12deg);
+    box-shadow: 0 2px 6px rgba(239, 68, 68, 0.5);
+    letter-spacing: 0.02em;
+    pointer-events: none;
+}
+
+/* 小屏/竖屏：缩小角落按钮，避免与标题重叠 */
+@media (max-width: 767px), (orientation: portrait) and (max-width: 1023px) {
+    .start-page-corner { top: 12px; gap: 8px; }
+    .start-page-corner-tl { left: 12px; }
+    .start-page-corner-tr { right: 12px; }
+    .start-corner-btn { width: 38px; height: 38px; }
+    .start-corner-btn svg { width: 17px; height: 17px; }
+    .new-badge { font-size: 8px; top: -6px; left: -8px; padding: 2px 4px; }
+}
+
 /* 主界面左上角返回按钮（回到开始界面），统一为圆形+箭头；横屏/桌面固定在左上角 */
 #start-modal .main-back-btn {
     position: absolute;
@@ -6194,6 +6201,20 @@ body.float-keypad-mode #clear-btn { display: none !important; }
         top: 8px;
         left: 8px;
         animation: none;
+    }
+}
+
+/* 竖屏（手机 / 竖屏平板 ≤1023px）：
+   1) 开始界面：标题 + 开始游戏 + 关于我们 整组下移并竖直居中（原为贴顶）
+   2) 主界面：所有非返回按钮整体下移，让出左上角返回按钮区域，避免遮挡 */
+@media (orientation: portrait) and (max-width: 1023px) {
+    #start-modal .start-page {
+        flex: 1;
+        justify-content: center;
+        padding-top: 0;
+    }
+    #start-modal .main-page {
+        padding-top: 56px;
     }
 }
 

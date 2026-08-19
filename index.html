@@ -3,11 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>函数棋2.0.0 - Function Chess</title>
+    <title>函数棋2.0.0.1 - Function Chess</title>
     <link rel="stylesheet" href="files/css/style.css">
     <link rel="stylesheet" href="files/css/shaihai-theme.css">
     <link rel="stylesheet" href="files/css/editor.css">
     <link rel="stylesheet" href="files/css/race-battle.css">
+    <link rel="stylesheet" href="files/css/lobby-watch.css">
     <link rel="stylesheet" href="files/vendor/katex/katex.min.css">
 </head>
 <body>
@@ -97,6 +98,7 @@
             </div>
             <!-- 右下角：圆形 确认(✓) / 返回(←) 按钮；左侧为 Summa 表情入口（P2P 联机对局专用） -->
             <button class="canvas-fab-btn emoji-fab" id="emoji-fab-btn" type="button" title="发送表情" style="display:none"></button>
+            <button class="canvas-fab-btn unlock-fab" id="unlock-fab-btn" type="button" title="解锁本关锁定元素" style="display:none"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.125em"><rect x="4" y="11" width="16" height="10" rx="2" ry="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0"></path></svg></button>
             <button class="canvas-fab-btn confirm-fab" id="confirm-fab-btn" type="button" title="确认"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.125em"><path d="M20 6L9 17l-5-5"/></svg></button>
             <button class="canvas-fab-btn exit-fab" id="exit-fab-btn" type="button" title="退出对局"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.125em"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg></button>
             <!-- 退出确认气泡框 -->
@@ -181,6 +183,30 @@
         <div class="modal-content">
             <!-- 开始界面（精简首页）：仅保留标题 + 开始游戏 + 关于我们 -->
             <div class="start-page" id="start-page">
+                <!-- 左上角：公告 / 版本 -->
+                <div class="start-page-corner start-page-corner-tl">
+                    <button class="start-corner-btn" id="announcement-btn" type="button" title="公告" aria-label="公告">
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l18-7v16L3 13v-2z"></path><path d="M7 13v4l4-1.5"></path></svg>
+                    </button>
+                    <button class="start-corner-btn" id="version-btn" type="button" title="版本" aria-label="版本">
+                        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4l8 16 8-16"></path><line x1="20" y1="20" x2="20" y2="20" stroke-linecap="round"></line><circle cx="20" cy="20" r="1.4" fill="currentColor" stroke="none"></circle></svg>
+                    </button>
+                </div>
+                <!-- 右上角：网站 / bug / 土星(NEW) -->
+                <div class="start-page-corner start-page-corner-tr">
+                    <button class="start-corner-btn" id="website-btn" type="button" title="访问 shaihai.cn" aria-label="网站">
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M3 12h18"></path><path d="M12 3a15 15 0 0 1 0 18 15 15 0 0 1 0-18z"></path></svg>
+                    </button>
+                    <button class="start-corner-btn" id="bug-btn" type="button" title="反馈 Bug" aria-label="Bug 反馈">
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="6" width="8" height="12" rx="4"></rect><path d="M8 8H6a2 2 0 0 0-2 2M8 14H5a2 2 0 0 0-2 2M16 8h2a2 2 0 0 1 2 2M16 14h3a2 2 0 0 1 2 2"></path><path d="M12 6V4"></path></svg>
+                    </button>
+                    <button class="start-corner-btn" id="saturn-btn" type="button" title="点灯计划" aria-label="点灯计划">
+                        <span class="new-badge">NEW</span>
+                        <svg viewBox="0 0 24 24" width="22" height="22" fill="#fbbf24" stroke="#fbbf24" stroke-width="1" aria-hidden="true">
+                            <path d="M12 2l2.4 7.6L22 12l-7.6 2.4L12 22l-2.4-7.6L2 12l7.6-2.4z"/>
+                        </svg>
+                    </button>
+                </div>
                 <img class="start-page-title" src="files/images/MainTitle.png" alt="函数棋">
                 <button class="start-page-btn" id="start-go-btn" type="button">开始游戏</button>
                 <a class="about-us-link" href="https://space.bilibili.com/3690976753223882" target="_blank" rel="noopener noreferrer">关于我们</a>
@@ -192,82 +218,30 @@
                     <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
                 </button>
                 <div class="start-settings-layout">
-                    <!-- 左侧：标题图片 + 难度/回合选择 -->
-                    <div class="start-left-column">
-                        <img class="start-modal-title-image" src="files/images/MainTitle.png" alt="函数棋">
-
-                        <div class="start-selectors-left">
-                            <div class="selector-row difficulty-select">
-                                <div class="stepper-selector" id="difficulty-stepper">
-                                    <button type="button" class="stepper-arrow" id="difficulty-prev" aria-label="上一个难度"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.125em"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg></button>
-                                    <div class="stepper-value" id="difficulty-value">简单 - 1个目标格</div>
-                                    <button type="button" class="stepper-arrow" id="difficulty-next" aria-label="下一个难度"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.125em"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg></button>
-                                </div>
-                                <small id="difficulty-hint" style="display:none; margin-top: 5px; opacity: 0.7;"></small>
-                            </div>
-
-                            <div class="selector-row round-select">
-                                <div class="stepper-selector" id="round-stepper" tabindex="0">
-                                    <button type="button" class="stepper-arrow" id="round-prev" aria-label="减少回合数"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.125em"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg></button>
-                                    <div class="stepper-value" id="round-value" tabindex="0">8 回合（快速对战）</div>
-                                    <button type="button" class="stepper-arrow" id="round-next" aria-label="增加回合数"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.125em"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg></button>
-                                </div>
-                            </div>
-
-                            <div class="selector-row time-limit-select">
-                                <div class="stepper-selector" id="time-limit-stepper" tabindex="0">
-                                    <button type="button" class="stepper-arrow" id="time-limit-prev" aria-label="减少时间限制"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.125em"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg></button>
-                                    <div class="stepper-value" id="time-limit-value" tabindex="0">普通棋</div>
-                                    <button type="button" class="stepper-arrow" id="time-limit-next" aria-label="增加时间限制"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.125em"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg></button>
-                                </div>
-                            </div>
-
-                            <!-- 反三角函数开关（解锁后可用，默认开启） -->
-                            <label class="inverse-trig-toggle" id="inverse-trig-toggle-wrap" title="需通关全部分数关（1/2~1/20）后解锁">
-                                <input type="checkbox" id="inverse-trig-toggle">
-                                <span>对战使用反三角函数（asin / acos / atan）</span>
-                            </label>
-                        </div>
+                    <!-- 顶部操作条：对战函数设置 / 背景音乐 / 在线排行榜 -->
+                    <div class="start-top-actions">
+                        <button class="btn btn-secondary function-panel-btn" id="function-panel-btn" type="button" title="配置对战中使用的函数">
+                            <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-0.15em; margin-right:12px;"><path d="M12 20V10M12 4v2"></path><path d="M7 14l5-4 5 4"></path><path d="M4 8h6M14 8h6"></path></svg>
+                            <span>对战函数设置</span>
+                        </button>
+                        <button class="bgm-float-btn start-bgm-btn" id="start-bgm-open-btn" type="button" aria-label="背景音乐设置" title="背景音乐设置">
+                            <img src="files/images/VolumeButton.png" alt="背景音乐设置" class="bgm-float-icon-img">
+                        </button>
+                        <button class="btn btn-secondary main-leaderboard-btn" id="leaderboard-open-btn" type="button" aria-label="在线排行榜" title="在线排行榜">
+                            <img class="leaderboard-open-icon" src="files/images/championship.png" alt="在线排行榜">
+                            <span>排行榜</span>
+                        </button>
                     </div>
 
-                    <!-- 右侧：模式按钮 + 开始按钮 -->
-                    <div class="start-right-column">
-                        <div class="start-top-actions">
-                            <button class="bgm-float-btn start-bgm-btn" id="start-bgm-open-btn" type="button" aria-label="背景音乐设置" title="背景音乐设置">
-                                <img src="files/images/VolumeButton.png" alt="背景音乐设置" class="bgm-float-icon-img">
-                            </button>
-                            <button class="bgm-float-btn" id="leaderboard-open-btn" type="button" aria-label="在线排行榜" title="在线排行榜">
-                                <img class="leaderboard-open-icon" src="files/images/championship.png" alt="在线排行榜">
-                            </button>
+                    <!-- 模式选择：根据屏幕长宽比自动 2×2（横屏）或 1×4（竖屏） -->
+                    <div class="mode-select start-modes-right">
+                        <div class="mode-toggle mode-toggle-grid" id="main-mode-toggle">
+                            <button class="mode-btn active" id="mode-battle" data-mode="battle">对战模式</button>
+                            <button class="mode-btn" id="mode-campaign" data-mode="campaign">闯关模式</button>
+                            <button class="mode-btn" id="mode-race" data-mode="race">竞速模式</button>
+                            <button class="mode-btn" id="mode-test" data-mode="test">测试模式</button>
                         </div>
-
-                        <div class="mode-select start-modes-right">
-                            <div class="mode-toggle mode-toggle-vertical">
-                                <button class="mode-btn active" id="mode-battle" data-mode="battle">对战模式</button>
-                                <!-- 对战子菜单 -->
-                                <div class="battle-submenu" id="battle-submenu" style="display:none;">
-                                    <button class="mode-btn mode-btn-sub" id="mode-local" data-mode="local">本地对战</button>
-                                    <button class="mode-btn mode-btn-sub" id="mode-ai" data-mode="ai">人机对战</button>
-                                    <button class="mode-btn mode-btn-sub" id="mode-p2p" data-mode="p2p">联机对战</button>
-                                </div>
-                                <button class="mode-btn" id="mode-campaign" data-mode="campaign">闯关模式</button>
-                                <!-- 闯关子菜单：经典闯关 / 关卡编辑器 -->
-                                <div class="campaign-submenu" id="campaign-submenu" style="display:none;">
-                                    <button class="mode-btn mode-btn-sub" id="mode-campaign-classic" data-mode="campaign">经典闯关</button>
-                                    <button class="mode-btn mode-btn-sub" id="mode-editor" data-mode="editor">关卡编辑器</button>
-                                </div>
-                                <button class="mode-btn" id="mode-race" data-mode="race">竞速模式</button>
-                                <!-- 竞速子菜单：标准竞速 / 竞速试炼场 / 联机竞速 -->
-                                <div class="race-submenu" id="race-submenu" style="display:none;">
-                                    <button class="mode-btn mode-btn-sub" id="mode-race-standard" data-mode="race">标准竞速</button>
-                                    <button class="mode-btn mode-btn-sub" id="mode-race-custom" data-mode="race">竞速试炼场</button>
-                                    <button class="mode-btn mode-btn-sub" id="mode-race-battle" data-mode="race">联机竞速</button>
-                                </div>
-                                <button class="mode-btn" id="mode-test" data-mode="test">测试模式</button>
-                            </div>
-                            <small id="mode-hint" style="display: block; margin-top: 5px; opacity: 0.7;">选择对战模式</small>
-                        </div>
-
+                        <small id="mode-hint" style="display: block; margin-top: 5px; opacity: 0.7;">选择对战模式</small>
                     </div>
                 </div>
 
@@ -306,9 +280,6 @@
                     <div></div>
                 </div>
                 <div id="race-level-grid" class="campaign-level-grid"></div>
-                <div style="display:flex; align-items:center; gap:10px; flex:1; min-width: 260px; margin-top: 10px;">
-                    <div id="race-star-progress" class="campaign-star-progress"></div>
-                </div>
                 <small id="race-level-progress" style="display:block; text-align:left; margin-top:4px; opacity:0.75;"></small>
                 <div id="race-ttsigma-display" class="campaign-lrsigma-display" style="margin-top:4px;"></div>
             </div>
@@ -333,8 +304,9 @@
                 <div id="race-victory-best" class="race-victory-best"></div>
             </div>
             <div class="race-victory-actions">
-                <button class="btn-back-circle race-victory-left-btn" id="race-victory-level-select-btn" type="button" title="返回等级选择" aria-label="返回等级选择">
-                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+                <button class="btn btn-secondary race-victory-left-btn" id="race-victory-level-select-btn" type="button">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-0.125em; margin-right:6px;"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+                    返回等级选择
                 </button>
                 <button class="btn btn-secondary race-victory-mid-btn" id="race-victory-retry-btn">再次尝试</button>
                 <button class="btn btn-primary race-victory-right-btn" id="race-victory-next-btn">进入下一等级</button>
@@ -440,7 +412,6 @@
                 <!-- 进度行 -->
                 <div style="display:flex; gap:10px; align-items:center; flex-wrap: wrap; margin-top: 6px;">
                     <div style="display:flex; align-items:center; gap:10px; flex:1; min-width: 260px;">
-                        <div id="campaign-star-progress" class="campaign-star-progress"></div>
                         <small id="campaign-global-progress" style="opacity:0.75;"></small>
                     </div>
                 </div>
@@ -504,6 +475,25 @@
         </div>
     </div>
 
+    <!-- 对战函数启用设置面板：可启停需要解锁的函数（反三角 / sgn / floor） -->
+    <div class="modal" id="function-settings-modal" style="display:none;">
+        <div class="modal-content function-settings-modal-content">
+            <h2>对战函数设置</h2>
+            <p style="color:#94a3b8; font-size:13px; margin-top:-4px; margin-bottom:14px;">点击按钮启停对战中可使用的函数（未解锁时不可启用）</p>
+            <div class="function-settings-list" id="function-settings-list"></div>
+            <button class="btn btn-primary" id="function-settings-close" style="width:100%; margin-top:16px;">完成</button>
+        </div>
+    </div>
+
+    <!-- 模式子模式选择弹窗：点击主界面模式按钮后弹出，从中选择具体子模式 -->
+    <div class="modal" id="mode-submenu-modal" style="display:none;">
+        <div class="modal-content mode-submenu-content">
+            <h2 id="mode-submenu-title">选择模式</h2>
+            <div class="mode-submenu-list" id="mode-submenu-list"></div>
+            <button class="btn btn-secondary" id="mode-submenu-close" style="width:100%; margin-top:16px;">返回</button>
+        </div>
+    </div>
+
     <!-- 游戏结束模态框 -->
     <div class="modal" id="game-over-modal" style="display: none;">
         <div class="modal-content">
@@ -543,6 +533,16 @@
             <h2>游戏报告</h2>
             <div id="report-content"></div>
             <button class="btn btn-secondary" id="close-report-btn" style="width: 100%; margin-top: 20px;">关闭</button>
+        </div>
+    </div>
+
+    <!-- 开始界面 公告/版本 信息模态框 -->
+    <div class="modal" id="start-info-modal" style="display: none;">
+        <div class="modal-content start-info-modal-content">
+            <h2 id="start-info-title">公告</h2>
+            <div id="start-info-content" style="line-height: 1.7; color: #dbe3ee; white-space: pre-wrap;"></div>
+            <div id="start-info-actions" style="display: flex; flex-direction: column; gap: 10px; margin-top: 16px;"></div>
+            <button class="btn btn-secondary" id="start-info-close-btn" style="width: 100%; margin-top: 16px;">关闭</button>
         </div>
     </div>
 
@@ -1261,9 +1261,9 @@
     <script>
         window.P2P_SIGNALING = {
             host: 'p2p.shaihai.cn',
-            port: 80,
+            port: 443,
             path: '/',
-            secure: false,
+            secure: true,
             debug: 0
         };
     </script>
@@ -1330,6 +1330,7 @@
 <script src="files/js/ui/UIEditor.js"></script>
 <script src="files/js/ui/UIFloatKeypad.js"></script>
     <script src="files/js/SummaTrainer.js"></script>
+    <script src="files/js/ui/uicore/UILobbyWatch.js"></script>
     
     <script>
         // 初始化游戏
@@ -1380,9 +1381,10 @@
             window.gameController = gameController;
             window.uiController = uiController;
 
-            // ── 对战模式子菜单绑定 ──
-            uiController._battleSubmenu = document.getElementById('battle-submenu');
-            uiController._currentBattleSubMode = 'local';
+            // ── 全局匹配大厅速览浮窗：常驻探针（任意界面可见，可拖动/折叠/隐藏）──
+            if (typeof uiController._initLobbyWatch === 'function') {
+                uiController._initLobbyWatch();
+            }
 
             // ── 启动界面：点击 / ESC / 回车 / 空格 均可进入主界面 ──
             const splash = document.getElementById('splash-screen');
