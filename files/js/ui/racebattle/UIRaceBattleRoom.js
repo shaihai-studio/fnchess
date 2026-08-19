@@ -505,7 +505,8 @@ UIController.prototype.raceBattleStart = function() {
         levels: levels,
         startLevel: this._rbDifficulty,
         seeds: this._raceBattleBuildSeeds(this._rbDifficulty, levels),
-        goAt: Date.now() + 4500   // 统一起跑时间戳：3s 倒计时 + 0.5s 缓冲
+        goAt: Date.now() + 4500,   // 统一起跑时间戳：3s 倒计时 + 0.5s 缓冲
+        countdownMs: 4500,         // 倒计时时长：访客端据此校准本机时钟偏差，保证全员倒计时一致
     };
     this._rbGameParams = params;
     this._rbRoom.send(params, true);

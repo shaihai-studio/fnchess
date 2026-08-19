@@ -24,8 +24,6 @@ if (typeof UIController === 'undefined') {
         // 打开开始界面时刷新「对战函数设置」按钮（解锁进度可能已变化）
         if (el === this.startModal && typeof this.refreshFunctionPanelBtn === 'function') {
             this.refreshFunctionPanelBtn();
-            // 同步简单难度下反三角隐藏的黄字提示
-            if (typeof this.refreshInverseTrigHint === 'function') this.refreshInverseTrigHint();
         }
 
         const state = this._getModalState(el);

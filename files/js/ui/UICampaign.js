@@ -1152,31 +1152,6 @@ if (typeof UIController === 'undefined') {
 
 // ─── 对战函数启用设置 ─────────────────────────────────────────
 
-// refreshInverseTrigHint — 已解锁反三角但当前难度为"简单"时，对战函数面板中反三角按钮会被隐藏
-// （isInverseTrigHideContext → isEasyMode() true → shouldHideInverseTrigElement true）。
-// 玩家看不到反三角按钮会困惑，所以在「对战函数设置」按钮下方追加一行黄字提示。
-    UIController.prototype.refreshInverseTrigHint = function() {
-        const unlocked = this.isInverseTrigUnlocked();
-        const _diffVal = (this.difficultySelect && this.difficultySelect.value)
-            || (this.difficultyOptions && this.difficultyOptions[this.currentDifficultyIndex]
-                && this.difficultyOptions[this.currentDifficultyIndex].value);
-        const _isEasyNow = unlocked && _diffVal === 'easy';
-        const anchor = this.functionPanelBtn || document.getElementById('function-panel-btn');
-        let _hint = document.getElementById('inverse-trig-difficulty-hint');
-        if (_isEasyNow && anchor && anchor.parentNode) {
-            if (!_hint) {
-                _hint = document.createElement('div');
-                _hint.id = 'inverse-trig-difficulty-hint';
-                _hint.style.cssText = 'font-size:12px;color:#ffffff;text-align:left;margin-top:6px;line-height:1.4;';
-                anchor.parentNode.insertBefore(_hint, anchor.nextSibling);
-            }
-            _hint.textContent = '当前为简单难度，不显示反三角函数。请切换至普通或专家难度。';
-        } else if (_hint) {
-            _hint.remove();
-        }
-    }
-;
-
 // getFunctionEnabled — 读取某个函数是否启用（默认开启）
     UIController.prototype.getFunctionEnabled = function(name) {
         try {

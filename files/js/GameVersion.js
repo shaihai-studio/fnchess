@@ -2,4 +2,4 @@
  * 游戏版本号（随每次发布更新）
  * 用于启动时与服务器 /version 比较，本地版本更小则提示有新版本。
  */
-window.GAME_VERSION = '2.0.0.1';
+window.GAME_VERSION = '2.0.0.2';

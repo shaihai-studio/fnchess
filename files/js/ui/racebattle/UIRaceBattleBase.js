@@ -46,6 +46,7 @@ UIController.prototype._ensureRaceBattleFields = function() {
     if (this._rbReady) return;
     this._rbReady = true;
     this._rbBusy = false; // U5: 创建/加入异步互斥标志
+    this._rbClockOffset = 0; // 访客端时钟校准偏移（房主=0，仅开局时按 goAt 估算一次）
 
     this.raceBattleModal = document.getElementById('race-battle-modal');
     this.raceBattleRankTag = document.getElementById('race-battle-rank-tag');

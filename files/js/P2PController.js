@@ -177,6 +177,8 @@ class P2PController {
         this._disconnectHandled = false;
 
         this.iceServers = [
+            // IP 直连 STUN（coturn 服务器同时提供 STUN 服务，绕开公共 STUN 域名 DNS 解析失败）
+            { urls: 'stun:124.222.7.170:3478' },
             { urls: 'stun:stun.cloudflare.com:3478' },
             { urls: 'stun:stun.qq.com:3478' },
             { urls: 'stun:stun.miwifi.com:3478' },
@@ -186,7 +188,7 @@ class P2PController {
                     'turn:124.222.7.170:3478?transport=tcp'
                 ],
                 username: 'turnuser',
-                credential: 'shaihaisthebest'
+                credential: 'shaihaiisthebest'
             }
         ];
         this._codeChars = '0123456789';
@@ -392,7 +394,7 @@ class P2PController {
         this.conn = conn;
         // DataChannel 打开超时：15 秒内未 open 则视为失败。
         // 对称 NAT / 企业防火墙下 WebRTC 打洞失败是常见原因，给出明确提示。
-        this._startTimeout('连接超时：双方可能无法穿透 NAT（对称型网络/防火墙限制），请检查网络或更换网络环境后重试', 15000);
+        this._startTimeout('连接超时：请检查网络或更换网络环境（切换到无线局域网，关闭VPN）后重试。', 15000);
         conn.on('open', () => {
             this._clearTimeout();
             this.isConnected = true;

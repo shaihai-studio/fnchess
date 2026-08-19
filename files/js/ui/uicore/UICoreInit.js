@@ -59,8 +59,6 @@ if (typeof UIController === 'undefined') {
             });
         }
         this.refreshFunctionPanelBtn();
-        // 同步简单难度下反三角隐藏的黄字提示
-        if (typeof this.refreshInverseTrigHint === 'function') this.refreshInverseTrigHint();
         
         // 退出气泡框元素
         this.exitPopover = document.getElementById('exit-confirm-popover');
@@ -348,8 +346,6 @@ if (typeof UIController === 'undefined') {
         this.syncStartSelectionState();
         // 难度切换后刷新对战函数设置按钮（简单难度会隐藏部分函数，需即时更新）
         if (typeof this.refreshFunctionPanelBtn === 'function') this.refreshFunctionPanelBtn();
-        // 难度切换后同步反三角隐藏的黄字提示
-        if (typeof this.refreshInverseTrigHint === 'function') this.refreshInverseTrigHint();
     }
 ;
 

@@ -16,7 +16,20 @@ UIController.prototype.raceBattleStartMatch = function(params) {
     // 同步对局开始标志到房间控制器：匹配大厅阶段成员退出直接踢出、对局中才进入重连宽限
     if (this._rbRoom) this._rbRoom.matchStarted = true;
     this._rbGameParams = params;
-    this._rbGoAt = params.goAt || (Date.now() + 4500);
+    // 访客端时钟校准：goAt 是房主机器的绝对时间戳，直接与本机 Date.now() 相减会受两端
+    // 时钟偏差影响（移动端设备时钟常偏慢，导致倒计时显示成 10s 等异常长值）。
+    // 以「房主发送时刻 = goAt - countdownMs」为基准估算本地偏移，把 goAt 换算为本机时钟
+    // 等价时刻：倒计时恒为 countdownMs（5s 起），且各端 GO 起跑时刻基本一致。
+    let goAt = params.goAt || (Date.now() + 4500);
+    const countdownMs = params.countdownMs || 4500;
+    if (this._rbIsHost) {
+        this._rbClockOffset = 0;
+    } else {
+        const hostSentAt = goAt - countdownMs;
+        this._rbClockOffset = (hostSentAt > 0) ? (hostSentAt - Date.now()) : 0;
+        if (this._rbClockOffset) goAt -= this._rbClockOffset;
+    }
+    this._rbGoAt = goAt;
     this.raceBattleRenderMembers();
     this.raceBattleShowPanel(this.raceBattleRoomCode.textContent);
     // 新对局重置"退出结算/继续观战"选择条
