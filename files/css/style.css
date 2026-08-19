@@ -3639,7 +3639,11 @@ body::before {
 
 /* ── 桌面/平板布局：整块隐藏控制面板（普通与测试模式一致），
       坐标系面板撑满全部空间、画布居中 ── */
-@media (min-width: 768px) {
+/* ── 平板/桌面竖屏：main-container 改为 column（避免横屏误触发） ──
+   修复测试模式全屏（1280×720 landscape）下 main-container 错误变 column 导致函数面板跑到 Canvas 上方：
+   原条件 @media (min-width: 768px) 无 orientation 限制，桌面横屏 ≥1024 也命中 → column，覆盖基础 row。
+   加上 orientation: portrait 后仅竖屏生效，横屏走基础 row（测试模式函数面板靠左 260px）。 */
+@media (min-width: 768px) and (orientation: portrait) {
     .main-container {
         flex-direction: column !important;
     }

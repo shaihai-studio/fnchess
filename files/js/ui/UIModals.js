@@ -74,6 +74,14 @@ if (typeof UIController === 'undefined') {
             this._setModalState(el, 'visible');
         };
         el.addEventListener('animationend', onEnterEnd);
+        // 保险：若入场动画未正常触发（如 #start-modal/#campaign-modal 的 animation:none !important），
+        // 400ms 后强制完成入场——否则该弹窗会永久卡在 entering 状态，后续对它的 showModal
+        // 会被防重入守卫直接拦截，表现为「竞速/闯关打完回主菜单后排行榜弹窗打不开」。
+        setTimeout(() => {
+            if (this._getModalState(el) === 'entering') {
+                onEnterEnd();
+            }
+        }, 400);
     }
 ;
 

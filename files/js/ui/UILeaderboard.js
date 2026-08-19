@@ -134,6 +134,16 @@ if (typeof UIController === 'undefined') {
             if (this.leaderboardNicknameInput) this.leaderboardNicknameInput.value = p.nickname;
         }
         if (this.leaderboardMyRankEl) this.leaderboardMyRankEl.textContent = '';
+        // 保险：若排行榜弹窗状态残留（entering/exiting 卡住），强制复位再打开，
+        // 避免「竞速/闯关打完回主菜单后排行榜打不开」
+        if (typeof this._getModalState === 'function') {
+            const st = this._getModalState(this.leaderboardModal);
+            if (st === 'entering' || st === 'exiting') {
+                if (this.leaderboardModal.classList) this.leaderboardModal.classList.remove('modal-entering', 'modal-exiting');
+                this.leaderboardModal.style.display = 'none';
+                if (typeof this._setModalState === 'function') this._setModalState(this.leaderboardModal, 'hidden');
+            }
+        }
         this.showModal(this.leaderboardModal);
         // 打开弹窗时同步一次底部说明，保证与当前 tab 一致
         this._updateLeaderboardTip(this._leaderboardBoard || 'lr');
