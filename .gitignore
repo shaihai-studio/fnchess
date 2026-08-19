@@ -21,11 +21,11 @@ _NODE_~
 *.backup*
 
 # 开发辅助文件（不再纳入版本控制）
-package-lock.json
 fc_run.js
 
 .server/
 server/
+dist/
 
 # 项目内部文档（问题清单与待解决项，不纳入版本控制）
 问题清单与待解决项.md

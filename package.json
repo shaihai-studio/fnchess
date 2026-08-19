@@ -1,0 +1,26 @@
+{
+  "name": "fnchess",
+  "version": "1.0.0",
+  "description": "【函数棋 fnchess】用函数打仗的数学策略游戏。\r 构造表达式让曲线穿过目标格，避开禁止区。表达式越短得分越高，只用一个x就能拿5分满分。",
+  "main": "main.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "node scripts/build.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chess-brain/fnchess.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/chess-brain/fnchess/issues"
+  },
+  "homepage": "https://github.com/chess-brain/fnchess#readme",
+  "devDependencies": {
+    "electron": "^43.4.0",
+    "electron-builder": "^26.15.3"
+  }
+}
