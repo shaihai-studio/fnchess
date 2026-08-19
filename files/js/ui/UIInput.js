@@ -268,6 +268,8 @@ if (typeof UIController === 'undefined') {
             'asin': 'asin',
             'acos': 'acos',
             'atan': 'atan',
+            'floor': 'floor',
+            'sgn': 'sgn',
             'abs': 'abs',
             'ln': 'ln'
         };
@@ -307,11 +309,18 @@ if (typeof UIController === 'undefined') {
             itemsDiv.className = 'element-items';
             
             for (const item of elements[cat.key]) {
-                // 反三角函数：简单难度/分数关或开关关闭时直接不显示
-                const isInverseTrig = Array.isArray(this.inverseTrigElements) && this.inverseTrigElements.includes(item.value);
-                if (isInverseTrig && this.shouldHideInverseTrigElement()) {
+                // 面板中禁用该函数 → 直接隐藏（对所有可选函数生效；运算符/数字默认启用）
+                if (typeof this.getFunctionEnabled === 'function' && !this.getFunctionEnabled(item.value)) {
                     continue;
                 }
+                // 反三角函数：简单难度/分数关或面板中关闭时直接不显示
+                const isInverseTrig = Array.isArray(this.inverseTrigElements) && this.inverseTrigElements.includes(item.value);
+                if (isInverseTrig && this.shouldHideInverseTrigElement(item.value)) {
+                    continue;
+                }
+                // sgn / floor：难度太低/模式不适用时直接隐藏
+                if (item.value === 'sgn' && typeof this.shouldHideSgnElement === 'function' && this.shouldHideSgnElement()) continue;
+                if (item.value === 'floor' && typeof this.shouldHideFloorElement === 'function' && this.shouldHideFloorElement()) continue;
 
                 const btn = document.createElement('button');
                 btn.className = 'element-btn';
@@ -328,6 +337,23 @@ if (typeof UIController === 'undefined') {
                     btn.innerHTML = `${displayValue} <span class="lock-icon"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></span>`;
                     btn.title = '需通关全部分数关解锁';
                     btn.addEventListener('click', () => this.showInverseTrigLockedDialog());
+                    itemsDiv.appendChild(btn);
+                    continue;
+                }
+                // sgn / floor：当前难度适用但未解锁时，显示锁定态并可点击弹出解锁提示
+                if (item.value === 'sgn' && typeof this.isSgnUnlocked === 'function' && !this.isSgnUnlocked()) {
+                    btn.classList.add('locked', 'inverse-trig-locked');
+                    btn.innerHTML = `${displayValue} <span class="lock-icon"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></span>`;
+                    btn.title = '需通关专家难度解锁';
+                    btn.addEventListener('click', () => this.showSgnLockedDialog());
+                    itemsDiv.appendChild(btn);
+                    continue;
+                }
+                if (item.value === 'floor' && typeof this.isFloorUnlocked === 'function' && !this.isFloorUnlocked()) {
+                    btn.classList.add('locked', 'inverse-trig-locked');
+                    btn.innerHTML = `${displayValue} <span class="lock-icon"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></span>`;
+                    btn.title = '需通关无解难度解锁';
+                    btn.addEventListener('click', () => this.showFloorLockedDialog());
                     itemsDiv.appendChild(btn);
                     continue;
                 }
@@ -418,8 +444,11 @@ if (typeof UIController === 'undefined') {
             ...elements.basicOperators.map(e => e.value),
             ...elements.operators.filter(e => e.value !== 'x' && e.value !== '(' && e.value !== ')').map(e => e.value),
             ...elements.functions
+                .filter(e => typeof this.getFunctionEnabled !== 'function' || this.getFunctionEnabled(e.value))
                 .filter(e => !(Array.isArray(this.inverseTrigElements) && this.inverseTrigElements.includes(e.value))
-                    || !this._shouldSkipInverseTrigInLockView())
+                    || !this._shouldSkipInverseTrigInLockView(e.value))
+                .filter(e => !(e.value === 'sgn' && typeof this._shouldSkipSgnInLockView === 'function' && this._shouldSkipSgnInLockView()))
+                .filter(e => !(e.value === 'floor' && typeof this._shouldSkipFloorInLockView === 'function' && this._shouldSkipFloorInLockView()))
                 .map(e => e.value)
         ];
         
@@ -618,6 +647,25 @@ if (typeof UIController === 'undefined') {
                 }
                 return;
             }
+            // sgn / floor：当前难度适用但未解锁时，始终保持锁定态（可点击弹解锁提示）
+            if (value === 'sgn' && typeof this.isSgnUnlocked === 'function' && !this.isSgnUnlocked()) {
+                btn.classList.add('locked', 'inverse-trig-locked');
+                btn.disabled = false;
+                if (!btn.querySelector('.lock-icon')) {
+                    const originalValue = lockFuncDisplayNames[value] || this.getDisplaySymbol(value);
+                    btn.innerHTML = `${originalValue} <span class="lock-icon"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></span>`;
+                }
+                return;
+            }
+            if (value === 'floor' && typeof this.isFloorUnlocked === 'function' && !this.isFloorUnlocked()) {
+                btn.classList.add('locked', 'inverse-trig-locked');
+                btn.disabled = false;
+                if (!btn.querySelector('.lock-icon')) {
+                    const originalValue = lockFuncDisplayNames[value] || this.getDisplaySymbol(value);
+                    btn.innerHTML = `${originalValue} <span class="lock-icon"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></span>`;
+                }
+                return;
+            }
 
             // 先清除所有锁定状态
             btn.classList.remove('locked');
@@ -673,7 +721,7 @@ if (typeof UIController === 'undefined') {
         }
         
         // 函数类元素自动添加括号
-        const functionElements = ['sin', 'cos', 'tan', 'asin', 'acos', 'atan', 'abs', 'ln', 'sqrt'];
+        const functionElements = ['sin', 'cos', 'tan', 'asin', 'acos', 'atan', 'floor', 'sgn', 'abs', 'ln', 'sqrt'];
         if (functionElements.includes(element)) {
             // 插入函数名和括号：[sin, (, )]
             this.expressionElements.splice(this.cursorIndex, 0, element, '(', ')');
@@ -1181,7 +1229,7 @@ if (typeof UIController === 'undefined') {
         if (!expression) return 0;
         const cleanExpr = expression.replace(/\s+/g, '').replace(/[()（）]/g, '');
         let length = 0;
-        const tokenRegex = /(sin|cos|tan|asin|acos|atan|abs|exp|ln|log|sqrt|factorial)|(\d+(?:\.\d+)?)|(PI|π|e|i)|([+\-*/^!])|(x)/gi;
+        const tokenRegex = /(sin|cos|tan|asin|acos|atan|floor|sgn|abs|exp|ln|log|sqrt|factorial)|(\d+(?:\.\d+)?)|(PI|π|e|i)|([+\-*/^!])|(x)/gi;
         let match;
         while ((match = tokenRegex.exec(cleanExpr)) !== null) {
             length++;

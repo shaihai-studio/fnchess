@@ -69,7 +69,8 @@ function fnNoticeEscHtml(s) {
 ;
 
 // checkNotice — 拉取服务器通知，编号与本地缓存不同则弹窗并缓存新编号
-    UIController.prototype.checkNotice = function() {
+// force=true 时忽略缓存，总是弹出服务器当前公告（用于「公告」按钮）
+    UIController.prototype.checkNotice = function(force) {
         const self = this;
         let url;
         try { url = this._getNoticeUrl(); } catch (e) { return; }
@@ -79,8 +80,8 @@ function fnNoticeEscHtml(s) {
             const noticeId = String(notice.id);
             let cachedId = null;
             try { cachedId = localStorage.getItem(NOTICE_CACHE_KEY); } catch (e) { /* 忽略 */ }
-            // 编号相同 → 已看过，不重复弹出
-            if (cachedId === noticeId) return;
+            // 编号相同 → 已看过；仅非强制模式下不重复弹出
+            if (!force && cachedId === noticeId) return;
             // 缓存新编号（打开即缓存，避免每次启动重复弹）
             try { localStorage.setItem(NOTICE_CACHE_KEY, noticeId); } catch (e) { /* 忽略 */ }
 
@@ -110,7 +111,8 @@ function fnNoticeEscHtml(s) {
 ;
 
 // checkVersion — 拉取服务器版本，本地版本更小则每次启动都弹「发现新版本」提示
-    UIController.prototype.checkVersion = function() {
+// force=true 时总是弹出：显示服务器最新版本与本地版本，无新版本时提示已是最新
+    UIController.prototype.checkVersion = function(force) {
         const local = (typeof window !== 'undefined' && window.GAME_VERSION) ? String(window.GAME_VERSION) : '';
         if (!local) return;
         let url;
@@ -124,22 +126,30 @@ function fnNoticeEscHtml(s) {
             .then((data) => {
                 const remote = (data && data.version) ? String(data.version) : '';
                 if (!remote) return;
-                // 本地版本 < 服务器版本 → 提示有新版本（不缓存，每次启动都提示）
-                if (this._compareVersion(local, remote) >= 0) return;
+                // 本地版本 < 服务器版本 → 有新版本
+                const needTip = this._compareVersion(local, remote) < 0;
+                // 非强制模式且无新版本 → 不提示
+                if (!force && !needTip) return;
 
                 const titleEl = document.getElementById('version-title');
                 const contentEl = document.getElementById('version-content');
-                if (titleEl) titleEl.textContent = '发现新版本';
+                if (titleEl) titleEl.textContent = needTip ? '发现新版本' : '当前已是最新版本';
                 if (contentEl) {
                     const escLocal = fnNoticeEscHtml(local);
                     const escRemote = fnNoticeEscHtml(remote);
                     const linkStyle = 'color:#4ea1ff;word-break:break-all;text-decoration:underline;';
-                    contentEl.innerHTML =
+                    let html =
                         `当前版本：${escLocal}<br>` +
-                        `最新版本：${escRemote}<br><br>` +
-                        `新版本已发布，请访问以下链接了解详情：<br>` +
-                        `<a href="https://space.bilibili.com/3690976753223882" target="_blank" rel="noopener noreferrer" style="${linkStyle}">https://space.bilibili.com/3690976753223882</a><br>` +
-                        `<a href="https://shaihai.cn" target="_blank" rel="noopener noreferrer" style="${linkStyle}">shaihai.cn</a>`;
+                        `最新版本：${escRemote}`;
+                    if (needTip) {
+                        html +=
+                            `<br><br>新版本已发布，请访问以下链接了解详情：<br>` +
+                            `<a href="https://space.bilibili.com/3690976753223882" target="_blank" rel="noopener noreferrer" style="${linkStyle}">https://space.bilibili.com/3690976753223882</a><br>` +
+                            `<a href="https://shaihai.cn" target="_blank" rel="noopener noreferrer" style="${linkStyle}">shaihai.cn</a>`;
+                    } else {
+                        html += `<br><br>你正在使用最新版本。`;
+                    }
+                    contentEl.innerHTML = html;
                 }
                 const modal = document.getElementById('version-modal');
                 if (modal) {

@@ -1,0 +1,205 @@
+/* ============================================================
+   lobby-watch.css —— 全局匹配大厅速览浮窗（常驻探针）
+   显示联机对战 / 竞速对战的 4 类匹配大厅是否有「等待中」的房间，
+   支持隐藏 / 拖动（按住标题栏），默认展开于左下角。
+   ============================================================ */
+
+/* ── 主浮窗 ─────────────────────────────── */
+.lobby-watch {
+    position: fixed;
+    left: 16px;
+    bottom: 16px;
+    z-index: 11500; /* 高于 showModal 动态层级(10000+栈深)与房间状态条(11000) */
+    width: 244px;
+    background: linear-gradient(180deg, rgba(9, 14, 28, 0.96), rgba(15, 23, 42, 0.93));
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 12px;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
+    color: #e2e8f0;
+    font-family: inherit;
+    user-select: none;
+    -webkit-user-select: none;
+    overflow: hidden;
+    transition: border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+/* 有等待中的房间：整体高亮 + 呼吸闪烁（醒目提醒） */
+.lobby-watch.has-rooms {
+    border-color: rgba(245, 158, 11, 0.9);
+    animation: lwBreath 1.6s ease-in-out infinite;
+}
+
+@keyframes lwBreath {
+    0%, 100% { box-shadow: 0 0 10px rgba(245, 158, 11, 0.35), 0 8px 28px rgba(0, 0, 0, 0.5); }
+    50%      { box-shadow: 0 0 26px rgba(245, 158, 11, 0.85), 0 8px 28px rgba(0, 0, 0, 0.5); }
+}
+
+/* ── 标题栏（拖动把手） ──────────────────── */
+.lw-header {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 8px 10px;
+    cursor: grab;
+    background: rgba(255, 255, 255, 0.045);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.lw-header:active { cursor: grabbing; }
+
+.lw-title {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    white-space: nowrap;
+}
+
+/* 标题栏红点（有房时闪烁） */
+.lw-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: #f43f5e;
+    box-shadow: 0 0 8px rgba(244, 63, 94, 0.9);
+    display: none;
+    animation: lwBlink 1s ease-in-out infinite;
+}
+.lobby-watch.has-rooms .lw-dot { display: inline-block; }
+
+@keyframes lwBlink {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.35; }
+}
+
+/* 叉叉为 <button>，需重置浏览器默认样式 */
+.lw-btn {
+    width: 22px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    line-height: 1;
+    color: #94a3b8;
+    background: transparent;
+    border: none;
+    padding: 0;
+    font-family: inherit;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+.lw-btn:hover { background: rgba(255, 255, 255, 0.12); color: #ffffff; }
+.lw-close { margin-left: auto; }
+
+/* ── 2×2 网格 ────────────────────────────── */
+.lw-body { padding: 8px; }
+.lw-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+.lw-cell {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    padding: 8px 9px;
+    border-radius: 9px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    cursor: pointer;
+    transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease;
+}
+.lw-cell:hover {
+    background: rgba(255, 255, 255, 0.1);
+    transform: translateY(-1px);
+}
+
+.lw-cell-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: #cbd5e1;
+    white-space: nowrap;
+}
+
+/* 探针未连接（未知状态） */
+.lw-cell.lw-unknown .lw-cell-name { color: #475569; }
+
+/* 有房：格子高亮 + 数量徽标 */
+.lw-cell.has-rooms {
+    border-color: rgba(239, 68, 68, 0.85);
+    background: rgba(239, 68, 68, 0.13);
+}
+.lw-cell.has-rooms .lw-cell-name { color: #ffffff; }
+
+.lw-badge {
+    display: none;
+    min-width: 19px;
+    height: 19px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: #ef4444;
+    color: #ffffff;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 19px;
+    text-align: center;
+    box-shadow: 0 0 8px rgba(239, 68, 68, 0.8);
+}
+.lw-cell.has-rooms .lw-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* ── 隐藏态：迷你胶囊按钮（参考可拖动输入栏收起按钮） ──────────
+   位置由 JS 控制：隐藏时对齐速览框左上角，可拖动，展开时速览框回到其位置 */
+.lobby-watch-mini {
+    position: fixed;
+    left: 16px;
+    top: 16px;
+    z-index: 11500;
+    display: none;
+    align-items: center;
+    gap: 7px;
+    padding: 9px 14px;
+    border-radius: 999px;
+    background: linear-gradient(180deg, rgba(9, 14, 28, 0.96), rgba(15, 23, 42, 0.93));
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+    color: #e2e8f0;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: grab;
+    touch-action: none; /* 拖动由 JS 接管（参考输入栏收起按钮） */
+    user-select: none;
+    -webkit-user-select: none;
+    transition: transform 0.15s ease, border-color 0.25s ease;
+}
+.lobby-watch-mini:hover { transform: translateY(-1px); }
+.lobby-watch-mini:active { cursor: grabbing; }
+.lobby-watch-mini.has-rooms {
+    border-color: rgba(245, 158, 11, 0.9);
+    animation: lwBreath 1.6s ease-in-out infinite;
+}
+
+.lw-mini-badge {
+    display: none;
+    min-width: 19px;
+    height: 19px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: #ef4444;
+    color: #ffffff;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 19px;
+    text-align: center;
+}
+.lobby-watch-mini.has-rooms .lw-mini-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}

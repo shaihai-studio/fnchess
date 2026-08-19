@@ -28,7 +28,12 @@
                 }
             }
         }
-        return sum;
+        // 解锁通关惩罚：每关通过"解锁"通关（未保存最佳、LRΣ 不计该关）再额外扣 10 分；
+        // 后续正常通关该关时会移除对应记录，扣分自动恢复。
+        if (typeof this.getCampaignUnlockedPlaySet === 'function') {
+            sum -= this.getCampaignUnlockedPlaySet().length * 10;
+        }
+        return Math.max(0, sum);
     }
 ;
 

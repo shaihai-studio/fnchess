@@ -45,6 +45,15 @@
                 this.showRaceBattleUI(data);
                 this.showMessage(`竞速模式：第 ${data.currentRound} 关开始`);
             } else {
+                // 新一局本地/人机/联机对战：坐标系范围复位到默认 ±5（gridSize=10）。
+                // 上一局若打了很多回合，updateRange 会把 range 逐步扩大到 ±10，
+                // 若不在此复位，新一局会沿用上一局末的坐标系大小，影响布局与目标格密度。
+                // （闯关/竞速有各自的固定范围 setCampaignFixedRange/setRaceFixedRange，不走这里）
+                if (this.gridSystem) {
+                    this.gridSystem.range = 5;
+                    this.gridSystem.gridSize = 10;
+                    if (typeof this.gridSystem.resize === 'function') this.gridSystem.resize();
+                }
                 this.restoreBattleUI();
                 const state = this.gameController.getGameState();
                 let starterLabel = '玩家B';
@@ -298,45 +307,73 @@
             if (!this.campaignIsCustom) {
             let isNewRecord = false;
             let previousBest = this.getCampaignLevelBestRecord(levelId);
+            // 解锁通关：本关通过解锁按钮忽略了锁定元素（标记持续到通关/换关/退出，见 campaignLevelLoaded）
+            const unlockPlay = !!this._campaignUnlockUsed;
             if (data.pass) {
                 const length = this.getCurrentExpressionLength();
-                if (previousBest === null || length < previousBest) {
-                    isNewRecord = true;
+                if (unlockPlay) {
+                    // 解锁通关：不保存最佳纪录、不加星、不上榜、无彗星，LRΣ 扣 10 分。
+                    // 记录该关，供 calculateLRSigma 扣分，并支持后续正常通关时恢复。
+                    data.expressionLength = length;
+                    data.isNewRecord = false;
+                    data.unlockedPlay = true;
+                    this.addCampaignUnlockedPlay(levelId);
+                    // 分数关：仍推进进度（下一分数关解锁），但不弹反三角全通解锁提示
+                    if (isFraction) {
+                        const denom = parseInt(String(rawLevelId).split('/')[1]) || 2;
+                        const before = (typeof this.getCampaignFractionClearedMax === 'function')
+                            ? this.getCampaignFractionClearedMax() : 0;
+                        if (typeof this.setCampaignFractionClearedMax === 'function') {
+                            this.setCampaignFractionClearedMax(Math.max(before, Number(denom) || 2));
+                        }
+                    }
                     this.campaignCurrentLevelBestRecord = previousBest;
+                    this.updateCampaignGlobalProgressText(this.getCampaignCollectedStars());
                 } else {
-                    this.campaignCurrentLevelBestRecord = previousBest;
-                }
-                data.expressionLength = length;
-                data.isNewRecord = isNewRecord;
-                data.previousBest = previousBest;
-                if (isNewRecord) {
-                    const gainedStars = Math.max(1, Math.min(5, Number(data.score) || 1));
-                    const previousStars = this.getCampaignLevelBestStars(levelId);
-                    if (gainedStars > previousStars) {
-                        const currentStars = this.getCampaignCollectedStars();
-                        this.setCampaignCollectedStars(currentStars + (gainedStars - previousStars));
-                        this.setCampaignLevelBestStars(levelId, gainedStars);
+                    // 正常通关（未用解锁）：若该关此前是通过解锁通关的，移除记录 → LRΣ 扣分恢复
+                    const unlockedSet = this.getCampaignUnlockedPlaySet();
+                    if (unlockedSet.includes(String(levelId))) {
+                        this.removeCampaignUnlockedPlay(levelId);
+                        data.unlockRestored = true;
                     }
-                    this.setCampaignLevelBestRecord(levelId, length);
-                    // 分数关：更新独立进度（首次全通时弹出解锁提示）
-                    if (isFraction) {
-                        const denom = parseInt(String(rawLevelId).split('/')[1]) || 2;
-                        if (typeof this._updateFractionClearedAndNotify === 'function') {
-                            this._updateFractionClearedAndNotify(denom);
-                        }
+                    if (previousBest === null || length < previousBest) {
+                        isNewRecord = true;
+                        this.campaignCurrentLevelBestRecord = previousBest;
+                    } else {
+                        this.campaignCurrentLevelBestRecord = previousBest;
                     }
-                    setTimeout(() => {
-                        if (this.campaignCurrentLevelId === levelId || String(this.campaignCurrentLevelId) === String(levelId)) {
-                            this.campaignCurrentLevelBestRecord = length;
-                            this.updateCampaignGlobalProgressText(this.getCampaignCollectedStars());
+                    data.expressionLength = length;
+                    data.isNewRecord = isNewRecord;
+                    data.previousBest = previousBest;
+                    if (isNewRecord) {
+                        const gainedStars = Math.max(1, Math.min(5, Number(data.score) || 1));
+                        const previousStars = this.getCampaignLevelBestStars(levelId);
+                        if (gainedStars > previousStars) {
+                            const currentStars = this.getCampaignCollectedStars();
+                            this.setCampaignCollectedStars(currentStars + (gainedStars - previousStars));
+                            this.setCampaignLevelBestStars(levelId, gainedStars);
                         }
-                    }, 0);
-                } else if (data.pass && typeof previousBest === 'number' && previousBest > 0) {
-                    // 非新记录但通关了：也更新分数关进度（首次全通时弹出解锁提示）
-                    if (isFraction) {
-                        const denom = parseInt(String(rawLevelId).split('/')[1]) || 2;
-                        if (typeof this._updateFractionClearedAndNotify === 'function') {
-                            this._updateFractionClearedAndNotify(denom);
+                        this.setCampaignLevelBestRecord(levelId, length);
+                        // 分数关：更新独立进度（首次全通时弹出解锁提示）
+                        if (isFraction) {
+                            const denom = parseInt(String(rawLevelId).split('/')[1]) || 2;
+                            if (typeof this._updateFractionClearedAndNotify === 'function') {
+                                this._updateFractionClearedAndNotify(denom);
+                            }
+                        }
+                        setTimeout(() => {
+                            if (this.campaignCurrentLevelId === levelId || String(this.campaignCurrentLevelId) === String(levelId)) {
+                                this.campaignCurrentLevelBestRecord = length;
+                                this.updateCampaignGlobalProgressText(this.getCampaignCollectedStars());
+                            }
+                        }, 0);
+                    } else if (typeof previousBest === 'number' && previousBest > 0) {
+                        // 非新记录但通关了：也更新分数关进度（首次全通时弹出解锁提示）
+                        if (isFraction) {
+                            const denom = parseInt(String(rawLevelId).split('/')[1]) || 2;
+                            if (typeof this._updateFractionClearedAndNotify === 'function') {
+                                this._updateFractionClearedAndNotify(denom);
+                            }
                         }
                     }
                 }
@@ -357,6 +394,9 @@
 
         this.gameController.on('campaignLevelLoaded', (data) => {
             try {
+                // 每进入新的一关，重置"解锁通关"标记，并显示解锁按钮（闯关对局中可用）
+                this._campaignUnlockUsed = false;
+                if (this.unlockFabBtn) this.unlockFabBtn.style.display = '';
                 this.updateCampaignDrawDelayToggleVisibility();
                 // 闯关：隐藏计时器与回合数显示
                 if (this.timerElement && this.timerElement.parentElement) {

@@ -542,20 +542,6 @@ code {
     box-shadow: 0 0 20px rgba(248, 113, 113, 0.2) !important;
 }
 
-/* stars 系统保持 style.css: acc15 金色 */
-.campaign-star-bar-fill {
-    background: linear-gradient(90deg, #facc15, #fde68a, #fbbf24) !important;
-    box-shadow: 0 0 10px rgba(250, 204, 21, 0.45) !important;
-}
-.campaign-cell-stars .star.filled,
-.campaign-victory-stars .star.filled {
-    color: #facc15 !important;
-    filter: drop-shadow(0 0 3px rgba(250, 204, 21, 0.4)) !important;
-}
-.campaign-star-progress .star-count .star {
-    color: #facc15 !important;
-}
-
 /* 加回 scrollbar 微调 */
 ::-webkit-scrollbar-thumb {
     background: rgba(255, 255, 255, 0.2) !important;

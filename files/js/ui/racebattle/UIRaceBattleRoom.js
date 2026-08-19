@@ -314,8 +314,18 @@ UIController.prototype._bindRaceBattleRoomCallbacks = function(room) {
         } else {
             this._raceBattleSetStatus('error', '房间已解散');
             this.raceBattleToast(reason === 'host_exit' ? '房主已解散房间' : '房间已关闭');
+            // 房间已解散：断开连接、清空成员与就绪状态，回到"未进入房间"状态，
+            // 允许重新创建房间、调整关卡数与难度、加入其他房间
+            if (this._rbRoom) {
+                try { this._rbRoom.disconnect(); } catch (e) {}
+                this._rbRoom = null;
+            }
+            this._rbMembers = [];
+            this._rbReadyMap = {};
+            this._rbMatchStarted = false;
             this._raceBattleSwitchJoinButton('join');
-            this.raceBattleRenderMembers(); // 房间关闭：隐藏底部按钮
+            this.raceBattleRenderParams();  // 恢复耐力/难度可调
+            this.raceBattleRenderMembers(); // 清空成员列表 + 隐藏底部按钮
         }
     };
     room.onHostLost = (reason) => {

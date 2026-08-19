@@ -38,12 +38,12 @@ class P2PController {
     //   window.P2P_SIGNALING = { host: 'localhost', port: 9000, secure: false };
     // 若服务器启用了 HTTPS/TLS，需将 secure 改为 true
     static signaling = (typeof window !== 'undefined' && window.P2P_SIGNALING)
-        ? { host: 'p2p.shaihai.cn', port: 80, path: '/', secure: false, debug: 0, ...window.P2P_SIGNALING }
+        ? { host: 'p2p.shaihai.cn', port: 443, path: '/', secure: true, debug: 0, ...window.P2P_SIGNALING }
         : {
             host: 'p2p.shaihai.cn',
-            port: 80,
+            port: 443,
             path: '/',
-            secure: false,
+            secure: true,
             debug: 0
         };
 
@@ -179,7 +179,15 @@ class P2PController {
         this.iceServers = [
             { urls: 'stun:stun.cloudflare.com:3478' },
             { urls: 'stun:stun.qq.com:3478' },
-            { urls: 'stun:stun.miwifi.com:3478' }
+            { urls: 'stun:stun.miwifi.com:3478' },
+            {
+                urls: [
+                    'turn:124.222.7.170:3478?transport=udp',
+                    'turn:124.222.7.170:3478?transport=tcp'
+                ],
+                username: 'turnuser',
+                credential: 'shaihaisthebest'
+            }
         ];
         this._codeChars = '0123456789';
         this._cachedIceServers = null;  // 服务端拉取的完整 ICE 配置缓存

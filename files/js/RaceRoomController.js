@@ -58,9 +58,11 @@ class RaceRoomController {
     static ensurePeerJs() {
         return new Promise((resolve, reject) => {
             if (typeof Peer !== 'undefined') { resolve(); return; }
-            const base = (window.location.protocol === 'https:') ? 'https' : 'http';
+            const sig = RaceRoomController.signaling;
+            const base = sig.secure ? 'https' : 'http';
             const cdn = `${base}://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js`;
-            const vendor = `${base}://${RaceRoomController.signaling.host}:${RaceRoomController.signaling.port}/peerjs/peerjs.min.js`;
+            const portStr = sig.port && sig.port !== 80 && sig.port !== 443 ? ':' + sig.port : '';
+            const vendor = `${base}://${sig.host}${portStr}/peerjs/peerjs.min.js`;
             let tried = 0;
             const load = (url) => {
                 if (tried >= 3) { reject(new Error('PeerJS 加载失败')); return; }

@@ -294,14 +294,6 @@ class GameController {
         this.roundState.forbiddenCells = (level.forbiddenCells || []).map(c => ({ x: c.x, y: c.y }));
         this.roundState.lockedElements = (level.lockedElements || []).slice();
 
-        // 分数系列关卡（difficulty = 'fraction'）：强制锁定小数点，要求以分数形式（如 1/2）作答。
-        // 仅官方分数关生效；导入的自定义关卡（customPack）不受影响。
-        if (level.difficulty === 'fraction'
-            && !this.campaignState.customPack
-            && !this.roundState.lockedElements.includes('.')) {
-            this.roundState.lockedElements.push('.');
-        }
-
         // 单人闯关：让玩家A作为构造者
         this.currentPlayer = 'A';
 
@@ -617,7 +609,7 @@ class GameController {
         // 自定义关卡：未启用反三角函数时，从锁定候选池中剔除 asin/acos/atan（锁定上限随之收紧）
         const arcAvailable = !!(this.raceState && this.raceState.customConfig && this.raceState.customConfig.arcEnabled);
         const _arcSet = new Set(['asin', 'acos', 'atan']);
-        const allElements = ['+','-','*','/','^','!','sin','cos','tan','asin','acos','atan','abs','sqrt','ln','factorial','0','1','2','3','4','5','6','7','8','9','π','e','i'].filter(e => arcAvailable || !_arcSet.has(e));
+        const allElements = ['+','-','*','/','^','!','sin','cos','tan','asin','acos','atan','floor','sgn','abs','sqrt','ln','factorial','0','1','2','3','4','5','6','7','8','9','π','e','i'].filter(e => arcAvailable || !_arcSet.has(e));
         const banned = new Set(['x', '(', ')']);
         let pool = allElements.filter(el => !banned.has(el) && !lockedElements.includes(el));
 

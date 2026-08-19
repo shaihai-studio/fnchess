@@ -45,6 +45,14 @@
             return;
         }
         
+        // sgn / floor 分难度解锁拦截（防止绕过 UI 直接输入）
+        const unlockBlocked = this._checkSgnFloorUnlockBlock(expression);
+        if (unlockBlocked) {
+            this.showMessage(unlockBlocked, 'error');
+            if (window.audioManager) window.audioManager.playError();
+            return;
+        }
+        
         // 提交函数
         this.gameController.submitFunction(expression);
         
@@ -356,6 +364,10 @@
 // resetBattleGrid
     UIController.prototype.resetBattleGrid = function() {
         if (!this.gridSystem) return;
+
+        // 退出对局：隐藏闯关解锁按钮并清除解锁标记
+        if (this.unlockFabBtn) this.unlockFabBtn.style.display = 'none';
+        this._campaignUnlockUsed = false;
 
         if (typeof this.gridSystem.setCampaignFixedRange === 'function') {
             this.gridSystem.setCampaignFixedRange(false);

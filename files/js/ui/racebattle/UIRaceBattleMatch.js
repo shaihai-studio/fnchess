@@ -97,8 +97,14 @@ UIController.prototype._raceBattleHandleMessage = function(payload, fromPlayerId
                     try { this._rbRoom.disconnect(); } catch (e) {}
                     this._rbRoom = null;
                 }
+                // 房间已解散：清空成员列表与就绪状态，回到"未进入房间"状态，
+                // 允许重新创建房间、调整关卡数与难度、加入其他房间
+                this._rbMembers = [];
+                this._rbReadyMap = {};
+                this._rbMatchStarted = false;
                 this._raceBattleSwitchJoinButton('join');
-                this.raceBattleRenderMembers(); // 房间解散：隐藏底部按钮
+                this.raceBattleRenderParams();  // 恢复耐力/难度可调
+                this.raceBattleRenderMembers(); // 清空成员列表 + 隐藏底部按钮
             }
             break;
         case 'race_battle_rematch':

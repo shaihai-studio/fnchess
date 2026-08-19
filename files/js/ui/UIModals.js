@@ -21,9 +21,11 @@ if (typeof UIController === 'undefined') {
         const el = typeof modal === 'string' ? document.getElementById(modal) : modal;
         if (!el) return;
 
-        // 打开开始界面时刷新「反三角函数」开关状态（解锁进度可能已变化）
-        if (el === this.startModal && typeof this.refreshInverseTrigToggle === 'function') {
-            this.refreshInverseTrigToggle();
+        // 打开开始界面时刷新「对战函数设置」按钮（解锁进度可能已变化）
+        if (el === this.startModal && typeof this.refreshFunctionPanelBtn === 'function') {
+            this.refreshFunctionPanelBtn();
+            // 同步简单难度下反三角隐藏的黄字提示
+            if (typeof this.refreshInverseTrigHint === 'function') this.refreshInverseTrigHint();
         }
 
         const state = this._getModalState(el);
@@ -162,6 +164,8 @@ if (typeof UIController === 'undefined') {
         const main = document.getElementById('main-page');
         if (page) page.style.display = '';
         if (main) main.style.display = 'none';
+        // 开始界面不显示匹配大厅速览栏（从主界面开始才显示）
+        if (typeof this._lwSetVisible === 'function') this._lwSetVisible(false);
     }
 ;
 
@@ -171,6 +175,10 @@ if (typeof UIController === 'undefined') {
         const main = document.getElementById('main-page');
         if (page) page.style.display = 'none';
         if (main) main.style.display = '';
+        // 进入主界面后恢复显示匹配大厅速览栏
+        if (typeof this._lwSetVisible === 'function') this._lwSetVisible(true);
+        // 关闭可能残留的子模式选择弹窗
+        if (typeof this.closeModeSubmenuModal === 'function') this.closeModeSubmenuModal();
         // 进入主界面时刷新选择器显示（难度/回合等文案）
         if (typeof this.refreshStartSelectorDisplay === 'function') this.refreshStartSelectorDisplay();
     }
@@ -632,6 +640,117 @@ if (typeof UIController === 'undefined') {
     UIController.prototype.hideGameReport = function() {
         if (window.audioManager) window.audioManager.playClick();
         this.hideModal(this.reportModal);
+    }
+;
+
+// showStartInfoModal — 开始界面 公告/版本 信息弹窗
+    UIController.prototype.showStartInfoModal = function(title, content, actions) {
+        const modal = document.getElementById('start-info-modal');
+        if (!modal) return;
+        const titleEl = document.getElementById('start-info-title');
+        const contentEl = document.getElementById('start-info-content');
+        const actionsEl = document.getElementById('start-info-actions');
+        if (titleEl) titleEl.textContent = title;
+        if (contentEl) contentEl.innerHTML = content || '';
+        if (actionsEl) {
+            actionsEl.innerHTML = '';
+            (actions || []).forEach(a => {
+                if (!a || !a.href) return;
+                const btn = document.createElement('a');
+                btn.href = a.href;
+                btn.target = '_blank';
+                btn.rel = 'noopener noreferrer';
+                btn.className = 'btn btn-secondary';
+                btn.textContent = a.text;
+                btn.style.cssText = 'width:100%; text-align:center;';
+                actionsEl.appendChild(btn);
+            });
+        }
+        if (typeof this.bindModalDismiss === 'function') this.bindModalDismiss(modal);
+        this.showModal(modal);
+    }
+;
+
+// _buildAnnouncementContent — 公告内容（可配置拉取地址；失败时显示占位文案）
+    UIController.prototype._buildAnnouncementContent = function() {
+        const placeholders = [
+            '欢迎来到函数棋！',
+            '· 新增 sgn / floor 函数（闯关困难及以上、对战专家难度可用）',
+            '· 闯关支持解锁通关功能',
+            '· 修复多项已知问题',
+            '',
+            '（最新公告请前往 shaihai.cn 查看）'
+        ];
+        const text = placeholders.join('\n');
+        // 尝试从远程获取公告（可选；失败静默回退到占位文案）
+        try {
+            const annUrl = 'https://shaihai.cn/api/announcement';
+            const controller = this;
+            fetch(annUrl).then(r => {
+                if (!r.ok) throw new Error('no ann');
+                return r.text();
+            }).then(txt => {
+                const contentEl = document.getElementById('start-info-content');
+                if (contentEl && txt) contentEl.textContent = txt;
+            }).catch(() => { /* 回退占位文案 */ });
+        } catch (e) { /* 回退占位文案 */ }
+        return text.split('\n').map(line => line ? line : '&nbsp;').join('<br>');
+    }
+;
+
+// _buildVersionContent — 版本信息：当前版本 + 最新版本（可选拉取）；不一致时附前往按钮
+    UIController.prototype._buildVersionContent = function() {
+        const current = (typeof window.GAME_VERSION !== 'undefined') ? window.GAME_VERSION : '未知';
+        const base = `
+            <div style="margin-bottom:6px;"><b>当前版本</b>：<span id="ver-current" style="color:#fff;font-weight:800;">${current}</span></div>
+            <div style="margin-bottom:6px;"><b>最新版本</b>：<span id="ver-latest">检查中…</span></div>
+            <div id="ver-hint" style="color:#94a3b8;font-size:13px;margin-top:8px;">正在连接服务器检查最新版本…</div>
+        `;
+        const actions = [
+            { href: 'https://shaihai.cn', text: '进入 shaihai.cn' },
+            { href: 'https://space.bilibili.com/3690976753223882', text: '进入我们的 B 站主页' }
+        ];
+        // 异步检查最新版本（失败时显示当前版本并隐藏提示）
+        try {
+            fetch('https://shaihai.cn/api/version').then(r => {
+                if (!r.ok) throw new Error('no ver');
+                return r.json();
+            }).then(v => {
+                const latest = (v && (v.version || v.latest || v.data && v.data.version)) || null;
+                const latestEl = document.getElementById('ver-latest');
+                const hintEl = document.getElementById('ver-hint');
+                if (latestEl) latestEl.textContent = latest || current;
+                if (hintEl) {
+                    if (latest && latest !== current) {
+                        hintEl.innerHTML = '检测到新版本！可前往下方入口获取最新版本。';
+                        hintEl.style.color = '#fbbf24';
+                    } else {
+                        hintEl.innerHTML = '你已是最新版本。';
+                        hintEl.style.color = '#22c55e';
+                    }
+                }
+                // 更新按钮区：显示前往入口
+                const actionsEl = document.getElementById('start-info-actions');
+                if (actionsEl && actionsEl.childNodes.length === 0) {
+                    actions.forEach(a => {
+                        const btn = document.createElement('a');
+                        btn.href = a.href;
+                        btn.target = '_blank';
+                        btn.rel = 'noopener noreferrer';
+                        btn.className = 'btn btn-secondary';
+                        btn.textContent = a.text;
+                        btn.style.cssText = 'width:100%; text-align:center;';
+                        actionsEl.appendChild(btn);
+                    });
+                }
+            }).catch(() => {
+                const latestEl = document.getElementById('ver-latest');
+                const hintEl = document.getElementById('ver-hint');
+                if (latestEl) latestEl.textContent = current;
+                if (hintEl) { hintEl.innerHTML = '无法连接服务器，当前为本地最新版本。'; hintEl.style.color = '#94a3b8'; }
+            });
+        } catch (e) { /* 忽略 */ }
+        return base;
     }
 ;
 

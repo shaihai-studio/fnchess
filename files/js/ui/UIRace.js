@@ -814,7 +814,6 @@ UIController.prototype._raceMaxLevel = function() {
         this.raceCurrentLevelId = 0;
         this.hideModal(this.raceModal);
         this.hideModal(this.startModal);
-        if (window.audioManager) window.audioManager.playClick();
     }
 ;
 

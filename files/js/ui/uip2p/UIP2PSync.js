@@ -25,6 +25,18 @@
         const disc = document.getElementById('p2p-disconnect-modal');
         if (disc) this.hideModal(disc);
         if (typeof this._cleanupP2P === 'function') this._cleanupP2P();
+        // 速览浮窗「确认退出进入大厅」：判负弹窗点「返回主菜单」后自动打开目标大厅
+        if (this._lwPendingLobby) {
+            const target = this._lwPendingLobby;
+            this._lwPendingLobby = null;
+            if (typeof this._lwGo === 'function') {
+                // 先收拢所有残留界面回到主界面，再进入目标大厅
+                if (typeof this._lwCloseAllScreens === 'function') this._lwCloseAllScreens();
+                if (this.startModal && this.startModal.style.display === 'none') this.showModal(this.startModal);
+                this._lwGo(target);
+            }
+            return;
+        }
         this.handleRestart();
     }
 ;
