@@ -54,9 +54,9 @@ jobs:
           npm run build:web
           npx cap sync ios
 
-      # ---- 以下为签名相关步骤，仅在配置了证书 Secret 时执行 ----
+      # ---- 以下为签名相关步骤，仅 ipa / testflight 模式执行（verify 不需要签名）----
       - name: 导入签名证书
-        if: ${{ secrets.IOS_CERTIFICATE_P12 != '' }}
+        if: ${{ (inputs.mode || 'verify') != 'verify' }}
         uses: apple-actions/import-codesign-certs@v3
         with:
           p12-file-base64: ${{ secrets.IOS_CERTIFICATE_P12 }}
@@ -64,7 +64,7 @@ jobs:
           keychain-password: ${{ secrets.KEYCHAIN_PASSWORD }}
 
       - name: 安装描述文件
-        if: ${{ secrets.IOS_PROVISION_PROFILE != '' }}
+        if: ${{ (inputs.mode || 'verify') != 'verify' }}
         env:
           PROFILE_BASE64: ${{ secrets.IOS_PROVISION_PROFILE }}
         run: |
