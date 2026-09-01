@@ -3,6 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="theme-color" content="#0B1020">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="format-detection" content="telephone=no">
+    <link rel="icon" type="image/png" href="files/images/favicon.png">
+    <link rel="apple-touch-icon" href="files/images/favicon.png">
     <title>函数棋2.0.0.2 - Function Chess</title>
     <link rel="stylesheet" href="files/css/style.css">
     <link rel="stylesheet" href="files/css/shaihai-theme.css">
@@ -1453,6 +1460,8 @@
                 // ── 磁性吸附 + 光晕跟随（仅桌面，有鼠标时） ──
                 el.addEventListener('mousemove', function(e) {
                     if (this.disabled) return;
+                    // 触屏设备无悬停，跳过磁性/光晕计算（省电且避免样式粘滞）
+                    if (window.matchMedia && !window.matchMedia('(pointer: fine)').matches) return;
                     var rect = this.getBoundingClientRect();
                     // 光晕坐标（百分比）
                     var gx = ((e.clientX - rect.left) / rect.width * 100).toFixed(1);

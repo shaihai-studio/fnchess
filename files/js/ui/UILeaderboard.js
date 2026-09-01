@@ -96,11 +96,19 @@ if (typeof UIController === 'undefined') {
         if (PlayerProfile.hasProfile()) return; // 非首次进入，不再弹
         if (!this.nicknameModal || !this.nicknameInput) return;
         const self = this;
-        // 等主菜单入场动画结束后再弹出，避免抢焦点
-        setTimeout(() => {
+        // 等主菜单入场动画结束后再弹出，避免抢焦点；
+        // 若用户已快速进入对局（开始界面关闭），推迟到回到主菜单后再弹，
+        // 避免弹窗遮挡棋盘且对局计时器在弹窗期间空走扣分。
+        const tryShow = () => {
+            if (PlayerProfile.hasProfile()) return; // 等待期间已设置过昵称
+            if (self.nicknameModal && self.nicknameModal.style.display !== 'none' && self.nicknameModal.style.display !== '') return; // 已弹出
+            const startModal = document.getElementById('start-modal');
+            const inGame = startModal && startModal.style.display === 'none';
+            if (inGame) { setTimeout(tryShow, 3000); return; }
             if (self.nicknameInput) self.nicknameInput.value = PlayerProfile.getNickname();
             self.showModal(self.nicknameModal);
-        }, 900);
+        };
+        setTimeout(tryShow, 900);
     }
 ;
 

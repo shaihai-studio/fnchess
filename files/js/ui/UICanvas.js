@@ -121,15 +121,10 @@ if (typeof UIController === 'undefined') {
 
 // checkHistoryFunctionHover
     UIController.prototype.checkHistoryFunctionHover = function(event) {
-        const canvas = this.gridSystem.canvas;
-        const rect = canvas.getBoundingClientRect();
-        
-        // 考虑CSS缩放
-        const scaleX = canvas.width / rect.width;
-        const scaleY = canvas.height / rect.height;
-        
-        const mouseX = (event.clientX - rect.left) * scaleX;
-        const mouseY = (event.clientY - rect.top) * scaleY;
+        const pt = this.gridSystem.eventToCanvas(event.clientX, event.clientY);
+        if (!pt) return;
+        const mouseX = pt.x;
+        const mouseY = pt.y;
         
         // 隐藏旧的气泡框
         this.hideHistoryFunctionTooltip();
@@ -198,17 +193,10 @@ if (typeof UIController === 'undefined') {
         // 显式早返回避免误触发"已使用格子"等提示（原依赖 GC 侧 selectTargetCell/addForbiddenCell 内部拦截）。
         if (this.gameController?.isTestMode()) return;
         if (this.gameController?.gameMode === 'race' && this._raceCountdownActive) return;
-        const canvas = this.gridSystem.canvas;
-        const rect = canvas.getBoundingClientRect();
-        
-        // 考虑CSS缩放
-        const scaleX = canvas.width / rect.width;
-        const scaleY = canvas.height / rect.height;
-        
-        const x = (e.clientX - rect.left) * scaleX;
-        const y = (e.clientY - rect.top) * scaleY;
-        
-        const cell = this.gridSystem.getCellFromCanvas(x, y);
+        const pt = this.gridSystem.eventToCanvas(e.clientX, e.clientY);
+        if (!pt) return;
+
+        const cell = this.gridSystem.getCellFromCanvas(pt.x, pt.y);
         if (!cell) return;
         
         const phase = this.gameController.currentPhase;
@@ -257,17 +245,12 @@ if (typeof UIController === 'undefined') {
             }
             return;
         }
-        const canvas = this.gridSystem.canvas;
-        const rect = canvas.getBoundingClientRect();
-        
-        // 考虑CSS缩放
-        const scaleX = canvas.width / rect.width;
-        const scaleY = canvas.height / rect.height;
-        
-        const x = (e.clientX - rect.left) * scaleX;
-        const y = (e.clientY - rect.top) * scaleY;
-        
-        const cell = this.gridSystem.getCellFromCanvas(x, y);
+        // 触屏/触控笔无悬停概念，跳过 hover 处理（避免点按瞬间误写 title/cursor）
+        if (e.pointerType && e.pointerType !== 'mouse') return;
+        const pt = this.gridSystem.eventToCanvas(e.clientX, e.clientY);
+        if (!pt) return;
+
+        const cell = this.gridSystem.getCellFromCanvas(pt.x, pt.y);
         const state = this.gameController.getGameState();
         
         // 人机模式下，如果当前是AI的回合，禁用悬停效果
@@ -555,6 +538,77 @@ if (typeof UIController === 'undefined') {
         
         // 绑定滚轮事件到 Canvas
         this.gridSystem.canvas.addEventListener('wheel', this.wheelHandler, { passive: false });
+
+        // ── 触屏双指捏合缩放（pinch-to-zoom，测试模式） ──
+        this._addPinchZoomSupport();
+    }
+;
+
+// _addPinchZoomSupport
+    // 双指捏合缩放坐标系：跟踪两个活动指针，按指距变化方向步进缩放，
+    // 缩放执行复用与滚轮相同的 adjustRange + redrawAllTestFunctions 链路。
+    UIController.prototype._addPinchZoomSupport = function() {
+        const canvas = this.gridSystem.canvas;
+        if (!canvas || this._pinchZoomBound) return;
+        this._pinchZoomBound = true;
+
+        const activePointers = new Map(); // pointerId → {x, y}
+        let lastDist = 0;
+        let accumulated = 0; // 累积缩放比例，跨越阈值后步进一次
+        let pinchZoomTimer = null;
+
+        const queueZoomStep = (delta) => {
+            if (this.renderer && this.renderer.isDrawing) return;
+            const newRange = this.adjustRange(delta);
+            this.updateZoomDisplay(newRange);
+            if (pinchZoomTimer) clearTimeout(pinchZoomTimer);
+            pinchZoomTimer = setTimeout(() => {
+                pinchZoomTimer = null;
+                this.redrawAllTestFunctions();
+            }, 150);
+        };
+
+        const pointerDist = () => {
+            const pts = [...activePointers.values()];
+            if (pts.length < 2) return 0;
+            return Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+        };
+
+        canvas.addEventListener('pointerdown', (e) => {
+            if (e.pointerType === 'mouse') return;
+            activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+            if (activePointers.size === 2) {
+                lastDist = pointerDist();
+                accumulated = 1;
+            }
+        });
+        canvas.addEventListener('pointermove', (e) => {
+            if (!activePointers.has(e.pointerId)) return;
+            activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+            if (activePointers.size !== 2) return;
+            const dist = pointerDist();
+            if (lastDist > 0 && dist > 0) {
+                accumulated *= dist / lastDist;
+                // 指距变化超过 25% 步进一次：放大 → 范围减小(zoom in)，缩小 → 范围增大(zoom out)
+                if (accumulated >= 1.25) {
+                    queueZoomStep(-1);
+                    accumulated = 1;
+                } else if (accumulated <= 0.8) {
+                    queueZoomStep(1);
+                    accumulated = 1;
+                }
+            }
+            lastDist = dist;
+        });
+        const release = (e) => {
+            activePointers.delete(e.pointerId);
+            if (activePointers.size < 2) {
+                lastDist = 0;
+                accumulated = 1;
+            }
+        };
+        canvas.addEventListener('pointerup', release);
+        canvas.addEventListener('pointercancel', release);
     }
 ;
 

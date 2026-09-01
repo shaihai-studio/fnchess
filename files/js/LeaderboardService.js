@@ -49,8 +49,18 @@ class LeaderboardService {
             };
             // 不用 onConnectionChange（UILobby 进入大厅时会覆盖该回调），改用轮询 flush：
             // 连接建立后，把等待中的消息统一补发出去。
-            this._flushTimer = setInterval(() => self._flushPending(), 500);
+            // 按需启停（修复：原先 500ms 定时器常驻空转，全程占用主线程唤醒）
+            this._flushTimer = null;
         }
+    }
+
+    _startFlushTimer() {
+        if (this._flushTimer) return;
+        this._flushTimer = setInterval(() => this._flushPending(), 500);
+    }
+
+    _stopFlushTimer() {
+        if (this._flushTimer) { clearInterval(this._flushTimer); this._flushTimer = null; }
     }
 
     _ensureConnected() {
@@ -66,12 +76,13 @@ class LeaderboardService {
             // 未就绪：入队，连接建立后统一发送
             this._pendingSends.push(obj);
             if (this._pendingSends.length > 200) this._pendingSends.shift(); // 防内存堆积
+            this._startFlushTimer();
             this._ensureConnected();
         }
     }
 
     _flushPending() {
-        if (!this._pendingSends.length) return;
+        if (!this._pendingSends.length) { this._stopFlushTimer(); return; }
         if (!this.lobby || !this.lobby.isConnected) return; // 尚未连接，继续等待
         const batch = this._pendingSends;
         this._pendingSends = [];

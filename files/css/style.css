@@ -1095,7 +1095,8 @@ body::before {
     background: #070d1a;
     max-width: 100%;
     max-height: 100%;
-    touch-action: manipulation;
+    /* 棋盘触控完全由 JS 接管：禁止浏览器双击缩放/滚动劫持，支持双指捏合缩放 */
+    touch-action: none;
 }
 
 /* 测试模式：Canvas 支持滚轮缩放 */
@@ -2683,7 +2684,8 @@ body::before {
     gap: 16px;
     width: 100%;
 }
-@media (orientation: portrait) {
+/* 竖屏单列仅限手机宽度；iPad 等大屏竖屏保持 2×2 网格，避免过高单列与大片空白 */
+@media (orientation: portrait) and (max-width: 767px) {
     #main-mode-toggle {
         grid-template-columns: 1fr;
     }
@@ -6408,5 +6410,73 @@ body.float-keypad-mode #clear-btn { display: none !important; }
         order: -1;
         flex: 0 0 220px;
         width: 220px;
+    }
+}
+
+/* ============================================================
+   移动端 App 化增强（2026-08-31，Capacitor 打包适配）
+   仅追加，不改写既有桌面样式，保证 Web 端零回归
+   ============================================================ */
+
+/* 全局：触控高亮与长按系统菜单（按钮/画布类交互元素），输入控件保持默认 */
+button,
+.element-btn,
+.canvas-fab-btn,
+#game-canvas,
+.stepper-arrow,
+.mode-btn {
+    -webkit-tap-highlight-color: transparent;
+}
+
+body {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+}
+
+/* 横屏刘海/挖孔：顶部信息栏左右 safe-area 内缩 */
+@media (orientation: landscape) {
+    .header {
+        padding-left: max(20px, env(safe-area-inset-left, 0px));
+        padding-right: max(20px, env(safe-area-inset-right, 0px));
+    }
+}
+
+/* 触屏设备：可点元素触控目标 ≥44px，禁用 hover 粘滞态 */
+@media (pointer: coarse) {
+    .btn-small { min-height: 36px; padding: 8px 14px; }
+    .stepper-arrow { min-width: 44px; min-height: 44px; }
+    .p2p-tab,
+    .leaderboard-tab { min-height: 44px; }
+    .mode-btn { min-height: 48px; }
+    .zoom-btn { min-width: 44px; min-height: 44px; }
+    .race-back-circle,
+    .btn-back-circle,
+    .campaign-back-circle,
+    .campaign-reset-circle,
+    .race-reset-circle,
+    .panel-close { min-width: 44px; min-height: 44px; }
+
+    /* 触屏无悬停，hover 位移/抬升会造成点按后样式粘滞 */
+    .btn:hover,
+    .mode-btn:hover,
+    .btn-small:hover {
+        transform: none;
+    }
+
+    /* WKWebView 输入框聚焦自动放大：字号提升到 16px 规避 */
+    input[type="text"],
+    input[type="number"],
+    textarea,
+    select { font-size: 16px; }
+}
+
+/* 小屏手机：模态框收窄内边距 + 高度上限 + safe-area 底部留白 */
+@media (max-width: 480px) {
+    .modal-content {
+        padding: 24px 16px calc(24px + env(safe-area-inset-bottom, 0px));
+        width: 94%;
+        max-height: calc(100dvh - 32px);
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
     }
 }

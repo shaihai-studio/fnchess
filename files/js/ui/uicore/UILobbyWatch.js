@@ -115,7 +115,12 @@
         let st = { hidden: false };
         try {
             const s = JSON.parse(localStorage.getItem('lobbyWatchState') || 'null');
-            if (s) { st.hidden = !!s.hidden; }
+            if (s) {
+                st.hidden = !!s.hidden;
+            } else if (window.matchMedia && window.matchMedia('(max-width: 767px), (max-height: 500px)').matches) {
+                // 无用户偏好时：小屏手机/矮屏横屏默认收起为迷你胶囊，避免遮挡模式按钮等内容
+                st.hidden = true;
+            }
         } catch (e) { /* 忽略 */ }
         // 恢复隐藏态时，迷你按钮对齐速览框当前左上角（参考输入栏收起逻辑）
         if (st.hidden) this._lwHide();
@@ -440,7 +445,11 @@
     UIController.prototype._lwSetVisible = function (visible) {
         if (!this._lwEls) return;
         if (visible) {
-            const prev = this._lwSupPrev || { rootHidden: false, miniHidden: true };
+            // 无前置快照时尊重当前显示状态（如小屏默认收起的迷你胶囊），不强制展开
+            const prev = this._lwSupPrev || {
+                rootHidden: this._lwEls.root.style.display === 'none',
+                miniHidden: this._lwEls.mini.style.display === 'none'
+            };
             this._lwEls.root.style.display = prev.rootHidden ? 'none' : '';
             this._lwEls.mini.style.display = prev.miniHidden ? 'none' : 'flex';
             this._lwSupPrev = null;

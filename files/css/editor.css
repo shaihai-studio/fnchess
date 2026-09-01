@@ -532,6 +532,30 @@
   color: #c6f6d5;
   box-shadow: 0 0 0 1px rgba(34,197,94,0.25), 0 6px 22px rgba(34,197,94,0.22);
 }
+
+/* ── 移动端触控适配（2026-08-31） ── */
+#editor-view #gridCanvas {
+  touch-action: none;             /* 绘制/长按手势由 JS 接管，禁止浏览器滚动/缩放劫持 */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;    /* iOS 长按不弹系统菜单 */
+}
+
+/* 触屏设备：dpad 与画布工具按钮放大至 >=44px 触控目标 */
+@media (pointer: coarse) {
+  #editor-view .dpad { grid-template-columns: repeat(3, 44px); grid-template-rows: repeat(3, 44px); gap: 5px; }
+  #editor-view .dpad-btn { width: 44px; height: 44px; font-size: 15px; }
+  #editor-view .mode-toggle,
+  #editor-view .editor-undo,
+  #editor-view .editor-fx,
+  #editor-view .editor-trash { min-width: 44px; min-height: 44px; }
+}
+
+/* 小屏手机：侧面板收窄，为画布让出空间（配合默认收起的抽屉机制） */
+@media (max-width: 640px) {
+  #editor-view .left,
+  #editor-view .right { width: min(300px, 92vw); }
+}
 #editor-view button.toggle.active::before {
   background: linear-gradient(90deg, transparent, rgba(34,197,94,0.5), transparent);
 }

@@ -54,34 +54,40 @@ class RaceRoomController {
         return { host: 'localhost', port: 9000, path: '/peerjs', secure: false, debug: 0 };
     }
 
-    /** 懒加载 PeerJS：优先用本地 vendor，失败回退 CDN */
+    /** 懒加载 PeerJS：与 P2PController 统一来源与版本（本地 vendor 1.5.2 优先，离线/CDN 被墙可用） */
     static ensurePeerJs() {
         return new Promise((resolve, reject) => {
             if (typeof Peer !== 'undefined') { resolve(); return; }
             const sig = RaceRoomController.signaling;
             const base = sig.secure ? 'https' : 'http';
-            const cdn = `${base}://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js`;
             const portStr = sig.port && sig.port !== 80 && sig.port !== 443 ? ':' + sig.port : '';
-            const vendor = `${base}://${sig.host}${portStr}/peerjs/peerjs.min.js`;
+            // 修复：原先优先从信令服务器远程加载且 CDN 回退为 1.5.4（与 P2PController 的 1.5.2 不一致），
+            // 统一为：本地 vendor → 信令服务器副本 → CDN 1.5.2
+            const sources = [
+                'files/vendor/peerjs/peerjs.min.js',
+                `${base}://${sig.host}${portStr}/peerjs/peerjs.min.js`,
+                `${base}://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js`
+            ];
             let tried = 0;
-            const load = (url) => {
-                if (tried >= 3) { reject(new Error('PeerJS 加载失败')); return; }
-                tried++;
+            const load = () => {
+                if (tried >= sources.length) { reject(new Error('PeerJS 加载失败')); return; }
                 const s = document.createElement('script');
-                s.src = url;
+                s.src = sources[tried++];
                 s.onload = () => resolve();
-                s.onerror = () => load(tried === 1 ? cdn : vendor);
+                s.onerror = () => load();
                 document.head.appendChild(s);
             };
-            load(vendor);
+            load();
         });
     }
 
-    /** 拉取 STUN/TURN 配置（复用 P2PController 的 HTTP 端点，失败则用公共 STUN） */
+    /** 拉取 STUN/TURN 配置（与 P2PController 共享同一来源，失败则用公共 STUN） */
     static async _fetchIceServers() {
         try {
-            if (typeof P2PController !== 'undefined' && P2PController._fetchIceServers) {
-                return await P2PController._fetchIceServers();
+            // 修复：原先误用 P2PController._fetchIceServers（实例方法，静态访问恒为 undefined），
+            // 导致联机竞速丢失 TURN 配置，严格 NAT 下必连不上。改为共享静态方法。
+            if (typeof P2PController !== 'undefined' && typeof P2PController.getIceServers === 'function') {
+                return P2PController.getIceServers();
             }
         } catch (e) { /* 忽略，走回退 */ }
         return [{ urls: 'stun:stun.l.google.com:19302' }];

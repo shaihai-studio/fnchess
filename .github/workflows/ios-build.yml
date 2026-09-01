@@ -1,0 +1,134 @@
+name: iOS 构建
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: '构建模式'
+        required: true
+        default: 'verify'
+        type: choice
+        options:
+          - verify
+          - ipa
+          - testflight
+
+jobs:
+  build:
+    # macOS 26 托管 runner（Apple Silicon，预装 Xcode 26+）
+    runs-on: macos-26
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 配置 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 选择 Xcode（取镜像内最高版本）
+        run: |
+          XCODE=$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)
+          if [ -z "$XCODE" ]; then XCODE="/Applications/Xcode.app"; fi
+          echo "使用 $XCODE"
+          sudo xcode-select -s "$XCODE/Contents/Developer"
+          xcodebuild -version
+
+      - name: 构建 Web 资源并同步到 iOS 工程
+        run: |
+          npm run build:web
+          npx cap sync ios
+
+      # ---- 以下为签名相关步骤，仅在配置了证书 Secret 时执行 ----
+      - name: 导入签名证书
+        if: ${{ secrets.IOS_CERTIFICATE_P12 != '' }}
+        uses: apple-actions/import-codesign-certs@v3
+        with:
+          p12-file-base64: ${{ secrets.IOS_CERTIFICATE_P12 }}
+          p12-password: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          keychain-password: ${{ secrets.KEYCHAIN_PASSWORD }}
+
+      - name: 安装描述文件
+        if: ${{ secrets.IOS_PROVISION_PROFILE != '' }}
+        env:
+          PROFILE_BASE64: ${{ secrets.IOS_PROVISION_PROFILE }}
+        run: |
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          echo "$PROFILE_BASE64" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/fnchess.mobileprovision
+          ls ~/Library/MobileDevice/Provisioning\ Profiles/
+
+      - name: 生成导出配置
+        if: ${{ inputs.mode != 'verify' }}
+        env:
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          PROFILE_NAME: ${{ secrets.IOS_PROFILE_NAME }}
+        run: |
+          cat > ios/ExportOptions.plist <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store</string>
+            <key>teamID</key><string>$TEAM_ID</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>uploadSymbols</key><true/>
+            <key>provisioningProfiles</key>
+            <dict><key>cn.shaihai.fnchess</key><string>$PROFILE_NAME</string></dict>
+          </dict>
+          </plist>
+          EOF
+          plutil -lint ios/ExportOptions.plist
+
+      # ---- 编译 / 归档 ----
+      - name: 编译验证（verify 模式，不签名）
+        if: ${{ inputs.mode == 'verify' }}
+        run: |
+          xcodebuild -project ios/App/App.xcodeproj \
+            -scheme App \
+            -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            build | tail -30
+
+      - name: 归档（Release）
+        if: ${{ inputs.mode != 'verify' }}
+        run: |
+          xcodebuild -project ios/App/App.xcodeproj \
+            -scheme App \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath build/App.xcarchive \
+            -allowProvisioningUpdates \
+            archive | tail -30
+
+      - name: 导出 IPA
+        if: ${{ inputs.mode != 'verify' }}
+        run: |
+          xcodebuild -exportArchive \
+            -archivePath build/App.xcarchive \
+            -exportPath build/ipa \
+            -exportOptionsPlist ios/ExportOptions.plist \
+            -allowProvisioningUpdates | tail -20
+          ls -lh build/ipa/
+
+      - name: 上传 IPA 产物
+        if: ${{ inputs.mode != 'verify' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: fnchess-ios-ipa
+          path: build/ipa/*.ipa
+          retention-days: 30
+
+      # ---- 上传到 TestFlight ----
+      - name: 上传 TestFlight
+        if: ${{ inputs.mode == 'testflight' }}
+        uses: apple-actions/upload-testflight-build@v1
+        with:
+          app-path: build/ipa/App.ipa
+          issuer-id: ${{ secrets.APPSTORE_ISSUER_ID }}
+          api-key-id: ${{ secrets.APPSTORE_API_KEY_ID }}
+          api-private-key: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}

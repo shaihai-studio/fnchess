@@ -1027,15 +1027,17 @@ class GameController {
             return;
         }
         
+        // deadline 时间戳驱动：切后台 setInterval 被节流也不漂移，回前台首帧即校正
+        this._timerDeadline = Date.now() + this.remainingTime * 1000;
         this.timerInterval = setInterval(() => {
-            this.remainingTime--;
+            this.remainingTime = Math.max(0, Math.round((this._timerDeadline - Date.now()) / 1000));
             this.emit('timerUpdate', { remainingTime: this.remainingTime });
-            
+
             // P2P：每秒向对手同步一次剩余时间
             if (isP2P && this.p2pActionSender.sendTimerSync) {
                 this.p2pActionSender.sendTimerSync(this.remainingTime);
             }
-            
+
             if (this.remainingTime <= 0) {
                 this.handleTimeout();
             }
@@ -1063,8 +1065,9 @@ class GameController {
         // P2P：只有当前操作玩家本地驱动倒计时，对手仅接收同步
         if (isP2P && this.currentPlayer !== this.p2pActionSender.myPlayerId) return;
         if (this.remainingTime <= 0) return;
+        this._timerDeadline = Date.now() + this.remainingTime * 1000;
         this.timerInterval = setInterval(() => {
-            this.remainingTime--;
+            this.remainingTime = Math.max(0, Math.round((this._timerDeadline - Date.now()) / 1000));
             this.emit('timerUpdate', { remainingTime: this.remainingTime });
             if (isP2P && this.p2pActionSender && this.p2pActionSender.sendTimerSync) {
                 this.p2pActionSender.sendTimerSync(this.remainingTime);
@@ -1085,8 +1088,9 @@ class GameController {
         const isP2P = this.gameMode === 'p2p' && this.p2pActionSender;
         if (isP2P && this.currentPlayer !== this.p2pActionSender.myPlayerId) return;
         if (this.targetRemaining <= 0) return;
+        this._targetDeadline = Date.now() + this.targetRemaining * 1000;
         this.targetTimerInterval = setInterval(() => {
-            this.targetRemaining--;
+            this.targetRemaining = Math.max(0, Math.round((this._targetDeadline - Date.now()) / 1000));
             this.remainingTime = this.targetRemaining;
             this.emit('timerUpdate', { remainingTime: this.targetRemaining });
             if (isP2P && this.p2pActionSender && this.p2pActionSender.sendTimerSync) {
@@ -1184,8 +1188,9 @@ class GameController {
         }
         this.remainingTime = this.targetRemaining;
         this.emit('timerUpdate', { remainingTime: this.targetRemaining });
+        this._targetDeadline = Date.now() + this.targetRemaining * 1000;
         this.targetTimerInterval = setInterval(() => {
-            this.targetRemaining--;
+            this.targetRemaining = Math.max(0, Math.round((this._targetDeadline - Date.now()) / 1000));
             this.remainingTime = this.targetRemaining;
             this.emit('timerUpdate', { remainingTime: this.targetRemaining });
             if (isP2P && this.p2pActionSender && this.p2pActionSender.sendTimerSync) {

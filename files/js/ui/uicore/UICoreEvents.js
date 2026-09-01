@@ -58,10 +58,14 @@
 
 // bindEvents
     UIController.prototype.bindEvents = function() {
-        // Canvas 点击事件
+        // Canvas 点击事件（click 在触屏点按时同样触发，桌面/移动端通用）
         this.gridSystem.canvas.addEventListener('click', (e) => this.handleCanvasClick(e));
-        this.gridSystem.canvas.addEventListener('mousemove', (e) => this.handleCanvasHover(e));
-        this.gridSystem.canvas.addEventListener('mousemove', (e) => this.checkHistoryFunctionHover(e));
+        // Pointer Events 统一鼠标/触控/触控笔；hover 逻辑内部按 pointerType 过滤
+        this.gridSystem.canvas.addEventListener('pointermove', (e) => this.handleCanvasHover(e));
+        this.gridSystem.canvas.addEventListener('pointermove', (e) => {
+            if (e.pointerType && e.pointerType !== 'mouse') return;
+            this.checkHistoryFunctionHover(e);
+        });
         
         // 按钮事件
         this.confirmBtn.addEventListener('click', () => this.handleConfirm());
@@ -105,11 +109,18 @@
         // 键盘输入事件
         window.addEventListener('keydown', (e) => this.handleKeyboardInput(e), true);
 
-        // 设备切换/旋转时重建元素面板（桌面网格 ↔ 移动端内联布局不同）
-        window.addEventListener('devicechange', () => {
+        // 设备旋转/尺寸变化时重建元素面板（桌面网格 ↔ 移动端内联布局不同）
+        // 修复：原先误用 'devicechange'（媒体设备插拔事件），旋转永远不会触发
+        const rebuildElements = () => {
             if (this.gameController && this.gameController.currentPhase) {
                 this.initDraggableElements();
             }
+        };
+        window.addEventListener('orientationchange', rebuildElements);
+        let resizeRebuildTimer = null;
+        window.addEventListener('resize', () => {
+            if (resizeRebuildTimer) clearTimeout(resizeRebuildTimer);
+            resizeRebuildTimer = setTimeout(rebuildElements, 250);
         });
         
         // 初始化拖拽元素

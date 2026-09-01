@@ -878,7 +878,21 @@ if (typeof UIController === 'undefined') {
             return;
         }
 
-        window.katex.render(latex, this.mathPreview, { throwOnError: false });
+        // KaTeX 排版缓存（LRU，上限 60 条）：键入过程高频调用，同一 latex 不重复排版
+        if (!this._katexCache) this._katexCache = new Map();
+        let html = this._katexCache.get(latex);
+        if (html !== undefined) {
+            // LRU：命中后移至最新
+            this._katexCache.delete(latex);
+            this._katexCache.set(latex, html);
+        } else {
+            html = window.katex.renderToString(latex, { throwOnError: false });
+            this._katexCache.set(latex, html);
+            if (this._katexCache.size > 60) {
+                this._katexCache.delete(this._katexCache.keys().next().value);
+            }
+        }
+        this.mathPreview.innerHTML = html;
         // 有公式时显示缩放按钮
         this._setMathPreviewZoomVisible(true);
         // 自适应字号：表达式超出预览容器宽度时，随内容加长缩小字号（最多缩小 2 倍 = ×0.5），

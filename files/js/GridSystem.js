@@ -12,6 +12,8 @@ class GridSystem {
         this.gridSize = 10; // 初始 10x10
         this.range = 5; // 初始范围 -5 到 5
         this.cellSize = 0; // 每个格子的像素大小（动态计算）
+        this.cssSize = 0; // 画布 CSS 像素边长（逻辑坐标系单位，全部绘制/换算以此为基准）
+        this.dpr = 1; // 设备像素比（上限 3，兼顾清晰度与性能）
         
         // 颜色配置
         this.colors = {
@@ -128,15 +130,20 @@ class GridSystem {
         // 取最小边作为正方形边长，确保 1:1 不形变；长边方向上的剩余空间由 flex 居中保留留白
         const size = Math.max(1, Math.min(cw, ch));
 
-        // 设置 Canvas 实际像素大小（保持 1:1 正方形）
-        this.canvas.width = size;
-        this.canvas.height = size;
+        // HiDPI：按 devicePixelRatio 放大物理像素，绘制坐标系仍使用 CSS 像素
+        this.cssSize = size;
+        this.dpr = Math.min(window.devicePixelRatio || 1, 3);
+        this.canvas.width = Math.round(size * this.dpr);
+        this.canvas.height = Math.round(size * this.dpr);
 
         // 显式同步 canvas 元素的 CSS 宽高，避免某些布局下元素被 max-width/max-height 收缩成 0
         this.canvas.style.width = size + 'px';
         this.canvas.style.height = size + 'px';
 
-        // 计算每个格子的像素大小
+        // 所有绘制代码以 CSS 像素为逻辑单位，由 transform 统一映射到物理像素
+        this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+
+        // 计算每个格子的像素大小（CSS 像素）
         this.cellSize = size / this.gridSize;
 
         this.draw();
@@ -238,7 +245,7 @@ class GridSystem {
      * @returns {Object} {x, y} Canvas 像素坐标
      */
     mathToCanvas(x, y) {
-        const size = this.canvas.width;
+        const size = this.cssSize || this.canvas.width;
         const canvasX = (x + this.range) / (this.range * 2) * size;
         const canvasY = size - (y + this.range) / (this.range * 2) * size;
         return { x: canvasX, y: canvasY };
@@ -251,7 +258,7 @@ class GridSystem {
      * @returns {Object|null} {x, y} 网格坐标，如果不在网格内返回 null
      */
     getCellFromCanvas(canvasX, canvasY) {
-        const size = this.canvas.width;
+        const size = this.cssSize || this.canvas.width;
         
         // 计算每个格子的像素大小
         const cellPixelSize = size / this.gridSize;
@@ -351,7 +358,7 @@ class GridSystem {
      */
     draw() {
         const ctx = this.ctx;
-        const size = this.canvas.width;
+        const size = this.cssSize || this.canvas.width;
         
         // 清空画布
         ctx.fillStyle = this.colors.background;
@@ -385,7 +392,7 @@ class GridSystem {
      */
     drawGridLines() {
         const ctx = this.ctx;
-        const size = this.canvas.width;
+        const size = this.cssSize || this.canvas.width;
         
         ctx.strokeStyle = this.colors.gridLine;
         ctx.lineWidth = 1;
@@ -415,7 +422,7 @@ class GridSystem {
      */
     drawAxes() {
         const ctx = this.ctx;
-        const size = this.canvas.width;
+        const size = this.cssSize || this.canvas.width;
         const center = this.mathToCanvas(0, 0);
         
         ctx.strokeStyle = this.colors.axis;
@@ -438,7 +445,7 @@ class GridSystem {
      */
     drawTicks() {
         const ctx = this.ctx;
-        const size = this.canvas.width;
+        const size = this.cssSize || this.canvas.width;
         const center = this.mathToCanvas(0, 0);
         
         ctx.fillStyle = this.colors.axis;
@@ -586,7 +593,23 @@ class GridSystem {
     
     /** 单位换算单一真源：每「数学单位」对应的 canvas 像素数（修复项 ⑨） */
     get pxPerUnit() {
-        return this.canvas.height / (this.range * 2);
+        return (this.cssSize || this.canvas.height) / (this.range * 2);
+    }
+
+    /**
+     * 将指针/鼠标事件的视口坐标转换为画布逻辑坐标（CSS 像素）
+     * @param {number} clientX
+     * @param {number} clientY
+     * @returns {{x: number, y: number}|null}
+     */
+    eventToCanvas(clientX, clientY) {
+        const rect = this.canvas.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) return null;
+        const size = this.cssSize || this.canvas.width;
+        return {
+            x: (clientX - rect.left) * (size / rect.width),
+            y: (clientY - rect.top) * (size / rect.height)
+        };
     }
 
     /**

@@ -176,7 +176,17 @@ class P2PController {
         // 断线清理已执行标志（DataChannel close/error 可能连续触发，防重复清理/重复弹窗）
         this._disconnectHandled = false;
 
-        this.iceServers = [
+        this.iceServers = P2PController.getIceServers();
+        this._codeChars = '0123456789';
+        this._cachedIceServers = null;  // 服务端拉取的完整 ICE 配置缓存
+    }
+
+    /**
+     * 共享 ICE 配置（STUN + TURN）：P2PController 实例与 RaceRoomController 静态调用统一来源。
+     * 注意：TURN 账号密码为硬编码长期凭证（历史遗留），上架后建议服务端改为限时凭证下发。
+     */
+    static getIceServers() {
+        return [
             // IP 直连 STUN（coturn 服务器同时提供 STUN 服务，绕开公共 STUN 域名 DNS 解析失败）
             { urls: 'stun:124.222.7.170:3478' },
             { urls: 'stun:stun.cloudflare.com:3478' },
@@ -191,8 +201,6 @@ class P2PController {
                 credential: 'shaihaiisthebest'
             }
         ];
-        this._codeChars = '0123456789';
-        this._cachedIceServers = null;  // 服务端拉取的完整 ICE 配置缓存
     }
 
     // ─── 获取 ICE 配置（STUN 兜底，公共信令服务器无 TURN） ───

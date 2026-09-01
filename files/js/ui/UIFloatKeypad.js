@@ -85,6 +85,7 @@ if (typeof UIController === 'undefined') {
         // —— 收起为圆形按钮（×） ——
         this.floatKeypadCollapseBtn.addEventListener('click', () => {
             if (window.audioManager) window.audioManager.playClick();
+            this._floatKeypadUserToggled = true; // 用户手动操作后不再自动干预收起态
             this._floatKeypadCollapsed = true;
             // 收起时仅移除 fx-open 类（面板此时隐藏），
             // 但保留 _floatKeypadFxOpen 标志：下次展开输入栏时函数栏仍保持打开
@@ -113,6 +114,7 @@ if (typeof UIController === 'undefined') {
             fab.addEventListener('click', () => {
                 if (fab._fabDragMoved) return; // 拖动后松开：不展开输入栏
                 if (window.audioManager) window.audioManager.playClick();
+                this._floatKeypadUserToggled = true; // 用户手动操作后不再自动干预收起态
                 this._floatKeypadCollapsed = false;
                 // 记录圆形按钮当前（拖动后）的左上角位置，展开时输入栏左上角与之对齐
                 //（与收起时按钮左上角 = 输入栏左上角的相对关系一致）
@@ -347,6 +349,15 @@ if (typeof UIController === 'undefined') {
 // _applyFloatKeypadVisibility — 悬浮栏是唯一输入栏：相关阶段显示；收起时显示圆形按钮
     UIController.prototype._applyFloatKeypadVisibility = function() {
         const relevant = this._floatKeypadRelevant();
+        // 手机小屏触屏：进入输入阶段时默认收起为 FAB，避免遮挡棋盘；
+        // 用户手动展开/收起过（_floatKeypadUserToggled）则尊重用户选择，不再自动干预
+        if (relevant && !this._floatKeypadUserToggled && !this._floatKeypadAutoCollapsed) {
+            const smallTouch = window.matchMedia && window.matchMedia('(pointer: coarse) and (max-width: 767px)').matches;
+            if (smallTouch) {
+                this._floatKeypadCollapsed = true;
+                this._floatKeypadAutoCollapsed = true;
+            }
+        }
         const showKeypad = relevant && !this._floatKeypadCollapsed;
         const showFab = relevant && this._floatKeypadCollapsed;
         if (this.floatKeypad) this.floatKeypad.hidden = !showKeypad;

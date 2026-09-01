@@ -50,6 +50,17 @@ class AudioManager {
         // 页面加载 1 秒后主动开始播放（绑定交互回退作为兜底）
         this._bindBgmUnlock();
         setTimeout(() => this.startBgm(), 1000);
+
+        // App 切回前台时恢复音频（移动 WebView 退后台会被系统暂停 BGM / 挂起 AudioContext）
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) return;
+            if (this.bgmEnabled && this._bgmStarted && this._bgmAudio && this._bgmAudio.paused) {
+                this._bgmAudio.play().catch(() => {});
+            }
+            if (this._audioCtx && this._audioCtx.state === 'suspended') {
+                this._audioCtx.resume().catch(() => {});
+            }
+        });
         
         // 尝试初始化 Web Audio API（用于合成音效）
         this._audioCtx = null;
@@ -208,7 +219,8 @@ class AudioManager {
     setBgmVolume(volume) {
         const v = Math.max(0, Math.min(1, Number(volume)));
         this.bgmVolume = v;
-        if (this._bgmAudio) this._bgmAudio.volume = v;
+        // 修复：原先漏乘 masterVolume，主音量改动后 BGM 实际音量不联动
+        if (this._bgmAudio) this._bgmAudio.volume = this.masterVolume * v;
     }
 
     setSfxVolume(volume) {
@@ -336,6 +348,8 @@ class AudioManager {
     playSummaTalkSequence(text = '', mood = 'neutral', onChar = null) {
         const src = String(text || '');
         if (!src) return;
+        // 序列令牌：每次新序列/主动停止都会使旧序列的全部待发定时器失效（防泄漏/叠音）
+        const seqId = (this._talkSeqId = (this._talkSeqId || 0) + 1);
 
         const moodMap = {
             happy: { base: 700, spread: 42, delay: 0.08, waveType: 'triangle' },
@@ -356,7 +370,7 @@ class AudioManager {
                 // 空格也触发回调，用于同步显示
                 if (onChar) {
                     const currentDelay = delay;
-                    setTimeout(() => onChar(ch), currentDelay * 1000);
+                    setTimeout(() => { if (seqId === this._talkSeqId) onChar(ch); }, currentDelay * 1000);
                 }
                 delay += 0.05;
                 continue;
@@ -365,6 +379,7 @@ class AudioManager {
             const pitchShift = /[，。！？!?]/.test(ch) ? -14 : /[,.]/.test(ch) ? -6 : 0;
             const charDelay = delay;
             setTimeout(() => {
+                if (seqId !== this._talkSeqId) return; // 已被新序列/停止操作取消
                 this.playSummaTalkBlip({
                     baseFrequency: voice.base + (Math.random() * voice.spread - voice.spread / 2),
                     intensity: punctuationBoost,
@@ -378,6 +393,11 @@ class AudioManager {
         }
     }
     
+    /** 停止当前逐字语音序列（弹窗关闭/跳过对话时调用，全部待发字符定时器即刻失效） */
+    stopSummaTalk() {
+        this._talkSeqId = (this._talkSeqId || 0) + 1;
+    }
+
     // 甩动：风声合成
     playSummaFling() {
         const ctx = this._audioCtx;

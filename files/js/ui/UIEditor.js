@@ -28,8 +28,13 @@ UIController.prototype.initEditor = function() {
         }
     ];
 
+    // structuredClone 兜底：旧版 Android WebView（<98）无此 API，退化为 JSON 深拷贝（关卡数据为纯 JSON 安全）
+    const _deepClone = (typeof structuredClone === 'function')
+        ? (o) => structuredClone(o)
+        : (o) => JSON.parse(JSON.stringify(o));
+
     const state = {
-        levels: structuredClone(sampleLevels),
+        levels: _deepClone(sampleLevels),
         current: 0,
         dragging: null,
         mode: 'target',
@@ -92,7 +97,7 @@ UIController.prototype.initEditor = function() {
     // 自动增高：让 textarea 随内容换行撑高（编辑器打开时调用；隐藏时跳过以免高度塌为 0）
     const autoGrow = (el) => { if (!el || el.offsetParent === null) return; el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; };
     const snap = (n) => Number((Math.round(n * state.precision) / state.precision).toFixed(10));
-    const cloneLevels = () => structuredClone(state.levels);
+    const cloneLevels = () => _deepClone(state.levels);
     const canUndo = () => state.historyIndex > 0;
     const updateUndoBtn = () => { if (els.btnUndo) els.btnUndo.disabled = !canUndo(); };
     const pushHistory = () => {
@@ -104,7 +109,7 @@ UIController.prototype.initEditor = function() {
     };
     const restoreHistory = (index) => {
         if (index < 0 || index >= state.history.length) return;
-        state.levels = structuredClone(state.history[index]);
+        state.levels = _deepClone(state.history[index]);
         state.current = Math.min(state.current, state.levels.length - 1);
         state.historyIndex = index;
         syncFormFromLevel();
@@ -479,7 +484,7 @@ ${exportAll()}
     };
     const applyImportedProject = (levels) => {
         if (!Array.isArray(levels) || !levels.length) { setStatus('导入失败：未找到关卡数据'); return false; }
-        state.levels = structuredClone(levels).map((l) => ({
+        state.levels = _deepClone(levels).map((l) => ({
             id: l.id ?? `import-${Math.random().toString(36).slice(2, 6)}`,
             difficulty: l.difficulty ?? 'fraction',
             nextId: l.nextId ?? null,
@@ -783,7 +788,7 @@ ${exportAll()}
             inside = (p.x >= b.minX - 1e-6 && p.x <= b.maxX + 1 + 1e-6 && p.y >= b.minY - 1e-6 && p.y <= b.maxY + 1 + 1e-6);
         }
         if (sel && sel.cells.length && inside) {
-            state.dragState = { selectMode: true, moveMode: true, home: structuredClone(sel.cells), origin: { x: p.x, y: p.y }, moved: false };
+            state.dragState = { selectMode: true, moveMode: true, home: _deepClone(sel.cells), origin: { x: p.x, y: p.y }, moved: false };
         } else {
             state.dragState = { selectMode: true, moveMode: false, start: gridCellFromEvent(e), end: gridCellFromEvent(e), moved: false, startX: e.clientX, startY: e.clientY };
         }
@@ -870,7 +875,39 @@ ${exportAll()}
             finishSelection();
         }
     });
+    // ── 触屏长按 = 放置/取消禁止格（移动端无右键） ──
+    // 长按 >500ms 且位移 ≤8px 触发；触发后抑制随后的 click，避免同一次点按又切换目标格
+    let lpTimer = null;
+    let lpFired = false;
+    let lpStartX = 0;
+    let lpStartY = 0;
+    const lpClear = () => { if (lpTimer) { clearTimeout(lpTimer); lpTimer = null; } };
+    els.gridCanvas.addEventListener('pointerdown', (e) => {
+        if (e.pointerType === 'mouse') return;
+        if (state.selectEnabled || state.rectEnabled || state.lineEnabled || state.brushEnabled) return;
+        lpFired = false;
+        lpStartX = e.clientX;
+        lpStartY = e.clientY;
+        lpClear();
+        lpTimer = window.setTimeout(() => {
+            lpTimer = null;
+            lpFired = true;
+            const point = cellFromEvent(e);
+            toggleCellAt(currentLevel(), point, state.swapMouse ? 'target' : 'forbidden');
+            syncFormFromLevel();
+            pushHistory();
+            if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(15);
+        }, 500);
+    });
+    els.gridCanvas.addEventListener('pointermove', (e) => {
+        if (!lpTimer) return;
+        if (Math.abs(e.clientX - lpStartX) > 8 || Math.abs(e.clientY - lpStartY) > 8) lpClear();
+    });
+    els.gridCanvas.addEventListener('pointerup', lpClear);
+    els.gridCanvas.addEventListener('pointercancel', lpClear);
+
     els.gridCanvas.addEventListener('click', (e) => {
+        if (lpFired) { lpFired = false; e.preventDefault(); return; }
         if (state.selectEnabled || state.rectEnabled || state.lineEnabled || state.brushEnabled) return;
         const point = cellFromEvent(e);
         toggleCellAt(currentLevel(), point, state.swapMouse ? 'forbidden' : 'target');
@@ -923,7 +960,7 @@ ${exportAll()}
         }
     });
 
-    state.levels = structuredClone(sampleLevels);
+    state.levels = _deepClone(sampleLevels);
     syncFormFromLevel();
     exportAll();
     pushHistory();
