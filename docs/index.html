@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>函数棋 - Android 下载</title>
+<style>
+  :root {
+    --bg: #0f172a;
+    --card: #1e293b;
+    --accent: #38bdf8;
+    --accent2: #818cf8;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: linear-gradient(135deg, var(--bg), #1e1b4b);
+    min-height: 100vh;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  .card {
+    background: var(--card);
+    border-radius: 20px;
+    padding: 40px 32px;
+    max-width: 520px;
+    width: 100%;
+    box-shadow: 0 20px 60px rgba(0,0,0,.45);
+    text-align: center;
+  }
+  h1 { font-size: 28px; margin-bottom: 8px; }
+  .sub { color: var(--muted); margin-bottom: 28px; font-size: 15px; }
+  .logo {
+    width: 96px; height: 96px; border-radius: 22px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    display: flex; align-items: center; justify-content: center;
+    font-size: 46px; font-weight: 800; color: #fff;
+    margin: 0 auto 20px;
+    box-shadow: 0 8px 30px rgba(56,189,248,.35);
+  }
+  .download-btn {
+    display: block;
+    width: 100%;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    color: #fff;
+    font-size: 18px;
+    font-weight: 700;
+    padding: 16px 24px;
+    border-radius: 14px;
+    text-decoration: none;
+    transition: transform .15s, box-shadow .15s;
+    box-shadow: 0 6px 20px rgba(56,189,248,.3);
+    margin-bottom: 16px;
+  }
+  .download-btn:hover { transform: translateY(-2px); box-shadow: 0 10px 28px rgba(56,189,248,.45); }
+  .meta {
+    display: flex; justify-content: center; gap: 16px;
+    color: var(--muted); font-size: 13px; margin-bottom: 24px; flex-wrap: wrap;
+  }
+  .meta span { background: rgba(148,163,184,.12); padding: 4px 12px; border-radius: 999px; }
+  .desc { text-align: left; color: var(--muted); font-size: 14px; line-height: 1.8; margin-bottom: 20px; }
+  .link {
+    color: var(--accent); text-decoration: none; font-size: 14px;
+  }
+  .link:hover { text-decoration: underline; }
+  .footer { color: var(--muted); font-size: 12px; margin-top: 20px; }
+  .release-btn {
+    display: inline-block; color: var(--accent); text-decoration: none;
+    font-size: 14px; margin-top: 8px;
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">棋</div>
+    <h1>函数棋</h1>
+    <div class="sub">单机闯关 · 竞速 · WebRTC 点对点联机对战</div>
+    <a class="download-btn" href="https://github.com/shaihai-studio/fnchess/releases/download/v2.0.0.2/fnchess-v2.0.0.2.apk" download>下载 Android APK</a>
+    <div class="meta">
+      <span>版本 v2.0.0.2</span>
+      <span>36.3 MB</span>
+      <span>Android 8+</span>
+    </div>
+    <div class="desc">
+      安装说明：下载完成后点击 APK 文件安装。若提示「不允许安装未知来源应用」，请在系统设置中允许本安装来源后重试。应用仅申请网络权限（INTERNET），不收集任何敏感信息。
+    </div>
+    <div>
+      <a class="release-btn" href="https://github.com/shaihai-studio/fnchess/releases/tag/v2.0.0.2" target="_blank" rel="noopener">查看 GitHub Release 页面 →</a>
+    </div>
+    <div class="footer">shaihai-studio · 函数棋 fnchess</div>
+  </div>
+</body>
+</html>
