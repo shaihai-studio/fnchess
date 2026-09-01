@@ -12,6 +12,17 @@ on:
           - verify
           - ipa
           - testflight
+  # 以下文件变动时自动跑一次 verify（仅编译验证，不签名）
+  push:
+    branches: [main]
+    paths:
+      - 'ios/**'
+      - 'files/**'
+      - 'index.html'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'capacitor.config.json'
+      - '.github/workflows/ios-build.yml'
 
 jobs:
   build:
@@ -62,30 +73,29 @@ jobs:
           ls ~/Library/MobileDevice/Provisioning\ Profiles/
 
       - name: 生成导出配置
-        if: ${{ inputs.mode != 'verify' }}
+        if: ${{ (inputs.mode || 'verify') != 'verify' }}
         env:
           TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           PROFILE_NAME: ${{ secrets.IOS_PROFILE_NAME }}
         run: |
-          cat > ios/ExportOptions.plist <<EOF
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>method</key><string>app-store</string>
-            <key>teamID</key><string>$TEAM_ID</string>
-            <key>signingStyle</key><string>manual</string>
-            <key>uploadSymbols</key><true/>
-            <key>provisioningProfiles</key>
-            <dict><key>cn.shaihai.fnchess</key><string>$PROFILE_NAME</string></dict>
-          </dict>
-          </plist>
-          EOF
+          printf '%s\n' \
+            '<?xml version="1.0" encoding="UTF-8"?>' \
+            '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' \
+            '<plist version="1.0">' \
+            '<dict>' \
+            '<key>method</key><string>app-store</string>' \
+            "<key>teamID</key><string>$TEAM_ID</string>" \
+            '<key>signingStyle</key><string>manual</string>' \
+            '<key>uploadSymbols</key><true/>' \
+            '<key>provisioningProfiles</key>' \
+            "<dict><key>cn.shaihai.fnchess</key><string>$PROFILE_NAME</string></dict>" \
+            '</dict>' \
+            '</plist>' > ios/ExportOptions.plist
           plutil -lint ios/ExportOptions.plist
 
       # ---- 编译 / 归档 ----
       - name: 编译验证（verify 模式，不签名）
-        if: ${{ inputs.mode == 'verify' }}
+        if: ${{ (inputs.mode || 'verify') == 'verify' }}
         run: |
           xcodebuild -project ios/App/App.xcodeproj \
             -scheme App \
@@ -95,7 +105,7 @@ jobs:
             build | tail -30
 
       - name: 归档（Release）
-        if: ${{ inputs.mode != 'verify' }}
+        if: ${{ (inputs.mode || 'verify') != 'verify' }}
         run: |
           xcodebuild -project ios/App/App.xcodeproj \
             -scheme App \
@@ -106,7 +116,7 @@ jobs:
             archive | tail -30
 
       - name: 导出 IPA
-        if: ${{ inputs.mode != 'verify' }}
+        if: ${{ (inputs.mode || 'verify') != 'verify' }}
         run: |
           xcodebuild -exportArchive \
             -archivePath build/App.xcarchive \
@@ -116,7 +126,7 @@ jobs:
           ls -lh build/ipa/
 
       - name: 上传 IPA 产物
-        if: ${{ inputs.mode != 'verify' }}
+        if: ${{ (inputs.mode || 'verify') != 'verify' }}
         uses: actions/upload-artifact@v4
         with:
           name: fnchess-ios-ipa
