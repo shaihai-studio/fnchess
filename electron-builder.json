@@ -1,0 +1,53 @@
+{
+    "appId": "cn.shaihai.fnchess",
+    "productName": "函数棋",
+    "directories": {
+      "buildResources": "build",
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "index.html",
+      "files/**/*",
+      "!www/**",
+      "!android/**",
+      "!ios/**",
+      "!dist/**",
+      "!build/**",
+      "!scripts/**",
+      "!server/**",
+      "!markdowns/**",
+      "!docs/**",
+      "!resources/**",
+      "!tools/**",
+      "!**/*.md",
+      "!函数棋完整游戏手册.txt"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "include": "build/installer.nsh",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
+      "installerSidebar": "build/installer-sidebar.bmp",
+      "uninstallerSidebar": "build/uninstaller-sidebar.bmp",
+      "unicode": true
+    },
+    "mac": {
+      "target": "dir",
+      "icon": "build/icon.icns",
+      "category": "public.app-category.productivity"
+    },
+    "dmg": false,
+    "afterAllArtifactBuild": "scripts/replace-dmg.js",
+    "linux": {
+      "target": ["7z"],
+      "icon": "build/icons",
+      "category": "Utility"
+    }
+  }

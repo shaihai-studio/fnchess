@@ -1,10 +1,13 @@
 {
   "name": "fnchess",
   "version": "2.0.0.2",
-  "description": "",
+  "description": "【函数棋 fnchess】用函数打仗的数学策略游戏。",
+  "main": "main.js",
   "scripts": {
+    "start": "electron .",
     "build:web": "node scripts/build-web.js",
     "build:web:raw": "node scripts/build-web.js --no-bundle",
+    "build:desktop": "node scripts/build.js",
     "sync": "npm run build:web && cap sync",
     "sync:ios": "npm run build:web && cap sync ios",
     "sync:android": "npm run build:web && cap sync android",
@@ -34,6 +37,8 @@
   },
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",
-    "@capacitor/cli": "^8.5.0"
+    "@capacitor/cli": "^8.5.0",
+    "electron": "^44.2.0",
+    "electron-builder": "^26.0.12"
   }
 }

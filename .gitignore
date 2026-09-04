@@ -1,13 +1,34 @@
+# 操作系统文件
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# IDE 文件
+.idea/
+.vscode/
+.cursor/
+.qoder/
+.workbuddy/
+*.swp
+*.swo
+
+# 编辑器与工具缓存（不入库）
+.codebuddy/
+.playwright-cli/
+
+# 项目缓存
 node_modules/
 www/
+
+# 代码文件
+_NODE_~
+*.backup*
 *.log
-.DS_Store
-Thumbs.db
 
 # 本地构建工具（JDK/Android SDK/Gradle，约 4GB，切勿入库）
 tools/
 
-# 原生构建产物
+# 原生构建产物（Capacitor）
 android/.gradle/
 android/app/build/
 android/build/
@@ -28,12 +49,28 @@ tmp_test_server_check.cjs
 smoke-shots/
 android-shots/
 
-# 编辑器与工具缓存（不入库）
-.codebuddy/
-.playwright-cli/
+# 开发辅助文件（不再纳入版本控制）
+fc_run.js
+
+# 本地服务与桌面端打包输出
+.server/
+server/
+dist/
 
 # 签名文件（切勿入库）
 *.keystore
 *.jks
 *.p12
 *.mobileprovision
+
+# 项目内部文档（问题清单与待解决项，不纳入版本控制）
+问题清单与待解决项.md
+问题清单与待解决项.txt
+Goal.md
+server.md
+
+# markdowns 整个文件夹不纳入版本控制（取消跟踪）
+markdowns/
+版本更新日志-1.0.0至最新.md
+大重构计划.md
+大重构计划-后续批次.md
