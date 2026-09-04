@@ -5535,7 +5535,7 @@ button.btn-back-circle.round-back-abs {
     --kp-h-scale: 1;
     /* 背景模式（默认遮光）：微微黑色、不模糊。
        透明 / 模糊由 .keypad-bg-transparent / .keypad-bg-blur 覆盖 */
-    background: rgba(0, 0, 0, 0.35);
+    background: rgba(0, 0, 0, 0.22);
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 16px;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.08);

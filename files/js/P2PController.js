@@ -38,10 +38,10 @@ class P2PController {
     //   window.P2P_SIGNALING = { host: 'localhost', port: 9000, secure: false };
     // 若服务器启用了 HTTPS/TLS，需将 secure 改为 true
     static signaling = (typeof window !== 'undefined' && window.P2P_SIGNALING)
-        ? { host: 'p2p.shaihai.cn', port: 443, path: '/', secure: true, debug: 0, ...window.P2P_SIGNALING }
+        ? { host: 'p2p.shaihai.cn', port: 24026, path: '/', secure: true, debug: 0, ...window.P2P_SIGNALING }
         : {
             host: 'p2p.shaihai.cn',
-            port: 443,
+            port: 24026,
             path: '/',
             secure: true,
             debug: 0
