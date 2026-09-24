@@ -3,10 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>函数棋2.0.0.2 - Function Chess</title>
+    <meta name="theme-color" content="#0B1020">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="format-detection" content="telephone=no">
+    <link rel="icon" type="image/png" href="files/images/favicon.png">
+    <link rel="apple-touch-icon" href="files/images/favicon.png">
+    <title>函数棋2.0.0.924 - Function Chess</title>
     <!-- 安全：CSP 收紧资源来源（无 CSP 时本地 vendor 失败会静默从外网 CDN 拉脚本）。
-         'unsafe-inline' 为兼容现有内联脚本与 KaTeX 内联样式；connect-src 仅放开本站与 WebSocket。 -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; media-src 'self' data: blob:; connect-src 'self' wss://p2p2.shaihai.cn:24026 https://p2p2.shaihai.cn:24026; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'">
+         'unsafe-inline' 为兼容现有内联脚本与 KaTeX 内联样式；connect-src 仅放开本站与 WebSocket。
+         注意：frame-ancestors 只能由 HTTP 响应头提供，写在 <meta> 里会被浏览器忽略并报错，
+         防点击劫持请在服务端 Nginx 配置 X-Frame-Options 或 CSP 响应头。 -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; media-src 'self' data: blob:; connect-src 'self' wss://p2p2.shaihai.cn:24026 https://p2p2.shaihai.cn:24026; worker-src 'self' blob:; object-src 'none'; base-uri 'self'">
     <link rel="stylesheet" href="files/css/style.css">
     <link rel="stylesheet" href="files/css/shaihai-theme.css">
     <link rel="stylesheet" href="files/css/editor.css">
@@ -623,7 +632,7 @@
     <!-- Summa训练选择弹窗 -->
     <div class="modal" id="summa-train-dialog" style="display: none;">
         <div class="modal-content summa-dialog-content">
-            <img class="summa-dialog-icon" src="files/Summa形象处理/summa_image/happy.png" alt="Summa 图标">
+            <img class="summa-dialog-icon" src="files/summa/summa_image/happy.png" alt="Summa 图标">
             <h2 class="summa-dialog-title" id="summa-dialog-title">唤醒 Summa</h2>
             <p class="summa-dialog-message" id="summa-dialog-message"></p>
             
@@ -1305,8 +1314,8 @@
     <!-- 全局音频管理器和角色管理器 -->
     <script src="files/js/AudioManager.js"></script>
     <!-- SummaAnimator 必须在 SummaCharacter 之前加载 -->
-    <script src="files/Summa形象处理/SummaAnimator.js"></script>
-    <script src="files/Summa形象处理/SummaCharacter.js"></script>
+    <script src="files/summa/SummaAnimator.js"></script>
+    <script src="files/summa/SummaCharacter.js"></script>
     
     <!-- Ai子模块（按依赖顺序加载） -->
     <script src="files/js/ai/AIFunctionBuilderSingle.js"></script>
@@ -1545,6 +1554,8 @@
                 // ── 磁性吸附 + 光晕跟随（仅桌面，有鼠标时） ──
                 el.addEventListener('mousemove', function(e) {
                     if (this.disabled) return;
+                    // 触屏设备无悬停，跳过磁性/光晕计算（省电且避免样式粘滞）
+                    if (window.matchMedia && !window.matchMedia('(pointer: fine)').matches) return;
                     var rect = this.getBoundingClientRect();
                     // 光晕坐标（百分比）
                     var gx = ((e.clientX - rect.left) / rect.width * 100).toFixed(1);

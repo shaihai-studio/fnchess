@@ -168,8 +168,10 @@ if (typeof UIController === 'undefined') {
             // 对局中但未开观战的房间：仅用于大厅速览统计，不在列表中展示为可加入/可观战
             if (room.status === 'playing' && room.spectateEnabled === false) return;
             const playing = room.status === 'playing';
+            // 自己创建的房间：列表里照常显示（自己要看得到），但按钮置灰不可加入/观战
+            const isMine = !!room.mine;
             const row = document.createElement('div');
-            row.className = 'lobby-room-row' + (playing ? ' lobby-room-playing' : '');
+            row.className = 'lobby-room-row' + (playing ? ' lobby-room-playing' : '') + (isMine ? ' lobby-room-mine' : '');
             const desc = playing
                 ? `对战中 · 观众 ${room.spectatorCount || 0} 人 · ${this._escapeHtml(this._formatLobbyRoomDesc(room.options))}`
                 : this._escapeHtml(this._formatLobbyRoomDesc(room.options));
@@ -181,17 +183,21 @@ if (typeof UIController === 'undefined') {
             const hostNick = (room.hostNickname && String(room.hostNickname).trim())
                 ? `<span class="lobby-room-host">房主 ${this._escapeHtml(String(room.hostNickname))}</span>`
                 : '';
+            const mineTag = isMine ? '<span class="lobby-room-mine-tag">我的房间</span>' : '';
             row.innerHTML = `
                 <div class="lobby-room-info">
                     <span class="lobby-room-code">${this._escapeHtml(String(room.code))}</span>
+                    ${mineTag}
                     ${hostNick}
                     ${eloBadge}
                     <span class="lobby-room-desc">${desc}</span>
                 </div>
-                <button type="button" class="btn btn-small lobby-join-btn">${playing ? '观战' : '加入'}</button>
+                <button type="button" class="btn btn-small lobby-join-btn"${isMine ? ' disabled title="这是你自己创建的房间"' : ''}>${isMine ? '我的房间' : (playing ? '观战' : '加入')}</button>
             `;
             const btn = row.querySelector('.lobby-join-btn');
-            if (playing) {
+            if (isMine) {
+                btn.onclick = () => this.showMessage('这是你自己创建的房间，不能加入或观战自己的房间', 'warning');
+            } else if (playing) {
                 btn.onclick = () => this._lobbySpectate(room.code);
             } else {
                 btn.onclick = () => this._lobbyJoin(room.code);
@@ -327,6 +333,11 @@ if (typeof UIController === 'undefined') {
         }
         if (this.p2pController && (this.p2pController.isConnecting || this.p2pController.isConnected)) {
             this.showMessage('已有进行中的联机连接，请先返回再操作', 'error');
+            return;
+        }
+        // 自己创建的房间不能加入（列表已置灰，这里按当前房主房间码兜底拦截）
+        if (lobby.myRoomCode && String(code) === String(lobby.myRoomCode)) {
+            this.showMessage('这是你自己创建的房间，不能加入自己的房间', 'warning');
             return;
         }
         this._joiningRoomCode = String(code);

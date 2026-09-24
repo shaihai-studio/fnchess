@@ -25,6 +25,14 @@ function fnNoticeEscHtml(s) {
     }
 ;
 
+// _serverHttpBaseOr — 取服务器 HTTP 基址；信令配置缺失（P2PController 未加载）时回退到给定默认地址
+    UIController.prototype._serverHttpBaseOr = function(fallback) {
+        const sig = (typeof P2PController !== 'undefined' && P2PController.signaling) ? P2PController.signaling : null;
+        if (!sig || !sig.host) return fallback;
+        try { return this._getServerHttpBase(); } catch (e) { return fallback; }
+    }
+;
+
 // _getNoticeUrl — 拼接 /notice 的 HTTP 地址
     UIController.prototype._getNoticeUrl = function() {
         return this._getServerHttpBase() + '/notice';

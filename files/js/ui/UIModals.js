@@ -683,7 +683,9 @@ if (typeof UIController === 'undefined') {
         const text = placeholders.join('\n');
         // 尝试从远程获取公告（可选；失败静默回退到占位文案）
         try {
-            const annUrl = 'https://shaihai.cn/api/announcement';
+            // 服务器基址随信令配置推导（p2p2.shaihai.cn:24026），原来硬编码 https://shaihai.cn/api/...
+            // —— shaihai.cn 只是静态站点，没有 /api 反代，那个地址必然 404 拿不到公告。
+            const annUrl = this._serverHttpBaseOr('https://p2p2.shaihai.cn:24026') + '/api/announcement';
             const controller = this;
             fetch(annUrl).then(r => {
                 if (!r.ok) throw new Error('no ann');
@@ -711,7 +713,8 @@ if (typeof UIController === 'undefined') {
         ];
         // 异步检查最新版本（失败时显示当前版本并隐藏提示）
         try {
-            fetch('https://shaihai.cn/api/version').then(r => {
+            // 同上：版本接口在游戏服务器上，不在静态站点 shaihai.cn
+            fetch(this._serverHttpBaseOr('https://p2p2.shaihai.cn:24026') + '/api/version').then(r => {
                 if (!r.ok) throw new Error('no ver');
                 return r.json();
             }).then(v => {

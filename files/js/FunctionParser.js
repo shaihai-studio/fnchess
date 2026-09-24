@@ -50,12 +50,59 @@ class FunctionParser {
     cNeg(a) { a = this.toComplex(a); return { re: -a.re, im: -a.im }; }
     cPow(a, b) {
         a = this.toComplex(a); b = this.toComplex(b);
+        // 实数整数次幂走精确路径：主值分支算 (-2)^3 会留下 2.9e-15 的虚部残差，
+        // 一旦下游用精确比较（旧 validateSyntax 的 im===0）就会把 -8 判成「计算错误」。
+        if (a.im === 0 && b.im === 0 && a.re !== 0 && Number.isInteger(b.re) && Math.abs(b.re) <= 1e6) {
+            return { re: Math.pow(a.re, b.re), im: 0 };
+        }
+        // 负实底数 + 分母为奇数的有理指数 → 取实数根（与 GeoGebra 同口径）：
+        // (-8)^(1/3) = -2、(-8)^(2/3) = 4，而不是复数主根 1±1.732i。
+        const realRoot = this._negativeBaseRealPower(a, b);
+        if (realRoot) return realRoot;
         const r = Math.hypot(a.re, a.im);
         const theta = Math.atan2(a.im, a.re);
         const lnR = Math.log(r);
         const x = Math.exp(lnR * b.re - b.im * theta);
         const y = lnR * b.im + b.re * theta;
         return { re: x * Math.cos(y), im: x * Math.sin(y) };
+    }
+
+    /**
+     * 负实底数的实数根：(-m)^(p/q)，要求 q 为奇数（分母偶数时实数域无定义，仍是复根）。
+     * 命中返回 {re, im:0}；未命中返回 null（交回主值分支处理）。
+     */
+    _negativeBaseRealPower(a, b) {
+        if (a.im !== 0 || b.im !== 0) return null;
+        if (!(a.re < 0)) return null;
+        if (!Number.isFinite(b.re) || Number.isInteger(b.re)) return null;
+        const frac = this._toRational(b.re);
+        if (!frac || frac.d % 2 === 0) return null;    // 分母偶数 → 复根，如 (-4)^(1/2) = 2i
+        const mag = Math.pow(-a.re, b.re);
+        if (!Number.isFinite(mag)) return null;
+        // 分子奇偶决定符号：(-8)^(1/3) = -(8^(1/3)) = -2；(-8)^(2/3) = +4；(-8)^(-1/3) = -0.5
+        const even = Math.abs(frac.n) % 2 === 0;
+        return { re: even ? mag : -mag, im: 0 };
+    }
+
+    /** 浮点数 → 最简分数 p/q（q ≤ maxDen）；最大分母内逼近不到（如 π）则返回 null */
+    _toRational(x, maxDen = 100) {
+        if (!Number.isFinite(x)) return null;
+        const sign = x < 0 ? -1 : 1;
+        const v = Math.abs(x);
+        let h0 = 0, h1 = 1, k0 = 1, k1 = 0, b = v;
+        for (let i = 0; i < 32; i++) {
+            const a = Math.floor(b);
+            const h2 = a * h1 + h0;
+            const k2 = a * k1 + k0;
+            if (k2 > maxDen) break;
+            h0 = h1; h1 = h2; k0 = k1; k1 = k2;
+            const fracPart = b - a;
+            if (fracPart < 1e-12) break;
+            b = 1 / fracPart;
+        }
+        if (k1 === 0) return null;
+        if (Math.abs(v - h1 / k1) > Math.max(1e-12, v * 1e-10)) return null;
+        return { n: sign * h1, d: k1 };
     }
     cAbs(a) { a = this.toComplex(a); return { re: Math.hypot(a.re, a.im), im: 0 }; }
     cLn(a) { a = this.toComplex(a); return { re: Math.log(Math.hypot(a.re, a.im)), im: Math.atan2(a.im, a.re) }; }
@@ -87,7 +134,9 @@ class FunctionParser {
     }
     cFloor(a) {
         a = this.toComplex(a);
-        // floor 仅对实部取整（复数虚部取整无标准定义，按 0 处理）
+        // 虚部只是浮点残差（如 floor(e^(iπ))）→ 按实数取整；
+        // 真有虚部时复数取整无标准定义 → NaN（此前会静默丢掉虚部返回实数，得出错误结果）
+        if (!this.isRealValue(a)) return { re: NaN, im: NaN };
         return { re: Math.floor(a.re), im: 0 };
     }
     cSgn(a) {
@@ -95,7 +144,8 @@ class FunctionParser {
         // 符号函数：实数 sgn(x)；复数取其模的符号（x=0 → 0）
         const re = a.re, im = a.im;
         if (re === 0 && im === 0) return { re: 0, im: 0 };
-        if (im === 0) return { re: Math.sign(re), im: 0 };
+        // 虚部在容差内 → 按实数符号（否则残留的 1e-16 会把 sgn(-1) 变成 -1+1e-16i）
+        if (Math.abs(im) < this._imTolerance(re)) return { re: Math.sign(re), im: 0 };
         const mag = Math.hypot(re, im);
         return { re: re / mag, im: im / mag };
     }
@@ -107,8 +157,16 @@ class FunctionParser {
     }
     cFactorial(a) {
         a = this.toComplex(a);
-        if (a.im !== 0) return { re: NaN, im: NaN };
+        // 虚部只当浮点残差时按实数阶乘处理；真有虚部 → 复数阶乘无标准定义 → NaN
+        if (Math.abs(a.im) >= this._imTolerance(a.re)) return { re: NaN, im: NaN };
+        a = { re: a.re, im: 0 };
         const n = a.re + 1; // gamma 参数 = x + 1
+        // 非负整数走精确阶乘：gamma 近似会留下 7e-15 级误差（3! = 6.000000000000007）
+        if (Number.isInteger(a.re) && a.re >= 0 && a.re <= 170) {
+            let exact = 1;
+            for (let i = 2; i <= a.re; i++) exact *= i;
+            return { re: exact, im: 0 };
+        }
         // 负整数处的 gamma 是极点 → 返回 NaN
         if (n <= 0 && Math.abs(n - Math.round(n)) < 1e-10) return { re: NaN, im: NaN };
         // 距离负整数非常近（<0.005）→ 也是极点，值极大且视觉无用
@@ -165,12 +223,27 @@ class FunctionParser {
 
     // ========== 复数 → 实数转换 ==========
 
+    /**
+     * 虚部容差：随实部量级放大，用于吸收 e^(iπ)、(-2)^3 之类运算的浮点残差。
+     * 单一来源 —— complexToNumber / isRealValue / validateSyntax / floor / sgn 判定实虚必须同口径，
+     * 否则会出现「求值得到 -1、校验却说计算错误」这类自相矛盾的行为。
+     */
+    _imTolerance(re) {
+        return Math.max(1e-10, Math.abs(re) * 1e-10);
+    }
+
+    /** 该值能否视为实数（实部有限且虚部在容差内） */
+    isRealValue(v) {
+        const c = this.toComplex(v);
+        if (!Number.isFinite(c.re) || !Number.isFinite(c.im)) return false;
+        return Math.abs(c.im) < this._imTolerance(c.re);
+    }
+
     complexToNumber(v) {
         const c = this.toComplex(v);
         if (!Number.isFinite(c.re) || !Number.isFinite(c.im)) return null;
-        // 虚部足够小 → 视为实数（处理 (-x)^n 整数幂的浮点精度问题）
-        const imTolerance = Math.max(1e-10, Math.abs(c.re) * 1e-10);
-        if (Math.abs(c.im) < imTolerance) return c.re;
+        // 虚部足够小 → 视为实数（处理 e^(iπ)、(-x)^n 整数幂的浮点精度问题）
+        if (Math.abs(c.im) < this._imTolerance(c.re)) return c.re;
         return null; // 有显著虚部 → 实数范围内无定义，返回 null
     }
 
@@ -376,9 +449,9 @@ class FunctionParser {
                         return this.cSqrt(sv);
                     }
                     case 'digamma': {
-                        // 内部求导节点专用：ψ(z)，只处理实数，虚部忽略（返回 NaN）
+                        // 内部求导节点专用：ψ(z)，只处理实数，虚部超出容差即视为复数（返回 NaN）
                         const dv = this.toComplex(v);
-                        if (dv.im !== 0 && Math.abs(dv.im) > 1e-10) return NaN;
+                        if (!this.isRealValue(dv)) return NaN;
                         return this.digamma(dv.re);
                     }
                     default: return { re: NaN, im: NaN };
@@ -660,6 +733,7 @@ class FunctionParser {
         // 尝试计算多个测试点（包括定义域外的复数情况）
         const testPoints = [0, 1, -1, 0.5, 1.5, -1.5, 2, -2, 2.5, -2.5, 3, -3, 5, -5, 10, -10];
         let validCount = 0;
+        let complexCount = 0;      // 语法合法但结果落在复数域（如 sqrt(-4)、i^3、ln(-1)）
         for (const x of testPoints) {
             let result;
             try {
@@ -667,26 +741,26 @@ class FunctionParser {
             } catch (e) {
                 result = null;
             }
-            // 正确处理复数：null表示NaN/无穷大，复数对象（虚部为0）表示有效实数值
-            if (result !== null) {
-                if (typeof result === 'object') {
-                    // 复数结果：虚部为0才是有效实数，否则视为无效（定义域外）
-                    if (result.im === 0 && isFinite(result.re)) {
-                        validCount++;
-                    }
-                } else if (isFinite(result)) {
-                    validCount++;
-                }
-            }
+            if (result === null || result === undefined) continue;
+            // 实虚判定必须走 complexToNumber 的容差口径：
+            // e^(iπ) = -1 的虚部只有 1.2e-16 的浮点残差，此前用精确比较 im===0
+            // 会把 e^ipi、i^2、i^4、e^(2iπ)、(-2)^2 等一批"结果明明是实数"的表达式
+            // 全部判成「表达式计算错误」。
+            if (this.complexToNumber(result) !== null) { validCount++; continue; }
+            const c = this.toComplex(result);
+            if (Number.isFinite(c.re) && Number.isFinite(c.im)) complexCount++;
         }
         if (validCount === 0) {
             // 所有测试点都计算失败：可能是定义域很窄但语法合法的函数
             // （如 (-2x-1)!·(2x-1)!，其定义域恰好避开测试点），也可能是恒未定义的常量表达式（如 1/0）。
             // 含变量 x 的表达式已通过语法解析 → 视为合法（仅定义域窄），不应误判为语法错误；
-            // 不含 x 的常量表达式若测试点全部无效 → 判定为计算错误。
-            const hasVariable = expression.indexOf('x') !== -1;
+            // 不含 x 的常量表达式：结果为复数 → 提示实数域无定义；否则才算计算错误。
+            const hasVariable = this._containsVar(ast);
             if (hasVariable) {
                 return { valid: true, error: null };
+            }
+            if (complexCount > 0) {
+                return { valid: false, error: '表达式在实数范围内无定义（结果是复数）' };
             }
             return { valid: false, error: '表达式计算错误，请检查语法' };
         }
@@ -848,12 +922,16 @@ class FunctionParser {
         ];
         const results = [];
         for (const test of testCases) {
-            const result = this.evaluate(test.expr, 0);
+            let result;
             let passed;
             if (test.isPureImag) {
-                // i^3 = -i，结果是复数对象 {re:0, im:-1}
-                passed = result && typeof result === 'object' && Math.abs(result.im - test.expected) < 1e-10 && Math.abs(result.re) < 1e-10;
+                // i^3 = -i 是纯虚数：evaluate() 会按实数口径返回 null，
+                // 这里必须取 evalAst 的原始复数对象 {re:0, im:-1} 才比得出来（原断言写法恒为 FAIL）
+                result = this.evalAst(this.parse(test.expr), 0);
+                passed = result && typeof result === 'object'
+                    && Math.abs(result.im - test.expected) < 1e-10 && Math.abs(result.re) < 1e-10;
             } else {
+                result = this.evaluate(test.expr, 0);
                 passed = Math.abs(result - test.expected) < 1e-10;
             }
             results.push({
