@@ -40,54 +40,46 @@ node scripts/dev-server.js 8138 www    # 打包产物版
 
 ### 3.1 生成签名密钥（仅首次）
 
-```bash
-keytool -genkeypair -v -keystore fnchess-release.keystore -alias fnchess -keyalg RSA -keysize 2048 -validity 10000
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\gen-android-keystore.ps1
 ```
 
-在 `android/` 下创建 `keystore.properties`（**切勿提交 git**）：
+- 生成 `android/fnchess-release.keystore`（已被 `.gitignore` 忽略）并写好 `android/keystore.properties`
+- 未指定 `-Password` 时随机生成 24 位口令，同时备份到 `.secrets/android-keystore.txt`（不入库）
+- ⚠️ **密钥库与口令必须离线备份**：丢失后无法再为已上架应用发布更新（国内渠道基本无法找回）
+- 手工等价命令：`keytool -genkeypair -v -keystore android/fnchess-release.keystore -alias fnchess -keyalg RSA -keysize 2048 -validity 10000`
+- 配置模板见 `android/keystore.properties.example`
 
-```properties
-storeFile=../fnchess-release.keystore
-storePassword=你的密码
-keyAlias=fnchess
-keyPassword=你的密码
+签名配置已内置于 `android/app/build.gradle`：读取 `android/keystore.properties`，**文件缺失时 release 产物不签名**（仍可构建，便于本地验证或 CI 未配密钥时降级）。
+
+### 3.2 构建发布产物（一键）
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\build-android-release.ps1           # AAB + APK
+powershell -ExecutionPolicy Bypass -File scripts\build-android-release.ps1 -ApkOnly  # 只要 APK
 ```
 
-### 3.2 配置签名（android/app/build.gradle）
+脚本流程：`npm run build:web` → `npx cap copy android` → `gradlew bundleRelease assembleRelease` → `apksigner` 校签 + 打印 `versionCode/versionName`。
 
-```gradle
-def keystorePropertiesFile = rootProject.file("keystore.properties")
-def keystoreProperties = new Properties()
-if (keystorePropertiesFile.exists()) {
-    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
-}
+产物：
+- AAB（Google Play 必需）：`android/app/build/outputs/bundle/release/app-release.aab`
+- APK（国内渠道 / 官网下载）：`android/app/build/outputs/apk/release/app-release.apk`
 
-android {
-    ...
-    signingConfigs {
-        release {
-            storeFile file(keystoreProperties['storeFile'])
-            storePassword keystoreProperties['storePassword']
-            keyAlias keystoreProperties['keyAlias']
-            keyPassword keystoreProperties['keyPassword']
-        }
-    }
-    buildTypes {
-        release {
-            signingConfig signingConfigs.release
-            minifyEnabled false
-        }
-    }
-}
+### 3.3 CI 自动构建与发布（GitHub Actions）
+
+`.github/workflows/android-release.yml`：
+
+- 手动触发（Actions → **Android 发布构建** → Run workflow），或推送 `v*` 标签自动触发
+- `create_release=true` → 自动创建 GitHub Release 并附上 APK/AAB（对应 `docs/index.html` 的「下载 Android APK」按钮）
+- `publish_to_play=true` → 自动上传 AAB 到 Google Play **内部测试轨道**（需 `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`）
+- 仓库 Secrets 需要：`ANDROID_KEYSTORE_BASE64`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD`
+
+```powershell
+# 生成密钥库 base64（粘贴到 ANDROID_KEYSTORE_BASE64，注意去掉 BEGIN/END 两行）
+certutil -encode android\fnchess-release.keystore ks.b64
 ```
 
-### 3.3 构建产物
-
-```bash
-cd android
-./gradlew assembleRelease     # APK：app/build/outputs/apk/release/app-release.apk
-./gradlew bundleRelease       # AAB：app/build/outputs/bundle/release/app-release.aab（Google Play 必需）
-```
+国内渠道（华为/小米/OPPO/vivo/应用宝）目前对个人开发者**没有稳定开放的自动上传接口**，实际流程是：CI 产出 APK → 人工登录各渠道后台上传（首次必须人工创建应用、签署协议、提交资质）。
 
 ### 3.4 Android 商店清单
 
@@ -134,10 +126,22 @@ App 内网络请求走三条路径：
 
 ## 6. 版本号管理
 
-- 前端版本：`files/js/GameVersion.js` 的 `GAME_VERSION`（服务器版本检查依此）
-- Android：`android/app/build.gradle` 的 `versionCode`（递增整数）与 `versionName`
-- iOS：Xcode 的 `MARKETING_VERSION` 与 `CURRENT_PROJECT_VERSION`
-- 三者发布时必须同步递增
+三端必须一起递增；当前基线 **2.0.0.2**：
+
+| 端 | 位置 | 当前值 | 说明 |
+|---|---|---|---|
+| 网页 | `files/js/GameVersion.js` 的 `GAME_VERSION` | `2.0.0.2` | 客户端与 `/version` 比较，服务端更大则提示更新 |
+| 网页 | `server/version.json` | `2.0.0.2` | 服务端权威版本（`/version` 接口） |
+| 网页 | `package.json` 的 `version` | `2.0.0.2` | 与上两者保持一致 |
+| Android | `android/app/build.gradle` 的 `versionName` / `versionCode` | `2.0.0.2` / `2` | 第四段用于小版本；`versionCode` 必须**递增整数**（商店据此判断升级） |
+| iOS | Xcode `MARKETING_VERSION` / `CURRENT_PROJECT_VERSION` | `2.0.0` / `2` | ⚠️ App Store 只接受**最多三段**（`CFBundleShortVersionString`），故第四段折算到 build 号 |
+
+发布新版本时的操作清单：
+
+1. 改 `files/js/GameVersion.js`（如 `2.0.0.3`）→ 部署前端与 `server/version.json`（老客户端即会收到更新提示）
+2. Android：`versionName` 同步为 `2.0.0.3`，`versionCode` +1（`3`）
+3. iOS：`MARKETING_VERSION = 2.0.1`（或与 Android 前三段一致），`CURRENT_PROJECT_VERSION` +1
+4. `package.json` 的 `version` 同步，然后按 §2 重新 `build:web` 并部署
 
 ## 7. 可选增强：关键存档双写（@capacitor/preferences）
 

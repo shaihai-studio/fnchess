@@ -55,6 +55,8 @@ android-shots/
 *.jks
 *.p12
 *.mobileprovision
+android/keystore.properties
+android/key.properties
 
 # ── 密钥/凭据与本地机密（切勿入库） ────────────────────────────
 # .secrets/ 存放 SSH 口令、宝塔面板凭据、ACME 账户私钥、服务端私钥备份等
