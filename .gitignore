@@ -28,6 +28,9 @@ tmp_test_server_check.cjs
 smoke-shots/
 android-shots/
 
+# ── 打包分发包（源码仓库不入库，避免仓库膨胀） ────────────────
+*.zip
+
 # 编辑器与工具缓存（不入库）
 .codebuddy/
 .playwright-cli/
@@ -37,3 +40,44 @@ android-shots/
 *.jks
 *.p12
 *.mobileprovision
+
+# ── 密钥/凭据与本地机密（切勿入库） ────────────────────────────
+# .secrets/ 存放 SSH 口令、宝塔面板凭据、ACME 账户私钥、服务端私钥备份等
+.secrets/
+certs/
+server/Nginx/privkey.key
+
+# ── 一次性临时脚本归档（保留在本地便于追溯，不入库） ──────────
+scripts/_archive/
+
+# ── 自动化测试（不入库：脚本内含服务器地址与口令用法） ─────────
+tests/
+scripts/e2e-race-room.cjs
+scripts/tmp-*
+
+# ── 运维脚本（不入库：含服务器地址/账号/部署路径等运维信息） ───
+scripts/deploy.py
+scripts/ssh-connect.ps1
+scripts/ssh-run.ps1
+scripts/acme_issue.py
+scripts/turn_check.py
+
+# ── 服务端本地运行时数据（服务器上有独立副本，不入库） ────────
+server/db/
+server/*.bak
+server/*.zip
+server/leaderboard.json
+server/notice.json
+server/logs/
+# TURN 共享密钥（coturn static-auth-secret / /api/ice 签发用）
+server/.turn-secret
+# 排行榜签名主密钥（server/index.js 首次启动自动生成，勿外传）
+server/.lb-secret
+# TLS 证书（私钥/证书链均为服务器产物）
+server/Nginx/*.pem
+
+# ── Python / 编辑器缓存 ────────────────────────────────────────
+__pycache__/
+*.pyc
+.idea/
+.vscode/

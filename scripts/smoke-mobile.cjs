@@ -60,12 +60,6 @@ async function testIphoneFlow(browser) {
   await page.goto(BASE);
   await page.waitForTimeout(1800);
 
-  // 昵称弹窗（首次进入）：确认
-  const nickVisible = await page.evaluate(() => {
-    const m = document.getElementById('nickname-modal');
-    return m && m.style.display !== 'none' && m.style.display !== '';
-  });
-  if (nickVisible) await page.click('#nickname-confirm-btn');
 
   // DPR 高分屏渲染
   const dpr = await page.evaluate(() => ({
@@ -148,11 +142,6 @@ async function testViewports(browser) {
   const page = await ctx.newPage();
   await page.goto(BASE);
   await page.waitForTimeout(1500);
-  const nickVisible = await page.evaluate(() => {
-    const m = document.getElementById('nickname-modal');
-    return m && m.style.display !== 'none' && m.style.display !== '';
-  });
-  if (nickVisible) await page.click('#nickname-confirm-btn');
   await page.click('#splash-screen');
   await page.waitForTimeout(400);
   await page.click('#start-go-btn');
@@ -187,11 +176,6 @@ async function testRotation(browser) {
   page.on('pageerror', (e) => errors.push(String(e)));
   await page.goto(BASE);
   await page.waitForTimeout(1600);
-  const nickVisible = await page.evaluate(() => {
-    const m = document.getElementById('nickname-modal');
-    return m && m.style.display !== 'none' && m.style.display !== '';
-  });
-  if (nickVisible) await page.click('#nickname-confirm-btn');
   await page.click('#splash-screen');
   await page.waitForTimeout(400);
   await page.click('#start-go-btn');
@@ -246,11 +230,6 @@ async function testModals(browser) {
   const enterMainPage = async () => {
     await page.goto(BASE);
     await page.waitForTimeout(1600);
-    const nickVisible = await page.evaluate(() => {
-      const m = document.getElementById('nickname-modal');
-      return m && m.style.display !== 'none' && m.style.display !== '';
-    });
-    if (nickVisible) await page.click('#nickname-confirm-btn');
     await page.click('#splash-screen');
     await page.waitForTimeout(400);
     await page.click('#start-go-btn');

@@ -15,6 +15,14 @@ if (typeof UIController === 'undefined') {
 
 // showP2PRoomModal
     UIController.prototype.showP2PRoomModal = function() {
+        // ── 方案A：联机对战必须登录。未登录 → 提示并弹登录框，登录成功后再进联机 ──
+        if (!window.AuthService || !window.AuthService.isLoggedIn()) {
+            const self = this;
+            if (window.AuthPanel && typeof window.AuthPanel.requireLogin === 'function') {
+                window.AuthPanel.requireLogin(() => { self.showP2PRoomModal(); });
+            }
+            return;
+        }
         if (typeof P2PController === 'undefined') {
             this.showMessage('P2P模块未加载', 'error');
             return;
@@ -166,8 +174,8 @@ if (typeof UIController === 'undefined') {
                 this._p2pOpponentProfile = { playerId: String(config.playerId), nickname: config.nickname || '棋手' };
             }
             if (!p2p.isHost && typeof PlayerProfile !== 'undefined') {
-                const profile = PlayerProfile.getProfile();
-                p2p.send({ type: 'player_info', payload: { playerId: profile.playerId, nickname: profile.nickname } });
+                // 昵称已与用户名合并：对外身份名统一取用户名（协议字段名保持不变）
+                p2p.send({ type: 'player_info', payload: { playerId: PlayerProfile.getPlayerId(), nickname: PlayerProfile.getUsername() } });
             }
             // 对局模式（休闲/排位）：以房主选择的为准；休闲模式关闭断线重连等待
             if (config && (config.mode === 'ranked' || config.mode === 'casual')) {
@@ -378,6 +386,8 @@ if (typeof UIController === 'undefined') {
         };
         // 对方发来 Summa 表情包：弹出展示（纯图片）
         p2p.onSummaEmoji = (mood) => this._showSummaEmoji(mood, true);
+        // 对方发来聊天消息：显示在聊天区
+        p2p.onChat = (text) => this._showChatMessage(text, false);
     }
 ;
 
@@ -564,6 +574,10 @@ if (typeof UIController === 'undefined') {
         const p2p = this.p2pController;
         if (!p2p) return;
         console.warn(`[UI][P2P] startP2PGame 被调用：isHost=${p2p.isHost}, _reconnecting=${p2p._reconnecting}, _p2pMatchStarted=${this._p2pMatchStarted}（重连成功后若仍触发 → 会 initGame+sendGameInit 重新开局，覆盖快照恢复）`);
+        // ★ 最后防线：开局前若残留观战状态，先干净退出，避免新对局继承"观战只读"锁定
+        if (this._isSpectating && typeof this.exitSpectatorMode === 'function') {
+            this.exitSpectatorMode();
+        }
         // 退出可能残留的关卡编辑器 UI
         if (this.levelEditor) this.levelEditor.deactivate();
         this._markGameActive();
@@ -572,6 +586,8 @@ if (typeof UIController === 'undefined') {
         this._ensureSummaEmojiUI();
         const emojiFab = document.getElementById('emoji-fab-btn');
         if (emojiFab) emojiFab.style.display = '';
+        // 聊天入口：仅对局显示（表情按钮左侧）
+        if (typeof this._showBattleChatUI === 'function') this._showBattleChatUI();
         // 对局进行中暂停大厅列表自动刷新，省流量（连接本身保留）
         if (this._lobby) this._lobby.pauseRefresh();
         this.gameController.setP2PController(p2p);
@@ -608,7 +624,7 @@ if (typeof UIController === 'undefined') {
                 rounds, difficulty, timeLimitMode,
                 mode: this._p2pMatchMode,
                 playerId: hostProfile ? hostProfile.playerId : '',
-                nickname: hostProfile ? hostProfile.nickname : ''
+                nickname: (typeof PlayerProfile !== 'undefined') ? PlayerProfile.getUsername() : ''
             });
         }
     }

@@ -53,6 +53,8 @@
     UIController.prototype.refreshUnsovableDifficultyVisibility = function() {
         const grid = document.getElementById('campaign-difficulty-grid');
         if (!grid) return;
+        // 开发者模式：分数关 / 无解关难度入口全部显示
+        const devMode = this.getDeveloperModeEnabled();
         const cleared = this.getCampaignClearedMax();
         const fractionCleared = (typeof this.getCampaignFractionClearedMax === 'function')
             ? this.getCampaignFractionClearedMax() : 0;
@@ -60,8 +62,8 @@
         const unsolvableBtn = document.getElementById('campaign-diff-unsolvable');
         // 分数系列关卡需在通关全部"简单"难度（1-29）后才解锁入口
         const easyEnd = (typeof this.getDifficultyRange === 'function') ? this.getDifficultyRange('easy').end : 29;
-        const showFraction = fractionCleared >= 1 || cleared >= easyEnd;
-        const showUnsolvable = cleared >= 81;
+        const showFraction = devMode || fractionCleared >= 1 || cleared >= easyEnd;
+        const showUnsolvable = devMode || cleared >= 81;
         if (fractionBtn) fractionBtn.style.display = showFraction ? '' : 'none';
         if (unsolvableBtn) unsolvableBtn.style.display = showUnsolvable ? '' : 'none';
         const customBtn = document.getElementById('campaign-diff-custom');

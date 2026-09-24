@@ -67,12 +67,6 @@ if (typeof UIController === 'undefined') {
 
         // —— 窗口尺寸/方向变化：自动夹回屏幕内 + 重算字号缩放 + 函数名自适应 ——
         window.addEventListener('resize', () => {
-            // 横竖屏切换 / 窗口尺寸变化：先重置锚点，强制重新计算位置，
-            // 避免沿用旧视口尺寸记录的底边界/右边界导致键盘被夹到顶部之外
-            this._floatKeypadBottom = null;
-            this._floatKeypadRight = null;
-            this._floatKeypadHeight = null;
-            this._floatKeypadWidth = null;
             // 用户调节的 scale 若超出新视口允许的范围（含横竖屏切换导致的下限变化），先重新夹定再定位
             if (this._floatKeypadScale) {
                 const clamped = clampUserScale(this._floatKeypadScale);
@@ -82,8 +76,6 @@ if (typeof UIController === 'undefined') {
                     this._updateFloatKeypadSizeButtons();
                 }
             }
-            // 重新应用用户自定义尺寸（scale 已按新视口重夹），确保宽高适配后再定位
-            this._applyFloatKeypadUserSize();
             this._clampFloatKeypad();
             this.updateKeypadScale();
             this._clampFloatKeypadFab();
@@ -93,7 +85,6 @@ if (typeof UIController === 'undefined') {
         // —— 收起为圆形按钮（×） ——
         this.floatKeypadCollapseBtn.addEventListener('click', () => {
             if (window.audioManager) window.audioManager.playClick();
-            this._floatKeypadUserToggled = true; // 用户手动操作后不再自动干预收起态
             this._floatKeypadCollapsed = true;
             // 收起时仅移除 fx-open 类（面板此时隐藏），
             // 但保留 _floatKeypadFxOpen 标志：下次展开输入栏时函数栏仍保持打开
@@ -122,7 +113,6 @@ if (typeof UIController === 'undefined') {
             fab.addEventListener('click', () => {
                 if (fab._fabDragMoved) return; // 拖动后松开：不展开输入栏
                 if (window.audioManager) window.audioManager.playClick();
-                this._floatKeypadUserToggled = true; // 用户手动操作后不再自动干预收起态
                 this._floatKeypadCollapsed = false;
                 // 记录圆形按钮当前（拖动后）的左上角位置，展开时输入栏左上角与之对齐
                 //（与收起时按钮左上角 = 输入栏左上角的相对关系一致）
@@ -216,7 +206,7 @@ if (typeof UIController === 'undefined') {
                 { name: '遮光', cls: 'keypad-bg-shade' },
                 { name: '模糊', cls: 'keypad-bg-blur' }
             ];
-            this._keypadBgIndex = 1; // 默认遮光
+            this._keypadBgIndex = 2; // 默认模糊（用户偏好；模糊度见 .keypad-bg-blur 的 backdrop-filter）
             const applyBgMode = (index) => {
                 const mode = this._keypadBgModes[index];
                 // 先移除所有背景类，再加当前模式类（遮光 = 基础样式，透明/模糊为覆盖类）
@@ -357,15 +347,6 @@ if (typeof UIController === 'undefined') {
 // _applyFloatKeypadVisibility — 悬浮栏是唯一输入栏：相关阶段显示；收起时显示圆形按钮
     UIController.prototype._applyFloatKeypadVisibility = function() {
         const relevant = this._floatKeypadRelevant();
-        // 手机小屏触屏：进入输入阶段时默认收起为 FAB，避免遮挡棋盘；
-        // 用户手动展开/收起过（_floatKeypadUserToggled）则尊重用户选择，不再自动干预
-        if (relevant && !this._floatKeypadUserToggled && !this._floatKeypadAutoCollapsed) {
-            const smallTouch = window.matchMedia && window.matchMedia('(pointer: coarse) and (max-width: 767px)').matches;
-            if (smallTouch) {
-                this._floatKeypadCollapsed = true;
-                this._floatKeypadAutoCollapsed = true;
-            }
-        }
         const showKeypad = relevant && !this._floatKeypadCollapsed;
         const showFab = relevant && this._floatKeypadCollapsed;
         if (this.floatKeypad) this.floatKeypad.hidden = !showKeypad;
@@ -430,39 +411,24 @@ if (typeof UIController === 'undefined') {
 ;
 
 // _clampToViewport — 公共边界约束：把任意 fixed 定位元素夹回视口内（输入栏与圆形按钮共用同一套逻辑）。
-//                     margin 为视口安全边距：兼容数字（四边统一）或对象 {top,right,bottom,left}；
-//                     centerIfUnpositioned=true 时未定位过的元素默认居中（输入栏），
+//                     margin 为视口安全边距；centerIfUnpositioned=true 时未定位过的元素默认居中（输入栏），
 //                     false 时默认落到右下角（圆形按钮）。
-//                     （方向差异化边距由 _clampFloatKeypad 传入对象实现：竖屏底部留 48px、
-//                       横屏左右各留 24px，避免键盘遮挡棋盘文字与操作按钮）
     UIController.prototype._clampToViewport = function(el, margin, centerIfUnpositioned) {
         if (!el) return;
-        // 归一化边距：数字 → 四边统一；对象 → 逐边取值，缺省 8px
-        let m = { top: 8, right: 8, bottom: 8, left: 8 };
-        if (typeof margin === 'number') {
-            const v = margin || 8;
-            m = { top: v, right: v, bottom: v, left: v };
-        } else if (margin && typeof margin === 'object') {
-            m = {
-                top: margin.top != null ? margin.top : 8,
-                right: margin.right != null ? margin.right : 8,
-                bottom: margin.bottom != null ? margin.bottom : 8,
-                left: margin.left != null ? margin.left : 8
-            };
-        }
+        margin = margin || 8;
         const vw = window.innerWidth, vh = window.innerHeight;
         let left = parseFloat(el.style.left);
         let top = parseFloat(el.style.top);
         if (Number.isNaN(left)) {
             // 输入栏默认位置按屏幕方向自适应：横屏偏左、竖屏水平居中
-            left = centerIfUnpositioned ? (vw > vh ? m.left : (vw - el.offsetWidth) / 2) : vw - el.offsetWidth - m.right - 8;
+            left = centerIfUnpositioned ? (vw > vh ? margin : (vw - el.offsetWidth) / 2) : vw - el.offsetWidth - 16;
         }
         if (Number.isNaN(top)) {
             // 横屏垂直居中、竖屏偏下（贴近底边留出安全间距）
-            top = centerIfUnpositioned ? (vw > vh ? (vh - el.offsetHeight) / 2 : vh - el.offsetHeight - m.bottom) : vh - el.offsetHeight - m.bottom - 8;
+            top = centerIfUnpositioned ? (vw > vh ? (vh - el.offsetHeight) / 2 : vh - el.offsetHeight - margin) : vh - el.offsetHeight - 16;
         }
-        left = Math.max(m.left, Math.min(left, vw - m.right - el.offsetWidth));
-        top = Math.max(m.top, Math.min(top, vh - m.bottom - el.offsetHeight));
+        left = Math.max(margin, Math.min(left, vw - margin - el.offsetWidth));
+        top = Math.max(margin, Math.min(top, vh - margin - el.offsetHeight));
         el.style.left = left + 'px';
         el.style.top = top + 'px';
     }
@@ -580,13 +546,7 @@ if (typeof UIController === 'undefined') {
         if (this._floatKeypadRight != null && this._floatKeypadWidth !== w) {
             el.style.left = (this._floatKeypadRight - w) + 'px';
         }
-        // 方向差异化安全边距：竖屏底部留 48px 安全区（避开棋盘底部操作按钮），
-        // 横屏左右各留 24px（避免键盘与左右边缘控件重叠）
-        const isPortrait = window.innerHeight > window.innerWidth;
-        const margin = isPortrait
-            ? { top: 8, right: 8, bottom: 48, left: 8 }
-            : { top: 8, right: 24, bottom: 8, left: 24 };
-        this._clampToViewport(el, margin, true);
+        this._clampToViewport(el, 8, true);
         el.style.transform = 'none'; // 消除居中 transform，确保 left/top 定位生效
         // 记录当前底边界与右边界，供下次尺寸变化时保持（clamp 后为最近合法位置）
         this._floatKeypadBottom = (parseFloat(el.style.top) || 0) + h;

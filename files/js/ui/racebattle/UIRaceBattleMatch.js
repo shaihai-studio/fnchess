@@ -13,6 +13,14 @@ UIController.prototype.raceBattleStartMatch = function(params) {
     // U10: 防重入——消息重复投递时忽略第二次（新对局由 rematch/doLeave 复位 _rbMatchStarted）
     if (this._rbMatchStarted) return;
     this._rbMatchStarted = true;
+    // 新对局：局次 +1（供积分上报构造"房间码#局次"去重键）；
+    // 同时清空上一局积分结果，避免结算面板回显旧增量（rematch 复用房间码场景）
+    this._rbMatchSeq = (this._rbMatchSeq || 0) + 1;
+    this._rbMyScoreResult = null;
+    // 新一轮对局：清除上一局的"已结算"标记与成员掉线时刻，允许重新判定结算
+    this._rbResultSettled = false;
+    if (this._rbSoloCheckTimer) { clearTimeout(this._rbSoloCheckTimer); this._rbSoloCheckTimer = null; }
+    this._rbMembers.forEach((m) => { m._goneAt = 0; });
     // 同步对局开始标志到房间控制器：匹配大厅阶段成员退出直接踢出、对局中才进入重连宽限
     if (this._rbRoom) this._rbRoom.matchStarted = true;
     this._rbGameParams = params;
@@ -32,6 +40,8 @@ UIController.prototype.raceBattleStartMatch = function(params) {
     this._rbGoAt = goAt;
     this.raceBattleRenderMembers();
     this.raceBattleShowPanel(this.raceBattleRoomCode.textContent);
+    // 聊天入口：竞速对局中显示（进度面板下方/右下角）
+    if (typeof this._showBattleChatUI === 'function') this._showBattleChatUI();
     // 新对局重置"退出结算/继续观战"选择条
     this.raceBattleShowFinishChoice(false);
     // 进度初始化：先显示全员等待起跑

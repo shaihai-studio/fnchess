@@ -48,7 +48,13 @@ class MatchLobbyController {
             : { host: 'localhost', port: 9000, secure: false };
         const scheme = sig.secure ? 'wss' : 'ws';
         const portStr = sig.port && sig.port !== 80 ? ':' + sig.port : '';
-        return `${scheme}://${sig.host}${portStr}/lobby`;
+        let url = `${scheme}://${sig.host}${portStr}/lobby`;
+        // 强制登录：把账号 token 拼在 URL 上，服务端连接时校验（大厅联机动作需登录）
+        try {
+            const tk = (typeof AuthService !== 'undefined' && AuthService.getToken) ? AuthService.getToken() : '';
+            if (tk) url += '?token=' + encodeURIComponent(tk);
+        } catch (e) { /* 忽略 */ }
+        return url;
     }
 
     constructor(callbacks) {
@@ -96,6 +102,16 @@ class MatchLobbyController {
         this.onSubmitResult = null;       // (data) => void（收到上报结果 verify_failed / rate_limited 等）
         this.onRaceStartResult = null;    // (data) => void（阶段一：收到竞速权威计时会话创建结果）
 
+        // ── 全服喊话回调 ─────────────────────────────────────
+        this.onShoutList = null;          // (shouts) => void（收到喊话历史）
+        this.onShoutNew = null;           // (entry) => void（收到新喊话广播）
+        this.onShoutRejected = null;      // (data) => void（喊话被拒：冷却等）
+
+        // ── 强制登录 / 在线统计 ───────────────────────────────
+        this.onAuthRequired = null;       // (action) => void（未登录执行联机动作被服务端拒绝）
+        this.onOnlineStats = null;        // (stats) => void（在线人数与战局数，速览浮窗用）
+        this.onlineStats = null;          // 最近一次在线统计快照 { online, waitP2P, playP2P, waitRace, playRace }
+
         // ── 房间解散回调 ───────────────────────────────────────
         this.onRoomDissolved = null;      // (data) => void（对战方收到房主解散房间）
 
@@ -115,7 +131,9 @@ class MatchLobbyController {
                 'onSpectateJoined', 'onSpectateJoinRejected', 'onSpectateEmoji',
                 'onLeaderboardResult', 'onPlayerEloResult', 'onPlayerRaceRankResult', 'onChallenge',
                 'onSubmitResult', 'onRoomDissolved',
-                'onCancelRegisterAck', 'onRoomDissolveAck'
+                'onCancelRegisterAck', 'onRoomDissolveAck',
+                'onShoutList', 'onShoutNew', 'onShoutRejected',
+                'onAuthRequired', 'onOnlineStats'
             ];
             for (const k of CALLBACK_KEYS) {
                 if (typeof callbacks[k] === 'function') this[k] = callbacks[k];
@@ -126,8 +144,16 @@ class MatchLobbyController {
     // ─── 连接管理 ────────────────────────────────────────────
 
     connect() {
+        const tk = (typeof AuthService !== 'undefined' && AuthService.getToken) ? AuthService.getToken() : '';
+        // 账号 token 变化（登录/登出/换号）→ 断开旧连接重连，确保服务端拿到最新身份
+        if (this.ws && this._connectedToken !== tk) {
+            this._closeSocket(this.ws);
+            this.ws = null;
+            this.isConnected = false;
+        }
         if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) return;
         this._manualClose = false;
+        this._connectedToken = tk;
         if (this._reconnectTimer) { clearTimeout(this._reconnectTimer); this._reconnectTimer = null; }
         let ws;
         try {
@@ -140,17 +166,23 @@ class MatchLobbyController {
         }
         this.ws = ws;
         ws.onopen = () => {
+            if (this.ws !== ws) return;      // 已被替换的旧 socket，忽略
             this.isConnected = true;
             this._notifyConnection(true);
             this.fetchRooms();
             this._startRefresh();
         };
         ws.onmessage = (ev) => {
+            if (this.ws !== ws) return;
             let data;
             try { data = JSON.parse(ev.data); } catch (e) { return; }
             if (data && data.type) this._handleMessage(data);
         };
         ws.onclose = () => {
+            // 关键：只有「当前 socket」的关闭才允许改连接状态。
+            // 否则 disconnect() 紧跟 connect()（退出观战/重开房间时的清理链）会让旧 socket
+            // 迟到的 close 事件把新连接抹成"断线"，导致此后观战守卫（isConnected）直接拒绝进入。
+            if (this.ws !== ws) return;
             this.ws = null;
             this.isConnected = false;
             this._stopRefresh();
@@ -160,12 +192,24 @@ class MatchLobbyController {
         ws.onerror = () => { /* 由 onclose 统一处理 */ };
     }
 
+    /** 解绑回调后再关闭，避免旧 socket 的 onclose 反过来污染当前连接状态 */
+    _closeSocket(ws) {
+        if (!ws) return;
+        try {
+            ws.onopen = null;
+            ws.onmessage = null;
+            ws.onerror = null;
+            ws.onclose = null;
+        } catch (e) { /* 忽略 */ }
+        try { ws.close(); } catch (e) { /* 忽略 */ }
+    }
+
     disconnect() {
         this._manualClose = true;
         if (this._reconnectTimer) { clearTimeout(this._reconnectTimer); this._reconnectTimer = null; }
         this._stopRefresh();
         if (this.ws) {
-            try { this.ws.close(); } catch (e) { /* 忽略 */ }
+            this._closeSocket(this.ws);
             this.ws = null;
         }
         this.isConnected = false;
@@ -300,6 +344,28 @@ class MatchLobbyController {
                 this._pendingDissolveAck = false;
                 if (this.onRoomDissolveAck) this.onRoomDissolveAck(String(data.code), !!data.ok);
                 break;
+            case 'shout_list':
+                if (this.onShoutList) this.onShoutList(Array.isArray(data.shouts) ? data.shouts : []);
+                break;
+            case 'shout_new':
+                if (this.onShoutNew) this.onShoutNew({
+                    playerId: data.playerId || '',
+                    nickname: data.nickname || '匿名',
+                    text: String(data.text || ''),
+                    ts: data.ts || 0
+                });
+                break;
+            case 'shout_rejected':
+                if (this.onShoutRejected) this.onShoutRejected(data);
+                break;
+            case 'auth_required':
+                // 强制登录：服务端拒绝未登录的联机动作
+                if (this.onAuthRequired) this.onAuthRequired(String(data.action || ''));
+                break;
+            case 'online_stats':
+                this.onlineStats = data.stats || null;
+                if (this.onOnlineStats) this.onOnlineStats(this.onlineStats);
+                break;
         }
     }
 
@@ -317,10 +383,11 @@ class MatchLobbyController {
             : '';
     }
 
+    // 对外身份名（协议字段仍叫 nickname，语义已合并为「用户名」）
     _getNickname() {
-        return (typeof PlayerProfile !== 'undefined' && PlayerProfile.getProfile)
-            ? (PlayerProfile.getProfile().nickname || '')
-            : '';
+        if (typeof PlayerProfile === 'undefined') return '';
+        if (typeof PlayerProfile.getUsername === 'function') return PlayerProfile.getUsername() || '';
+        return (PlayerProfile.getProfile && PlayerProfile.getProfile().nickname) || '';
     }
 
     /** 房主登记房间（options: {rounds,difficulty,timeLimitMode,mode,eloRange,tierOnly}；mode=排位/休闲）
@@ -449,6 +516,23 @@ class MatchLobbyController {
     /** 观众发表情 → 服务器转发给该房间对战双方与其他观众 */
     sendSpectateEmoji(code, mood) {
         this._send({ type: 'spectate_emoji', code: String(code), mood: String(mood) });
+    }
+
+    // ─── 全服喊话 API ───────────────────────────────────────
+
+    /** 拉取全服喊话历史 */
+    fetchShouts() {
+        this._send({ type: 'fetch_shouts' });
+    }
+
+    /** 发送全服喊话（字数 ≤30，服务器按身份限流 30s） */
+    sendShout(text) {
+        this._send({
+            type: 'shout',
+            text: String(text || '').slice(0, 30),
+            playerId: this._getPlayerId(),
+            nickname: this._getNickname()
+        });
     }
 
     // ─── 排行榜 API ────────────────────────────────────────────

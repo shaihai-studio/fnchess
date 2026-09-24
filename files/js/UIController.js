@@ -13,6 +13,13 @@ class UIController {
         this.parser = new FunctionParser();
         this.detector = new CollisionDetector(gridSystem); // 传入gridSystem以支持自适应容差
         this.renderer = new FunctionRenderer(gridSystem);
+        // 导数模式：绘制函数时额外绘制其一阶导数（由 renderer 通过回调查询开关状态）
+        this.renderer.getDerivativeEnabled = () => {
+            if (typeof this.getDerivativeModeEnabled === 'function') {
+                return this.getDerivativeModeEnabled();
+            }
+            return false;
+        };
         
         // 初始化AI控制器
         this.aiController = new AIController(gameController, gridSystem);

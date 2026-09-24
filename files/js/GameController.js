@@ -62,11 +62,16 @@ class GameController {
             targetCells: [], // 多个目标格数组
             targetCell: null, // 兼容旧代码，指向第一个目标格
             forbiddenCells: [],
+            derivativeTargetCells: [], // 导数允许区
+            derivativeForbiddenCells: [], // 导数禁止区
             lockedElements: [],
             functionExpression: '',
             hitTargets: [], // 记录哪些目标格被穿过
             hitTarget: false, // 兼容旧代码，是否全部穿过
             hitForbidden: false,
+            hitDerivativeTargets: [],
+            hitDerivativeTarget: false,
+            hitDerivativeForbidden: false,
             score: 0
         };
         
@@ -292,6 +297,8 @@ class GameController {
         this.roundState.targetCells = (level.targetCells || []).map(c => ({ x: c.x, y: c.y }));
         this.roundState.targetCell = this.roundState.targetCells[0] || null;
         this.roundState.forbiddenCells = (level.forbiddenCells || []).map(c => ({ x: c.x, y: c.y }));
+        this.roundState.derivativeTargetCells = (level.derivativeTargetCells || []).map(c => ({ x: c.x, y: c.y }));
+        this.roundState.derivativeForbiddenCells = (level.derivativeForbiddenCells || []).map(c => ({ x: c.x, y: c.y }));
         this.roundState.lockedElements = (level.lockedElements || []).slice();
 
         // 单人闯关：让玩家A作为构造者
@@ -667,6 +674,7 @@ class GameController {
         try {
             localStorage.setItem('function_chess_race_cleared', String(Math.max(0, Number(cleared) || 0)));
             localStorage.setItem('function_chess_race_stars', String(Math.max(0, Number(stars) || 0)));
+            if (window.fnProgressChanged) window.fnProgressChanged();   // 竞速进度变更 → 防抖同步到账号
         } catch {}
     }
 
@@ -688,6 +696,7 @@ class GameController {
             this.raceState.bestTimes[levelId] = t;
             try {
                 localStorage.setItem('function_chess_race_best_times', JSON.stringify(this.raceState.bestTimes));
+                if (window.fnProgressChanged) window.fnProgressChanged();   // 竞速最佳用时变更 → 防抖同步到账号
             } catch {}
         }
     }
@@ -715,6 +724,7 @@ class GameController {
     setCampaignProgress(clearedMax) {
         try {
             localStorage.setItem('function_chess_campaign_cleared', String(clearedMax));
+            if (window.fnProgressChanged) window.fnProgressChanged();   // 闯关进度变更 → 防抖同步到账号
         } catch (e) { }
     }
 
@@ -927,11 +937,16 @@ class GameController {
             targetCells: [], // 多个目标格数组
             targetCell: null, // 兼容旧代码
             forbiddenCells: [],
+            derivativeTargetCells: [], // 导数允许区
+            derivativeForbiddenCells: [], // 导数禁止区
             lockedElements: [],
             functionExpression: '',
             hitTargets: [], // 记录哪些目标格被穿过
             hitTarget: false, // 兼容旧代码
             hitForbidden: false,
+            hitDerivativeTargets: [], // 记录哪些导数允许区被穿过
+            hitDerivativeTarget: false,
+            hitDerivativeForbidden: false,
             score: 0
         };
     }
@@ -1027,17 +1042,15 @@ class GameController {
             return;
         }
         
-        // deadline 时间戳驱动：切后台 setInterval 被节流也不漂移，回前台首帧即校正
-        this._timerDeadline = Date.now() + this.remainingTime * 1000;
         this.timerInterval = setInterval(() => {
-            this.remainingTime = Math.max(0, Math.round((this._timerDeadline - Date.now()) / 1000));
+            this.remainingTime--;
             this.emit('timerUpdate', { remainingTime: this.remainingTime });
-
+            
             // P2P：每秒向对手同步一次剩余时间
             if (isP2P && this.p2pActionSender.sendTimerSync) {
                 this.p2pActionSender.sendTimerSync(this.remainingTime);
             }
-
+            
             if (this.remainingTime <= 0) {
                 this.handleTimeout();
             }
@@ -1065,9 +1078,8 @@ class GameController {
         // P2P：只有当前操作玩家本地驱动倒计时，对手仅接收同步
         if (isP2P && this.currentPlayer !== this.p2pActionSender.myPlayerId) return;
         if (this.remainingTime <= 0) return;
-        this._timerDeadline = Date.now() + this.remainingTime * 1000;
         this.timerInterval = setInterval(() => {
-            this.remainingTime = Math.max(0, Math.round((this._timerDeadline - Date.now()) / 1000));
+            this.remainingTime--;
             this.emit('timerUpdate', { remainingTime: this.remainingTime });
             if (isP2P && this.p2pActionSender && this.p2pActionSender.sendTimerSync) {
                 this.p2pActionSender.sendTimerSync(this.remainingTime);
@@ -1088,9 +1100,8 @@ class GameController {
         const isP2P = this.gameMode === 'p2p' && this.p2pActionSender;
         if (isP2P && this.currentPlayer !== this.p2pActionSender.myPlayerId) return;
         if (this.targetRemaining <= 0) return;
-        this._targetDeadline = Date.now() + this.targetRemaining * 1000;
         this.targetTimerInterval = setInterval(() => {
-            this.targetRemaining = Math.max(0, Math.round((this._targetDeadline - Date.now()) / 1000));
+            this.targetRemaining--;
             this.remainingTime = this.targetRemaining;
             this.emit('timerUpdate', { remainingTime: this.targetRemaining });
             if (isP2P && this.p2pActionSender && this.p2pActionSender.sendTimerSync) {
@@ -1188,9 +1199,8 @@ class GameController {
         }
         this.remainingTime = this.targetRemaining;
         this.emit('timerUpdate', { remainingTime: this.targetRemaining });
-        this._targetDeadline = Date.now() + this.targetRemaining * 1000;
         this.targetTimerInterval = setInterval(() => {
-            this.targetRemaining = Math.max(0, Math.round((this._targetDeadline - Date.now()) / 1000));
+            this.targetRemaining--;
             this.remainingTime = this.targetRemaining;
             this.emit('timerUpdate', { remainingTime: this.targetRemaining });
             if (isP2P && this.p2pActionSender && this.p2pActionSender.sendTimerSync) {
@@ -1567,7 +1577,7 @@ class GameController {
      * @param {boolean} hitForbidden - 是否进入禁止区
      * @param {Object} functionType - 函数类型信息
      */
-    evaluateResult(hitTargets, hitForbidden, functionType) {
+    evaluateResult(hitTargets, hitForbidden, functionType, hitDerivativeTargets, hitDerivativeForbidden) {
         if (this.currentPhase !== this.phases.EVALUATE) {
             // P2P：评估发起方在 renderAndEvaluate（异步）期间，可能被对端 finalizeRound
             // 推送的 SELECT_TARGET 快照抢先推进了 currentPhase。此时本地无需重复推进
@@ -1599,10 +1609,20 @@ class GameController {
         
         this.roundState.hitForbidden = hitForbidden;
         
+        // 导数判定：仅当关卡定义了导数允许区时才要求全部穿过；导数禁止区非空时须避开
+        const derivTargetCells = this.roundState.derivativeTargetCells || [];
+        const derivForbiddenCells = this.roundState.derivativeForbiddenCells || [];
+        this.roundState.hitDerivativeTargets = hitDerivativeTargets || [];
+        this.roundState.hitDerivativeForbidden = !!hitDerivativeForbidden;
+        this.roundState.hitDerivativeTarget = derivTargetCells.length === 0
+            ? true
+            : this.roundState.hitDerivativeTargets.length >= derivTargetCells.length;
+        const derivPass = this.roundState.hitDerivativeTarget && !this.roundState.hitDerivativeForbidden;
+        
         let score = 0;
         
-        // 如果进入禁止区，直接失败，扣1分
-        if (hitForbidden) {
+        // 如果进入禁止区或导数禁止区，或导数未穿过全部导数允许区，直接失败，扣1分
+        if (hitForbidden || this.roundState.hitDerivativeForbidden || !this.roundState.hitDerivativeTarget) {
             score = -1;
         } else if (this.roundState.hitTarget) {
             // 命中所有目标，根据函数类型得分（防御 functionType/score 缺失）
@@ -1624,11 +1644,15 @@ class GameController {
             constructor: this.currentPlayer,
             targetCells: this.roundState.targetCells,
             forbiddenCells: this.roundState.forbiddenCells,
+            derivativeTargetCells: this.roundState.derivativeTargetCells,
+            derivativeForbiddenCells: this.roundState.derivativeForbiddenCells,
             lockedElements: this.roundState.lockedElements,
             expression: this.roundState.functionExpression,
             functionType: functionType,
             hitTarget: this.roundState.hitTarget,
             hitForbidden: hitForbidden,
+            hitDerivativeTarget: this.roundState.hitDerivativeTarget,
+            hitDerivativeForbidden: this.roundState.hitDerivativeForbidden,
             score: score,
             totalScoreA: this.players.A.score,
             totalScoreB: this.players.B.score
@@ -1638,6 +1662,11 @@ class GameController {
             hitTarget: this.roundState.hitTarget,
             hitTargets: this.roundState.hitTargets,
             hitForbidden,
+            hitDerivativeTarget: this.roundState.hitDerivativeTarget,
+            hitDerivativeTargets: this.roundState.hitDerivativeTargets,
+            hitDerivativeForbidden: this.roundState.hitDerivativeForbidden,
+            derivativeTargetCount: derivTargetCells.length,
+            derivativeHitCount: this.roundState.hitDerivativeTargets.length,
             functionType,
             score,
             totalScore: this.players[this.currentPlayer].score,
@@ -1649,7 +1678,7 @@ class GameController {
 
         // 闯关模式：不进入换人/下一回合逻辑，由 UI 决定是重试还是进入下一关
         if (this.campaignState && this.campaignState.active) {
-            const pass = !!this.roundState.hitTarget && !hitForbidden;
+            const pass = !!this.roundState.hitTarget && !hitForbidden && derivPass;
             const clearedMax = this.getCampaignProgress();
             if (pass && this.currentRound > clearedMax && !this.campaignState.customPack) {
                 this.setCampaignProgress(this.currentRound);
@@ -1667,7 +1696,7 @@ class GameController {
         }
 
         if (this.raceState && this.raceState.active) {
-            const pass = !!this.roundState.hitTarget && !hitForbidden;
+            const pass = !!this.roundState.hitTarget && !hitForbidden && derivPass;
             if (pass) {
                 this.raceState.solvedCount = (this.raceState.solvedCount || 0) + 1;
                 const completed = this.raceState.solvedCount;
@@ -2048,6 +2077,31 @@ class GameController {
      * 仅保留 round >= currentRound - 2 的部分（GridSystem.drawHistoryFunctions 只绘制
      * roundDiff 1~2 的历史函数，更早的既不被绘制也不需同步）。
      */
+    /**
+     * 校验来自 state_sync（对端不可信）的历史函数：只保留结构合法、体积受限的条目。
+     * expression 会进入 tooltip / 战报渲染（渲染层另有转义），此处先去控制字符并限长。
+     */
+    _sanitizeFunctionHistory(list) {
+        if (!Array.isArray(list)) return [];
+        const MAX_ITEMS = 200, MAX_EXPR = 256, MAX_POINTS = 2000;
+        const out = [];
+        for (const item of list.slice(-MAX_ITEMS)) {
+            if (!item || typeof item !== 'object') continue;
+            const expr = typeof item.expression === 'string'
+                ? item.expression.replace(/[\u0000-\u001F\u007F]/g, '').slice(0, MAX_EXPR)
+                : '';
+            if (!expr) continue;
+            out.push({
+                expression: expr,
+                round: Number.isFinite(Number(item.round)) ? Number(item.round) : 0,
+                color: typeof item.color === 'string' ? item.color.slice(0, 32) : item.color,
+                playerId: typeof item.playerId === 'string' ? item.playerId.slice(0, 64) : item.playerId,
+                points: Array.isArray(item.points) ? item.points.slice(0, MAX_POINTS) : []
+            });
+        }
+        return out;
+    }
+
     _recentFunctionHistory() {
         const all = this.functionHistory || [];
         if (all.length === 0) return all;
@@ -2154,7 +2208,7 @@ class GameController {
             this.roundState = JSON.parse(JSON.stringify(s.roundState));
             this.usedCells = JSON.parse(JSON.stringify(s.usedCells || []));
             // 同步历史函数和锁元素计数（即使 elementLockCounts 尚未初始化也保证为 Map）
-            this.functionHistory = JSON.parse(JSON.stringify(s.functionHistory || []));
+            this.functionHistory = this._sanitizeFunctionHistory(s.functionHistory);
             this.elementLockCounts = new Map(Object.entries(s.elementLockCounts || {}));
 
             // 恢复计时器（关键修复，2026-08-13）：恢复后轮到本方操作时，确保本地倒计时在跑。

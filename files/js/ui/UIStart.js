@@ -504,6 +504,10 @@ if (typeof UIController === 'undefined') {
 
 // startNormalGame
     UIController.prototype.startNormalGame = function() {
+        // ★ 最后防线：开局前若残留观战状态，先干净退出，避免新对局继承"观战只读"锁定
+        if (this._isSpectating && typeof this.exitSpectatorMode === 'function') {
+            this.exitSpectatorMode();
+        }
         // 统一守卫：进入任意对局前检查是否有未完成的联机排位对局，有则弹恢复询问
         if (this._guardPendingOnlineMatch()) return;
         const rounds = parseInt(this.roundValue?.textContent) || 8;
@@ -879,6 +883,13 @@ if (typeof UIController === 'undefined') {
 
 // _doHandleRestart
     UIController.prototype._doHandleRestart = function() {
+        // ★ 观战兜底：观众返回主页应走 exitSpectatorMode 清理观战状态（遮罩/水印/回调），
+        //   否则 game-over 弹窗点"返回主页"会残留观战遮罩并卡在对局界面。
+        //   exitSpectatorMode 内部会再次调用 handleRestart，届时 _isSpectating 已置 false，不会递归。
+        if (this._isSpectating && typeof this.exitSpectatorMode === 'function') {
+            this.exitSpectatorMode();
+            return;
+        }
         // P2P 对局结束返回主页 = 离开联机模式：清理 P2P 连接并关闭匹配大厅
         if (this.isP2PMode && typeof this._cleanupP2P === 'function') {
             this._cleanupP2P();

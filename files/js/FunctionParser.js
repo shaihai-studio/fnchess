@@ -132,6 +132,37 @@ class FunctionParser {
         return Math.sqrt(2 * Math.PI) * Math.pow(t, z + 0.5) * Math.exp(-t) * x;
     }
 
+    /**
+     * digamma 函数 ψ(z) = d/dz ln Γ(z)（实数实现）。
+     * 用于阶乘（伽马函数推广）的符号求导：d(Γ(x+1)) = Γ(x+1)·ψ(x+1)。
+     * 反射公式处理 z < 0.5，负整数处 tan(πz)=0 → 反射返回 NaN（极点）。
+     * @param {number} z 实数参数
+     * @returns {number} ψ(z)，极点为 NaN
+     */
+    digamma(z) {
+        z = Number(z);
+        if (!Number.isFinite(z)) return NaN;
+        // 反射公式：ψ(z) = ψ(1-z) - π·cot(πz)
+        if (z < 0.5) {
+            return this.digamma(1 - z) - Math.PI / Math.tan(Math.PI * z);
+        }
+        // 渐近展开：ψ(z) ≈ ln(z) - 1/(2z) - Σ B_{2k}/(2k·z^{2k})
+        const C = [1 / 12, -1 / 120, 1 / 252, -1 / 240, 1 / 132, -691 / 32760];
+        let sum = 0;
+        let zz = z;
+        // 递推加大 z，提升渐近展开精度
+        for (let i = 0; i < 6; i++) {
+            sum += 1 / zz;
+            zz += 1;
+        }
+        const inv = 1 / (zz * zz);
+        // 霍纳式求 P(w)=Σ C[i]·w^(i+1)，w=1/z²
+        let poly = C[5];
+        for (let i = 4; i >= 0; i--) poly = poly * inv + C[i];
+        poly *= inv;
+        return Math.log(zz) - 0.5 / zz - poly - sum;
+    }
+
     // ========== 复数 → 实数转换 ==========
 
     complexToNumber(v) {
@@ -344,10 +375,181 @@ class FunctionParser {
                         if (a.im === 0 && a.re === 0) return 0;
                         return this.cSqrt(sv);
                     }
+                    case 'digamma': {
+                        // 内部求导节点专用：ψ(z)，只处理实数，虚部忽略（返回 NaN）
+                        const dv = this.toComplex(v);
+                        if (dv.im !== 0 && Math.abs(dv.im) > 1e-10) return NaN;
+                        return this.digamma(dv.re);
+                    }
                     default: return { re: NaN, im: NaN };
                 }
             }
             default: return NaN;
+        }
+    }
+
+    // ========== 符号求导（对 x 求一阶导数） ==========
+
+    /**
+     * 判断 AST 节点是否含变量 x（用于幂法则判断底数/指数是否恒定）
+     * @param {object} node AST 节点
+     * @returns {boolean} true = 含 x
+     */
+    _containsVar(node) {
+        if (!node) return false;
+        switch (node.t) {
+            case 'num':
+            case 'const':
+                return false;
+            case 'x':
+                return true;
+            case 'neg':
+                return this._containsVar(node.a);
+            case '+':
+            case '-':
+            case '*':
+            case '/':
+            case '^':
+                return this._containsVar(node.l) || this._containsVar(node.r);
+            case 'fac':
+                return this._containsVar(node.a);
+            case 'fn':
+                return this._containsVar(node.a);
+            default:
+                return false;
+        }
+    }
+
+    /**
+     * 对 AST 进行符号求导（对 x），返回导数的 AST。
+     * 对无法求导的节点（floor / sgn / 阶乘等）返回 null，表示该函数不可绘制导数。
+     * @param {object} node AST 节点
+     * @returns {object|null} 导数 AST，或 null 表示不支持求导
+     */
+    differentiate(node) {
+        if (!node) return null;
+        const d = (n) => this.differentiate(n);
+        switch (node.t) {
+            case 'num':
+            case 'const':
+                // 常数导数为 0
+                return { t: 'num', v: 0 };
+            case 'x':
+                return { t: 'num', v: 1 };
+            case 'neg': {
+                const da = d(node.a);
+                return da ? { t: 'neg', a: da } : null;
+            }
+            case '+':
+            case '-': {
+                const dl = d(node.l), dr = d(node.r);
+                if (!dl || !dr) return null;
+                return { t: node.t, l: dl, r: dr };
+            }
+            case '*': {
+                // 乘积法则：d(u·v) = du·v + u·dv
+                const dl = d(node.l), dr = d(node.r);
+                if (!dl || !dr) return null;
+                return {
+                    t: '+',
+                    l: { t: '*', l: dl, r: node.r },
+                    r: { t: '*', l: node.l, r: dr }
+                };
+            }
+            case '/': {
+                // 商法则：d(u/v) = (du·v - u·dv) / v²
+                const dl = d(node.l), dr = d(node.r);
+                if (!dl || !dr) return null;
+                const num = {
+                    t: '-',
+                    l: { t: '*', l: dl, r: node.r },
+                    r: { t: '*', l: node.l, r: dr }
+                };
+                const den = { t: '^', l: node.r, r: { t: 'num', v: 2 } };
+                return { t: '/', l: num, r: den };
+            }
+            case '^': {
+                const u = node.l, v = node.r;
+                const du = d(u), dv = d(v);
+                if (!du || !dv) return null;
+                const uConst = !this._containsVar(u);
+                const vConst = !this._containsVar(v);
+                const lnU = { t: 'fn', n: 'ln', a: u };
+                const base = { t: '^', l: u, r: v };
+                if (vConst) {
+                    // d(u^v) = v · u^(v-1) · du
+                    const exp = { t: '-', l: v, r: { t: 'num', v: 1 } };
+                    return { t: '*', l: v, r: { t: '*', l: { t: '^', l: u, r: exp }, r: du } };
+                }
+                if (uConst) {
+                    // d(u^v) = u^v · ln(u) · dv
+                    return { t: '*', l: base, r: { t: '*', l: lnU, r: dv } };
+                }
+                // 一般情况：d(u^v) = u^v · (dv·ln(u) + v·du/u)
+                const term1 = { t: '*', l: dv, r: lnU };
+                const term2 = { t: '*', l: v, r: { t: '/', l: du, r: u } };
+                return { t: '*', l: base, r: { t: '+', l: term1, r: term2 } };
+            }
+            case 'fac': {
+                // 阶乘用伽马函数推广：x! = Γ(x+1)，d(x!) = Γ(x+1)·ψ(x+1)·dx
+                const da = d(node.a);
+                if (!da) return null;
+                const argPlus1 = { t: '+', l: node.a, r: { t: 'num', v: 1 } };
+                const psi = { t: 'fn', n: 'digamma', a: argPlus1 };
+                return { t: '*', l: da, r: { t: '*', l: { t: 'fac', a: node.a }, r: psi } };
+            }
+            case 'fn': {
+                const a = node.a;
+                // floor/sgn 在可导处导数恒为 0，与内部表达式无关 → 提前返回，不受内部不可导影响
+                if (node.n === 'floor' || node.n === 'sgn') {
+                    return { t: 'num', v: 0 };
+                }
+                const da = d(a);
+                if (!da) return null;
+                const daNode = da;
+                switch (node.n) {
+                    case 'sin':
+                        return { t: '*', l: daNode, r: { t: 'fn', n: 'cos', a } };
+                    case 'cos':
+                        return { t: '*', l: { t: 'neg', a: daNode }, r: { t: 'fn', n: 'sin', a } };
+                    case 'tan':
+                        // d(tan) = du·(1 + tan²u)
+                        return {
+                            t: '*', l: daNode, r: {
+                                t: '+',
+                                l: { t: 'num', v: 1 },
+                                r: { t: '^', l: { t: 'fn', n: 'tan', a }, r: { t: 'num', v: 2 } }
+                            }
+                        };
+                    case 'asin': {
+                        // d(asin) = du / sqrt(1 - u²)
+                        const den = { t: 'fn', n: 'sqrt', a: { t: '-', l: { t: 'num', v: 1 }, r: { t: '^', l: a, r: { t: 'num', v: 2 } } } };
+                        return { t: '/', l: daNode, r: den };
+                    }
+                    case 'acos': {
+                        // d(acos) = -du / sqrt(1 - u²)
+                        const den = { t: 'fn', n: 'sqrt', a: { t: '-', l: { t: 'num', v: 1 }, r: { t: '^', l: a, r: { t: 'num', v: 2 } } } };
+                        return { t: '/', l: { t: 'neg', a: daNode }, r: den };
+                    }
+                    case 'atan': {
+                        // d(atan) = du / (1 + u²)
+                        const den = { t: '+', l: { t: 'num', v: 1 }, r: { t: '^', l: a, r: { t: 'num', v: 2 } } };
+                        return { t: '/', l: daNode, r: den };
+                    }
+                    case 'abs':
+                        // d(abs) = du·sgn(u)（u ≠ 0 处）
+                        return { t: '*', l: daNode, r: { t: 'fn', n: 'sgn', a } };
+                    case 'ln':
+                        return { t: '/', l: daNode, r: a };
+                    case 'sqrt':
+                        // d(sqrt) = du / (2·sqrt(u))
+                        return { t: '/', l: daNode, r: { t: '*', l: { t: 'num', v: 2 }, r: { t: 'fn', n: 'sqrt', a } } };
+                    default:
+                        return null;
+                }
+            }
+            default:
+                return null;
         }
     }
 
@@ -698,6 +900,65 @@ class FunctionParser {
         return results;
     }
 }
+
+// ── 安全出口一：受限表达式求值（替代 new Function / eval）──
+// 背景：Summa 表达式校验、关卡导入曾直接用 new Function 执行任意字符串（等同 eval），
+// 恶意关卡包 / AI 生成的表达式串可借此执行任意 JS。此处收敛为「白名单 + 既有解析器求值」。
+(function () {
+    const G = (typeof window !== 'undefined') ? window : (typeof globalThis !== 'undefined' ? globalThis : {});
+    const MAX_LEN = 512;
+    // 允许出现的标识符白名单（其余一律拒绝）
+    const ALLOWED_NAMES = new Set(['x', 'pi', 'e', 'sin', 'cos', 'tan', 'asin', 'acos', 'atan',
+        'abs', 'ln', 'log', 'sqrt', 'floor', 'ceil', 'sgn', 'exp', 'factorial', 'π']);
+    // 禁止：字符串/模板串、语句分隔与代码块、属性访问、浏览器全局、构造函数
+    const FORBIDDEN_RE = /['"`;{}[\]\\]|=>|\b(?:this|window|globalThis|self|document|parent|top|location|function|return|new|delete|void|typeof|instanceof|import|require|process|constructor|prototype|__proto__|eval|Function)\b/;
+    const NAME_RE = /[A-Za-z_][A-Za-z0-9_]*/g;
+    let _shared = null;
+    const parser = () => (_shared || (_shared = new FunctionParser()));
+
+    /**
+     * 受限解析数学表达式（仅含 x 与白名单函数/常量）。
+     * @returns {{ok:true, evaluate:(x:number)=>number}|{ok:false, reason:string}}
+     */
+    function parse(expr) {
+        if (typeof expr !== 'string') return { ok: false, reason: '类型错误' };
+        const s = expr.trim();
+        if (!s) return { ok: false, reason: '空表达式' };
+        if (s.length > MAX_LEN) return { ok: false, reason: '长度超限' };
+        if (FORBIDDEN_RE.test(s)) return { ok: false, reason: '含禁止字符或关键字' };
+        // 先剥掉数字字面量（含 1e5 / 3.14），剩余标识符必须全部命中白名单
+        const stripped = s.replace(/\d*\.?\d+(?:[eE][+-]?\d+)?/g, '');
+        NAME_RE.lastIndex = 0;
+        let m;
+        while ((m = NAME_RE.exec(stripped))) {
+            if (!ALLOWED_NAMES.has(m[0].toLowerCase())) return { ok: false, reason: '未知标识符: ' + m[0] };
+        }
+        let ast = null;
+        try { ast = parser().parse(s); } catch (e) { ast = null; }
+        if (!ast) return { ok: false, reason: '语法解析失败' };
+        return {
+            ok: true,
+            evaluate: function (x) {
+                try {
+                    const v = parser().evaluateAst(ast, x);
+                    return (typeof v === 'number' && isFinite(v)) ? v : NaN;
+                } catch (e) { return NaN; }
+            }
+        };
+    }
+
+    G.SafeExpression = { parse: parse, MAX_LEN: MAX_LEN };
+
+    // ── 安全出口二：HTML 转义（innerHTML 拼接任何变量前必须调用）──
+    G.FnEscapeHtml = function (s) {
+        return String(s == null ? '' : s)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    };
+})();
 
 // 导出模块
 if (typeof module !== 'undefined' && module.exports) {

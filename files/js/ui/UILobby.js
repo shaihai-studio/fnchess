@@ -37,10 +37,30 @@ if (typeof UIController === 'undefined') {
                 this.showMessage('房主开启了「仅限相近ELO」，你的段位不在此房间允许范围内', 'error');
                 return;
             }
+            // 同账号自联机：自己不能加入自己的房间（另一台设备也不行）
+            if (reason === 'self_join' || reason === 'same_account' || reason === 'same_device') {
+                this._updateLobbyStatus('error', '不能加入自己创建的房间');
+                this.showMessage('同一个账号不能和自己联机对战，请换一个账号或加入他人房间', 'warning');
+                return;
+            }
             this._updateLobbyStatus('error', '加入失败：房间不可用，请刷新列表');
             this.showMessage('该房间已被占用或已关闭，请刷新后重试', 'error');
         };
         lobby.onHostRoomExpired = (code) => this._onLobbyHostRoomExpired(code);
+        // 强制登录：服务端拒绝未登录/登录失效的联机动作 → 恢复按钮并引导登录
+        lobby.onAuthRequired = () => {
+            if (this._lobbyCreateTimeout) { clearTimeout(this._lobbyCreateTimeout); this._lobbyCreateTimeout = null; }
+            const btn = document.getElementById('lobby-create-btn');
+            if (btn) btn.disabled = false;
+            this._updateLobbyStatus('error', '需要登录账号后才能联机');
+            this.showMessage('联机对战需要登录账号', 'warning');
+            if (typeof AuthPanel !== 'undefined' && AuthPanel.requireLogin) {
+                AuthPanel.requireLogin(() => {
+                    // 登录后 token 变化：重连大厅以携带新身份
+                    if (this._lobby) this._lobby.connect();
+                });
+            }
+        };
         // 若房主已有活跃房间（离开联机界面时保留的），恢复状态条与删除按钮
         if (lobby.myRoomCode) {
             this._showHostRoomBanner(lobby.myRoomCode, lobby.myRoomExpiresAt);
@@ -145,6 +165,8 @@ if (typeof UIController === 'undefined') {
         list.innerHTML = '';
         sorted.forEach((room) => {
             if (!room || !room.code) return;
+            // 对局中但未开观战的房间：仅用于大厅速览统计，不在列表中展示为可加入/可观战
+            if (room.status === 'playing' && room.spectateEnabled === false) return;
             const playing = room.status === 'playing';
             const row = document.createElement('div');
             row.className = 'lobby-room-row' + (playing ? ' lobby-room-playing' : '');
@@ -181,11 +203,25 @@ if (typeof UIController === 'undefined') {
 
 // _lobbySpectate
     // 观众从大厅列表点击「观战」按钮：关闭联机弹窗 → 进入观战模式
-    UIController.prototype._lobbySpectate = function(code) {
+    UIController.prototype._lobbySpectate = function(code, _retried) {
         const lobby = this._lobby;
-        if (!lobby || !lobby.isConnected) {
+        if (!lobby) {
             this.showMessage('大厅未连接，请稍候再试', 'error');
             return;
+        }
+        if (!lobby.isConnected) {
+            // 连接可能刚被断开（退出观战/重开房间的清理链）→ 即时重连并重试一次，
+            // 而不是直接拒绝，避免"退出观战后重新进入无法观战"。
+            try { lobby.connect(); } catch (e) { /* 忽略 */ }
+            if (!lobby.isConnected) {
+                if (!_retried) {
+                    this.showMessage('正在重新连接大厅…', 'info');
+                    setTimeout(() => this._lobbySpectate(code, true), 1200);
+                } else {
+                    this.showMessage('大厅未连接，请检查网络后重试', 'error');
+                }
+                return;
+            }
         }
         if (this.p2pController && (this.p2pController.isConnecting || this.p2pController.isConnected)) {
             this.showMessage('你正在对局中，无法观战', 'error');
@@ -218,9 +254,15 @@ if (typeof UIController === 'undefined') {
     UIController.prototype._lobbyHostRegister = function() {
         const lobby = this._lobby;
         if (!lobby || !lobby.isConnected) {
-            this.showMessage('大厅未连接，请稍候再试', 'error');
+            // 未连接：主动触发重连并恢复按钮，避免"点了没反应且按钮永久禁用"
+            this.showMessage('大厅未连接，正在重连，请稍候再试', 'error');
+            this._updateLobbyStatus('error', '大厅未连接（正在重连...）');
+            if (lobby) { try { lobby.connect(); } catch (e) { /* 忽略 */ } }
+            const b0 = document.getElementById('lobby-create-btn');
+            if (b0) b0.disabled = false;
             return;
         }
+        if (this._lobbyCreateTimeout) { clearTimeout(this._lobbyCreateTimeout); this._lobbyCreateTimeout = null; }
         if (this.p2pController && (this.p2pController.isConnecting || this.p2pController.isConnected)) {
             this.showMessage('已有进行中的联机连接，请先返回再操作', 'error');
             return;
@@ -243,12 +285,22 @@ if (typeof UIController === 'undefined') {
         const btn = document.getElementById('lobby-create-btn');
         if (btn) btn.disabled = true;
         this._updateLobbyStatus('creating', '正在向大厅登记房间...');
+        // 兜底：8 秒内未收到 host_registered → 恢复按钮并提示（防止按钮永久禁用、只能退出重进）
+        this._lobbyCreateTimeout = setTimeout(() => {
+            this._lobbyCreateTimeout = null;
+            const b = document.getElementById('lobby-create-btn');
+            if (b) b.disabled = false;
+            this._updateLobbyStatus('error', '登记房间超时，请重试');
+            this.showMessage('创建房间超时，请检查网络后重试', 'error');
+        }, 8000);
         lobby.hostRegister({ rounds, difficulty, timeLimitMode, longLived, allowSpectate, mode: this._getP2PMode(), eloRange });
     }
 ;
 
 // _onLobbyHostRegistered
     UIController.prototype._onLobbyHostRegistered = function(code, expiresAt) {
+        // 收到服务器登记确认：清除建房兜底定时器
+        if (this._lobbyCreateTimeout) { clearTimeout(this._lobbyCreateTimeout); this._lobbyCreateTimeout = null; }
         // 用大厅分配的房间码创建 P2P 房间（复用预留钩子 createRoomWithCode）。
         // 关键：PeerJS 等待对手加入的超时对齐服务器房间有效期——长效模式 30 分钟，
         // 普通模式 5 分钟。否则 PeerJS 默认 60s 超时会提前 disconnect() 销毁房间
@@ -302,6 +354,8 @@ if (typeof UIController === 'undefined') {
 
 // _lobbyCancelHost
     UIController.prototype._lobbyCancelHost = function() {
+        // 取消建房同样要清掉 8s 建房兜底定时器，否则稍后仍会误报"创建房间超时"
+        if (this._lobbyCreateTimeout) { clearTimeout(this._lobbyCreateTimeout); this._lobbyCreateTimeout = null; }
         const lobby = this._lobby;
         if (lobby) lobby.cancelHost();
         this._stopHostRoomBanner();
@@ -343,6 +397,7 @@ if (typeof UIController === 'undefined') {
 
 // _onLobbyHostRoomExpired
     UIController.prototype._onLobbyHostRoomExpired = function(code) {
+        if (this._lobbyCreateTimeout) { clearTimeout(this._lobbyCreateTimeout); this._lobbyCreateTimeout = null; }
         this._stopHostRoomBanner();
         this._refreshHostDeleteBtn();
         this._cleanupHostWaiting();

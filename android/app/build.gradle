@@ -7,8 +7,9 @@ android {
         applicationId "cn.shaihai.fnchess"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        // 与前端 GAME_VERSION / package.json 同步（见 docs/RELEASE-GUIDE.md §6）
+        versionCode 2
+        versionName "2.0.0.2"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

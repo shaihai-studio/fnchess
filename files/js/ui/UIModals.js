@@ -223,6 +223,7 @@ if (typeof UIController === 'undefined') {
     UIController.prototype._enterFromSplash = function(splash) {
         if (!splash || splash._entering) return;
         splash._entering = true;
+
         this._unbindSplashEnter(splash);
         // 触发转场动画（旋转 + 放大 + 虚化 → 白闪）
         splash.classList.add('splash-exit');
@@ -541,15 +542,15 @@ if (typeof UIController === 'undefined') {
             winnerText = '平局！';
         } else if (data && data.forfeit) {
             // 消极比赛判负：明确标注原因（判负方可能分数更高，需按判负而非比分判定）
-            winnerText = `${this.getPlayerDisplayName(data.forfeit.winner)} 获胜！（${this.getPlayerDisplayName(data.forfeit.loser)} ${data.forfeit.reason}）`;
+            winnerText = `${FnEscapeHtml(this.getPlayerDisplayName(data.forfeit.winner))} 获胜！（${FnEscapeHtml(this.getPlayerDisplayName(data.forfeit.loser))} ${FnEscapeHtml(data.forfeit.reason)}）`;
         } else {
-            winnerText = `${this.getPlayerDisplayName(data.winner)} 获胜！`;
+            winnerText = `${FnEscapeHtml(this.getPlayerDisplayName(data.winner))} 获胜！`;
         }
         
         this.winnerElement.textContent = winnerText;
         this.finalScoresElement.innerHTML = `
-            <div>${this.getPlayerDisplayName('A')}：${data.scores.A} 分</div>
-            <div>${this.getPlayerDisplayName('B')}：${data.scores.B} 分</div>
+            <div>${FnEscapeHtml(this.getPlayerDisplayName('A'))}：${FnEscapeHtml(data.scores.A)} 分</div>
+            <div>${FnEscapeHtml(this.getPlayerDisplayName('B'))}：${FnEscapeHtml(data.scores.B)} 分</div>
         `;
         
         this.showModal(this.gameOverModal);
@@ -605,17 +606,17 @@ if (typeof UIController === 'undefined') {
             
             html += `
                 <tr>
-                    <td>${round.round}</td>
-                    <td>${this.getPlayerDisplayName(round.selector)}</td>
-                    <td>${this.getPlayerDisplayName(round.constructor)}</td>
-                    <td class="coord-cell">${targetCoords}</td>
-                    <td class="coord-cell">${forbiddenCoords}</td>
-                    <td class="elem-cell">${lockedElems}</td>
-                    <td class="expr-cell">${round.expression || '-'}</td>
-                    <td>${typeName}</td>
-                    <td>${resultText}</td>
-                    <td>${round.score >= 0 ? '+' : ''}${round.score}</td>
-                    <td>${round.totalScoreA} - ${round.totalScoreB}</td>
+                    <td>${FnEscapeHtml(round.round)}</td>
+                    <td>${FnEscapeHtml(this.getPlayerDisplayName(round.selector))}</td>
+                    <td>${FnEscapeHtml(this.getPlayerDisplayName(round.constructor))}</td>
+                    <td class="coord-cell">${FnEscapeHtml(targetCoords)}</td>
+                    <td class="coord-cell">${FnEscapeHtml(forbiddenCoords)}</td>
+                    <td class="elem-cell">${FnEscapeHtml(lockedElems)}</td>
+                    <td class="expr-cell">${FnEscapeHtml(round.expression || '-')}</td>
+                    <td>${FnEscapeHtml(typeName)}</td>
+                    <td>${FnEscapeHtml(resultText)}</td>
+                    <td>${FnEscapeHtml(round.score >= 0 ? '+' : '')}${FnEscapeHtml(round.score)}</td>
+                    <td>${FnEscapeHtml(round.totalScoreA)} - ${FnEscapeHtml(round.totalScoreB)}</td>
                 </tr>
             `;
         }

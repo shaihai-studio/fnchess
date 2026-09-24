@@ -3,19 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <meta name="theme-color" content="#0B1020">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="format-detection" content="telephone=no">
-    <link rel="icon" type="image/png" href="files/images/favicon.png">
-    <link rel="apple-touch-icon" href="files/images/favicon.png">
     <title>函数棋2.0.0.2 - Function Chess</title>
+    <!-- 安全：CSP 收紧资源来源（无 CSP 时本地 vendor 失败会静默从外网 CDN 拉脚本）。
+         'unsafe-inline' 为兼容现有内联脚本与 KaTeX 内联样式；connect-src 仅放开本站与 WebSocket。 -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; media-src 'self' data: blob:; connect-src 'self' wss://p2p2.shaihai.cn:24026 https://p2p2.shaihai.cn:24026; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'">
     <link rel="stylesheet" href="files/css/style.css">
     <link rel="stylesheet" href="files/css/shaihai-theme.css">
     <link rel="stylesheet" href="files/css/editor.css">
     <link rel="stylesheet" href="files/css/race-battle.css">
     <link rel="stylesheet" href="files/css/lobby-watch.css">
+    <link rel="stylesheet" href="files/css/auth-panel.css">
     <link rel="stylesheet" href="files/vendor/katex/katex.min.css">
 </head>
 <body>
@@ -24,6 +21,7 @@
         <div class="splash-content">
             <div class="splash-title">函数棋</div>
             <div class="splash-hint">点击屏幕 / 按 回车·空格·ESC 进入</div>
+            <div class="splash-refresh-hint">若无反应，请刷新后重试</div>
         </div>
     </div>
 
@@ -105,6 +103,9 @@
             </div>
             <!-- 右下角：圆形 确认(✓) / 返回(←) 按钮；左侧为 Summa 表情入口（P2P 联机对局专用） -->
             <button class="canvas-fab-btn emoji-fab" id="emoji-fab-btn" type="button" title="发送表情" style="display:none"></button>
+            <button class="canvas-fab-btn chat-fab" id="chat-fab-btn" type="button" title="发送消息" style="display:none">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.125em"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            </button>
             <button class="canvas-fab-btn unlock-fab" id="unlock-fab-btn" type="button" title="解锁本关锁定元素" style="display:none"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.125em"><rect x="4" y="11" width="16" height="10" rx="2" ry="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0"></path></svg></button>
             <button class="canvas-fab-btn confirm-fab" id="confirm-fab-btn" type="button" title="确认"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.125em"><path d="M20 6L9 17l-5-5"/></svg></button>
             <button class="canvas-fab-btn exit-fab" id="exit-fab-btn" type="button" title="退出对局"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.125em"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg></button>
@@ -121,6 +122,15 @@
             <!-- Summa 表情弹出浮层：收到对方表情 / 本地发出反馈（纯图片，无文字） -->
             <div class="summa-emoji-pop" id="summa-emoji-pop" style="display:none">
                 <img id="summa-emoji-pop-img" alt="">
+            </div>
+            <!-- 对战聊天框：消息气泡显示区（与 Summa 表情同区域，底部中央/边角弹出） -->
+            <div class="battle-chat-box" id="battle-chat-box" style="display:none">
+                <div class="battle-chat-messages" id="battle-chat-messages"></div>
+            </div>
+            <!-- 对战聊天输入面板：点击聊天按钮弹出 -->
+            <div class="battle-chat-input-panel" id="battle-chat-input-panel" style="display:none">
+                <input type="text" id="battle-chat-input" maxlength="40" placeholder="输入消息（40字以内）" autocomplete="off">
+                <button type="button" class="btn btn-small" id="battle-chat-send-btn">发送</button>
             </div>
         </section>
         
@@ -197,6 +207,10 @@
                     </button>
                     <button class="start-corner-btn" id="version-btn" type="button" title="版本" aria-label="版本">
                         <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4l8 16 8-16"></path><line x1="20" y1="20" x2="20" y2="20" stroke-linecap="round"></line><circle cx="20" cy="20" r="1.4" fill="currentColor" stroke="none"></circle></svg>
+                    </button>
+                    <button class="start-corner-btn" id="account-btn" type="button" title="登录 / 注册" aria-label="账号">
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                        <span class="account-btn-dot" style="display:none;"></span>
                     </button>
                 </div>
                 <!-- 右上角：网站 / bug / 土星(NEW) -->
@@ -482,12 +496,31 @@
         </div>
     </div>
 
-    <!-- 对战函数启用设置面板：可启停需要解锁的函数（反三角 / sgn / floor） -->
+    <!-- 对战函数启用设置面板：可启停需要解锁的函数（反三角 / sgn / floor），并含导数模式开关 -->
     <div class="modal" id="function-settings-modal" style="display:none;">
         <div class="modal-content function-settings-modal-content">
             <h2>对战函数设置</h2>
             <p style="color:#94a3b8; font-size:13px; margin-top:-4px; margin-bottom:14px;">点击按钮启停对战中可使用的函数（未解锁时不可启用）</p>
             <div class="function-settings-list" id="function-settings-list"></div>
+            <!-- 导数模式 / 开发者模式入口已关闭（仅注释入口，实现代码全部保留）：
+                 实现见 files/js/ui/UICampaign.js 的 getDerivativeModeEnabled / setDerivativeModeEnabled、
+                 getDeveloperModeEnabled / setDeveloperModeEnabled，以及 FunctionRenderer 的 drawDerivative。
+
+            <button type="button" class="function-setting-item derivative-mode-item" id="derivative-mode-toggle">
+                <span class="fs-text">
+                    <span class="fs-name">导数模式</span>
+                    <span class="fs-desc">绘制函数时同时绘制其一阶导数（灰色，不参与判定）</span>
+                </span>
+                <span class="fs-state" id="derivative-mode-state">已关闭</span>
+            </button>
+            <button type="button" class="function-setting-item developer-mode-item" id="developer-mode-toggle">
+                <span class="fs-text">
+                    <span class="fs-name">开发者模式</span>
+                    <span class="fs-desc">解锁全部关卡，且 asin/acos/atan/sgn/floor 均可用</span>
+                </span>
+                <span class="fs-state" id="developer-mode-state">已关闭</span>
+            </button>
+            -->
             <button class="btn btn-primary" id="function-settings-close" style="width:100%; margin-top:16px;">完成</button>
         </div>
     </div>
@@ -572,27 +605,18 @@
                 </div>
             </div>
             <div class="leaderboard-me">
-                <span class="leaderboard-me-label">我的昵称</span>
-                <input type="text" id="leaderboard-nickname-input" maxlength="10" placeholder="输入昵称后保存" autocomplete="off">
-                <button class="btn btn-small" id="leaderboard-nickname-save" type="button">保存</button>
+                <span class="leaderboard-me-label">我的用户名</span>
+                <input type="text" id="leaderboard-username-input" placeholder="未登录（登录后显示用户名）" readonly autocomplete="off">
+            </div>
+            <!-- 登录提示：未登录时显示，提示登录后可上传成绩数据 -->
+            <div class="leaderboard-login-tip" id="leaderboard-login-tip" style="display:none;">
+                <span>登录后即可上传数据</span>
+                <button class="btn btn-small leaderboard-login-tip-btn" id="leaderboard-login-tip-btn" type="button">登录 / 注册</button>
             </div>
             <div id="leaderboard-list" class="leaderboard-list"></div>
             <div id="leaderboard-myrank" class="leaderboard-myrank"></div>
             <div class="leaderboard-tip" id="leaderboard-tip">闯关通关自动上报 LR∑ · 竞速通关自动上报 该关最佳用时（竞速分关榜，比单关最快）· 联机对局房主自动上报 ELO</div>
             <button class="btn btn-secondary" id="leaderboard-close-btn" style="width: 100%; margin-top: 16px;">关闭</button>
-        </div>
-    </div>
-
-    <!-- 首次进入昵称设置弹窗 -->
-    <div class="modal" id="nickname-modal" style="display:none;">
-        <div class="modal-content">
-            <h2>设置昵称</h2>
-            <p class="nickname-prompt-desc">首次进入游戏，给自己起个昵称吧！之后可在排行榜随时修改。</p>
-            <input type="text" id="nickname-input" class="nickname-prompt-input" maxlength="10" placeholder="输入昵称（留空使用默认昵称）" autocomplete="off">
-            <div class="nickname-prompt-actions">
-                <button class="btn btn-secondary" id="nickname-cancel-btn" type="button">取消</button>
-                <button class="btn btn-primary" id="nickname-confirm-btn" type="button">确认</button>
-            </div>
         </div>
     </div>
 
@@ -1105,6 +1129,14 @@
             <textarea id="forbiddenCells" rows="4" wrap="soft"></textarea>
           </div>
           <div class="section">
+            <label>derivativeTargetCells（导数允许区，每行一个）</label>
+            <textarea id="derivativeTargetCells" rows="3" wrap="soft"></textarea>
+          </div>
+          <div class="section">
+            <label>derivativeForbiddenCells（导数禁止区，每行一个）</label>
+            <textarea id="derivativeForbiddenCells" rows="3" wrap="soft"></textarea>
+          </div>
+          <div class="section">
             <label>lockedElements（每行一个，也可点击下方元素按钮锁定）</label>
             <textarea id="lockedElements" rows="4" wrap="soft"></textarea>
             <div class="tiny" style="margin:5px 0 4px;">点击元素即锁定 / 解锁，无需手动输入：</div>
@@ -1125,6 +1157,8 @@
             <div class="legend">
               <span class="chip"><span class="dot target"></span>目标格 targetCells</span>
               <span class="chip"><span class="dot forbid"></span>禁止格 forbiddenCells</span>
+              <span class="chip"><span class="dot d-target"></span>导数允许 derivativeTargetCells</span>
+              <span class="chip"><span class="dot d-forbid"></span>导数禁止 derivativeForbiddenCells</span>
               <span class="chip"><span class="dot lock"></span>锁定元素 lockedElements</span>
             </div>
             <div class="canvas-frame">
@@ -1194,7 +1228,27 @@
               <button class="toggle" id="btnBrush" type="button">画笔</button>
               <button class="toggle" id="btnSelect" type="button">框选</button>
             </div>
-            <div class="help" style="margin-top:8px;">左键目标 / 右键禁止（网格右上角按钮可互换）。开启「长方形」「直线」「画笔」后拖动绘制对应形状；开启「框选」拖动框住区域选中，随后可拖动或用方向键 / 实体键（画布左下角）移动。支持 Ctrl+Z 撤回。</div>
+            <div class="row" style="margin-top:10px;">
+              <div>
+                <label>左键放置</label>
+                <select id="editorLeftType">
+                  <option value="target">允许区</option>
+                  <option value="forbidden">禁止区</option>
+                  <option value="dTarget">导数允许区</option>
+                  <option value="dForbidden">导数禁止区</option>
+                </select>
+              </div>
+              <div>
+                <label>右键放置</label>
+                <select id="editorRightType">
+                  <option value="target">允许区</option>
+                  <option value="forbidden" selected>禁止区</option>
+                  <option value="dTarget">导数允许区</option>
+                  <option value="dForbidden">导数禁止区</option>
+                </select>
+              </div>
+            </div>
+            <div class="help" style="margin-top:8px;">左键/右键放置的类型可在上方选择（默认左键允许区、右键禁止区）。开启「长方形」「直线」「画笔」后拖动绘制对应形状；开启「框选」拖动框住区域选中，随后可拖动或用方向键 / 实体键（画布左下角）移动。支持 Ctrl+Z 撤回。导数判定：导数须穿过导数允许区、避开导数禁止区。</div>
           </div>
           <div class="section export-section stretch">
             <label>导出内容</label>
@@ -1266,13 +1320,18 @@
     <script src="files/js/AIController.js"></script>
     <!-- 联机信令服务器配置（必须在 P2PController.js 之前） -->
     <script>
-        window.P2P_SIGNALING = {
-            host: 'p2p.shaihai.cn',
-            port: 24026,
-            path: '/',
-            secure: true,
-            debug: 0
-        };
+        // 联机信令 + 账号/接口基址（AuthService / ProgressSync / 匹配大厅 / PeerJS 均由此推导）
+        // 生产服务器：https://p2p2.shaihai.cn:24026
+        // 如需内网联调，可在本脚本之前预置 window.P2P_SIGNALING 覆盖。
+        if (!window.P2P_SIGNALING) {
+            window.P2P_SIGNALING = {
+                host: 'p2p2.shaihai.cn',
+                port: 24026,
+                path: '/',
+                secure: true,
+                debug: 0
+            };
+        }
     </script>
     <!-- 核心控制器 -->
     <script src="files/js/P2PController.js"></script>
@@ -1315,9 +1374,15 @@
     <script src="files/js/ui/uip2p/UIP2PSync.js"></script>
     <script src="files/js/ui/uip2p/UIP2PHealth.js"></script>
     <script src="files/js/ui/uip2p/UIP2PResume.js"></script>
+    <script src="files/js/ui/uip2p/UIP2PChat.js"></script>
     <script src="files/js/ui/UILobby.js"></script>
     <!-- 排行榜：身份 + 数据服务 + UI（UILeaderboard 依赖 UIController 原型） -->
     <script src="files/js/PlayerProfile.js"></script>
+    <!-- 账号认证：AuthService + AuthPanel（依赖 PlayerProfile 获取本地 UUID） -->
+    <script src="files/js/AuthService.js"></script>
+    <script src="files/js/AuthPanel.js"></script>
+    <!-- 进度同步：ProgressSync（阶段2 双保险，依赖 AuthService 的登录态与 token） -->
+    <script src="files/js/ProgressSync.js"></script>
     <!-- 排行榜防作弊：签名工具（须在 LeaderboardService 之前加载） -->
     <script src="files/js/VerifyCrypto.js"></script>
     <script src="files/js/LeaderboardService.js"></script>
@@ -1342,9 +1407,26 @@
     <script>
         // 初始化游戏
         document.addEventListener('DOMContentLoaded', () => {
-            // 创建核心组件
-            const gridSystem = new GridSystem('game-canvas');
-            const gameController = new GameController();
+            // 账号认证入口（登录/注册面板）——放最前，避免被后续游戏初始化报错阻断
+            if (window.AuthPanel && window.AuthService) {
+                try {
+                    AuthPanel.init();
+                    // 启动时校验本地 token 是否仍有效（无效则清缓存）
+                    AuthService.fetchMe().then((res) => {
+                        // token 失效会被 fetchMe 清理 → 刷新入口按钮状态，
+                        // 否则按钮仍显示"已登录"绿点（实际已是未登录态）
+                        try { if (AuthPanel._refreshBtn) AuthPanel._refreshBtn(); } catch (e) { /* 忽略 */ }
+                        // token 有效且已登录 → 做一次进度对账（阶段2 双保险）
+                        if (res && res.ok && window.ProgressSync) {
+                            ProgressSync.reconcile().catch(() => {});
+                        }
+                    }).catch(() => {});
+                } catch (e) { /* 账号面板初始化失败不阻断游戏 */ }
+            }
+
+        // 创建核心组件
+        const gridSystem = new GridSystem('game-canvas');
+        const gameController = new GameController();
 
             // 创建UI控制器
             const uiController = new UIController(gridSystem, gameController);
@@ -1376,6 +1458,9 @@
                     sm('提交太频繁，请稍后再试', 'error');
                 } else if (res.code === 'too_fast') {
                     sm('用时异常过快，成绩未记录', 'error');
+                } else if (res.code === 'no_session') {
+                    // 未取得服务端权威计时会话（连接未就绪/网络抖动）：该关成绩未上报，重打即可补上
+                    sm('本关成绩未上报（未取得服务器计时会话），请重打该关', 'warning');
                 }
             };
             uiController.initLeaderboard();
@@ -1460,8 +1545,6 @@
                 // ── 磁性吸附 + 光晕跟随（仅桌面，有鼠标时） ──
                 el.addEventListener('mousemove', function(e) {
                     if (this.disabled) return;
-                    // 触屏设备无悬停，跳过磁性/光晕计算（省电且避免样式粘滞）
-                    if (window.matchMedia && !window.matchMedia('(pointer: fine)').matches) return;
                     var rect = this.getBoundingClientRect();
                     // 光晕坐标（百分比）
                     var gx = ((e.clientX - rect.left) / rect.width * 100).toFixed(1);

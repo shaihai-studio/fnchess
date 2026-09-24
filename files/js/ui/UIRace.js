@@ -213,6 +213,7 @@ UIController.prototype._raceMaxLevel = function() {
         try {
             const arr = Array.from(new Set([...(levels || [])])).filter(v => Number.isFinite(Number(v))).map(v => Math.max(1, Math.min(this._raceMaxLevel(), Number(v))));
             localStorage.setItem('function_chess_race_unlocked_levels', JSON.stringify(arr));
+            if (window.fnProgressChanged) window.fnProgressChanged();   // 竞速解锁关变更 → 防抖同步到账号
         } catch {}
     }
 ;
@@ -412,14 +413,20 @@ UIController.prototype._raceMaxLevel = function() {
                     const lastKey = 'function_chess_rt_last_' + lv;
                     const last = Number(localStorage.getItem(lastKey) || 0);
                     if (bestTime < last || last === 0) {
-                        try { localStorage.setItem(lastKey, String(bestTime)); } catch (e2) { /* 忽略 */ }
-                        const profile = PlayerProfile.getProfile();
-                        // 附题数供服务器难度下限拦截（通关必然解满 10 题）
                         const solved = Number(data.solvedCount) || 0;
                         const totalR = Number(data.totalSolved) || solved;
                         // 阶段一：携带服务端权威计时会话（raceSessionId）上报；无会话也照常提交，由服务端拒绝（强制权威计时）
+                        // 关键修复：本地"已上报"标记只在服务器真正受理(ok)后才写入——否则一旦被拒
+                        // （未登录 / 无会话 / 过短用时等），该关会被本地标记永久跳过，导致竞速分关榜始终为空。
                         const doSubmit = (sessionId) => {
-                            this._leaderboardService.submitRaceTime(lv, bestTime, profile.nickname, solved, totalR, sessionId);
+                            const p = this._leaderboardService.submitRaceTime(lv, bestTime, PlayerProfile.getUsername(), solved, totalR, sessionId);
+                            if (p && typeof p.then === 'function') {
+                                p.then((res) => {
+                                    if (res && res.ok) {
+                                        try { localStorage.setItem(lastKey, String(bestTime)); } catch (e3) { /* 忽略 */ }
+                                    }
+                                }).catch(() => { /* 忽略 */ });
+                            }
                             this.refreshLeaderboardIfOpen();
                         };
                         if (this._raceSessionPromise) {

@@ -18,12 +18,17 @@ class FunctionRenderer {
         // 颜色配置
         this.colors = {
             function: '#ffffff',
-            glow: 'rgba(255, 255, 255, 0.3)'
+            glow: 'rgba(255, 255, 255, 0.3)',
+            derivative: 'rgba(165, 165, 175, 0.85)' // 导数图像灰色
         };
 
         // 动画绘制控制
         this.animationFrameId = null;
         this.isDrawing = false;
+
+        // 导数模式：是否绘制一阶导数（由 UIController 设置回调）
+        // 默认关闭；调用方可通过 this.getDerivativeEnabled 读取开关状态
+        this.getDerivativeEnabled = null;
     }
 
     cancelDrawing() {
@@ -191,8 +196,7 @@ class FunctionRenderer {
      * 返回 geogebra-lite 格式: [{x, y}, {break: true}, {x, y}, ...]
      */
     _buildLnPoints(expr, xMin, xMax) {
-        // 采样密度以 CSS 像素为基准：DPR 高分屏不增加采样量（避免 3 倍计算开销）
-        const width = Math.max(1, this.gridSystem.cssSize || this.gridSystem.canvas.width || 800);
+        const width = Math.max(1, this.gridSystem.canvas.width || 800);
         const baseStep = Math.max((xMax - xMin) / Math.max(7000, width * 30), (xMax - xMin) / 60000);
         const points = [];
         let lastValid = false;
@@ -353,15 +357,26 @@ class FunctionRenderer {
     }
 
     _denseResampleSegments(expr, xMin, xMax) {
-        // 采样密度以 CSS 像素为基准：DPR 高分屏不增加采样量（避免 3 倍计算开销）
-        const width = Math.max(1, this.gridSystem.cssSize || this.gridSystem.canvas.width || 800);
+        let ast;
+        try {
+            ast = this.parser.parse(expr);
+        } catch (e) {
+            return [];
+        }
+        return this._denseResampleSegmentsFromAst(ast, xMin, xMax);
+    }
+
+    /**
+     * 基于已解析的 AST 采样（供导数绘制等场景直接使用，避免重复 parse）
+     */
+    _denseResampleSegmentsFromAst(ast, xMin, xMax) {
+        const width = Math.max(1, this.gridSystem.canvas.width || 800);
         const span = xMax - xMin;
         const targetPixelGap = 12;
         const dyThreshold = 8;
         const maxRounds = 6;
         const maxStep = Math.max(span / Math.max(3200, width * 18), span / 120000, 0.0005);
         const minStep = Math.max(span / Math.max(50000, width * 140), span / 500000, 0.00008);
-        const ast = this.parser.parse(expr);
         // 画布可视范围：超出此范围的点标记 isOffCanvas，不参与连线/调试描点
         const viewRange = Math.max(this.gridSystem.range, span / 2);
 
@@ -611,6 +626,41 @@ class FunctionRenderer {
     }
 
     /**
+     * 采样一阶导数（供导数碰撞检测使用）
+     * 对表达式做符号求导后采样，返回 [{x, y}, {x, y: null, isBreak: true}, ...]。
+     * 无法求导/无导数时返回空数组。
+     */
+    sampleDerivative(expression, xMin, xMax) {
+        let ast;
+        try {
+            ast = this.parser.parse(expression);
+        } catch (e) {
+            return [];
+        }
+        const derivAst = this.parser.differentiate(ast);
+        if (!derivAst) return [];
+
+        const range = this.gridSystem.getRange();
+        const sampleMin = Math.max(xMin, range.min - 1);
+        const sampleMax = Math.min(xMax, range.max + 1);
+
+        const segments = this._denseResampleSegmentsFromAst(derivAst, sampleMin, sampleMax);
+
+        // 将 segments 转换回原格式 points
+        const points = [];
+        for (let i = 0; i < segments.length; i++) {
+            const seg = segments[i];
+            if (i > 0) {
+                points.push({ x: 0, y: null, isBreak: true });
+            }
+            for (const p of seg) {
+                points.push({ x: p.x, y: p.y });
+            }
+        }
+        return points;
+    }
+
+    /**
      * 绘制函数（主入口）
      * @param {string} expression - 函数表达式
      * @param {boolean} animate - 是否使用动画绘制
@@ -640,12 +690,89 @@ class FunctionRenderer {
             ctx.restore();
         }
 
+        // 导数模式：普通函数绘制完成后，额外绘制其一阶导数（半透明同色，仅视觉参考，不参与判定）
+        if (this.getDerivativeEnabled && this.getDerivativeEnabled()) {
+            await this.drawDerivative(expression, animate, color);
+        }
+
         this.clearRenderCache();
         if (typeof this.gridSystem.clearFunctionCache === 'function') {
             this.gridSystem.clearFunctionCache();
         }
 
         return this._segmentsToPoints(segments);
+    }
+
+    /**
+     * 绘制函数的一阶导数（使用原函数颜色的半透明版本）。
+     * 对原表达式进行符号求导得到导数 AST 后采样绘制。
+     * 仅作为视觉参考，不参与允许区/禁止区判定（碰撞检测走 sampleFunction，与此无关）。
+     * @param {string} expression - 原函数表达式
+     * @param {boolean} animate - 是否使用动画绘制
+     * @param {string} baseColor - 原函数颜色（若未指定则用默认函数色）
+     * @returns {Promise<void>}
+     */
+    async drawDerivative(expression, animate = true, baseColor = null) {
+        let ast;
+        try {
+            ast = this.parser.parse(expression);
+        } catch (e) {
+            return;
+        }
+        // 任何能求导的函数都绘制导数：常值函数导数恒为 0（画 y=0 水平线），
+        // 断点（如 floor/sgn/阶乘极点）由采样器自动断开跳过
+        const derivAst = this.parser.differentiate(ast);
+        if (!derivAst) return;
+
+        const range = this.gridSystem.getRange();
+        const segments = this._denseResampleSegmentsFromAst(derivAst, range.min, range.max);
+        if (segments.length === 0) return;
+
+        // 导数用原函数颜色的半透明版本；无法解析时退回灰色
+        const derivColor = this._toSemiTransparentColor(baseColor || this.colors.function);
+
+        if (animate) {
+            await this._animateDrawFromSegments(segments, derivColor);
+        } else {
+            const ctx = this.gridSystem.ctx;
+            ctx.save();
+            ctx.strokeStyle = derivColor;
+            ctx.lineWidth = this.getAdaptiveLineWidth();
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            this._drawSegmentsImmediate(segments, ctx);
+            ctx.restore();
+        }
+    }
+
+    /**
+     * 将颜色转换为半透明版本（用于导数等叠加视觉层）。
+     * 支持 #rgb、#rrggbb、rgba(r,g,b,a) 格式；无法解析时退回导数灰。
+     * @param {string} color - 原始颜色
+     * @param {number} alpha - 目标透明度（0-1），默认 0.5
+     * @returns {string} 半透明颜色字符串
+     */
+    _toSemiTransparentColor(color, alpha = 0.5) {
+        if (typeof color === 'string') {
+            let m = color.match(/^#([0-9a-f]{6})$/i);
+            if (m) {
+                const n = parseInt(m[1], 16);
+                return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+            }
+            m = color.match(/^#([0-9a-f]{3})$/i);
+            if (m) {
+                const s = m[1];
+                const r = parseInt(s[0] + s[0], 16);
+                const g = parseInt(s[1] + s[1], 16);
+                const b = parseInt(s[2] + s[2], 16);
+                return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+            }
+            m = color.match(/^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)$/i);
+            if (m) {
+                return `rgba(${m[1]}, ${m[2]}, ${m[3]}, ${alpha})`;
+            }
+        }
+        return this.colors.derivative;
     }
 
     /**

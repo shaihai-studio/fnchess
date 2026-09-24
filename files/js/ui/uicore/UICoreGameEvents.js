@@ -49,10 +49,17 @@
                 // 上一局若打了很多回合，updateRange 会把 range 逐步扩大到 ±10，
                 // 若不在此复位，新一局会沿用上一局末的坐标系大小，影响布局与目标格密度。
                 // （闯关/竞速有各自的固定范围 setCampaignFixedRange/setRaceFixedRange，不走这里）
+                // 2026-08-20 修复：联机竞速对局中 setRaceFixedRange(true) 会把 range 固定在 20x20，
+                // 但其退出路径未复位。这里显式 setRaceFixedRange(false)，清除 isRaceFixedRange 标志并复位
+                // range=5，否则 updateRange 会因残留的 isRaceFixedRange 又把坐标拉回 20x20。
                 if (this.gridSystem) {
-                    this.gridSystem.range = 5;
-                    this.gridSystem.gridSize = 10;
-                    if (typeof this.gridSystem.resize === 'function') this.gridSystem.resize();
+                    if (typeof this.gridSystem.setRaceFixedRange === 'function') {
+                        this.gridSystem.setRaceFixedRange(false);
+                    } else {
+                        this.gridSystem.range = 5;
+                        this.gridSystem.gridSize = 10;
+                        if (typeof this.gridSystem.resize === 'function') this.gridSystem.resize();
+                    }
                 }
                 this.restoreBattleUI();
                 const state = this.gameController.getGameState();
@@ -231,7 +238,10 @@
         
         this.gameController.on('evaluationComplete', (data) => {
             if (window.audioManager) {
-                if (data.hitTarget && !data.hitForbidden) {
+                // 成功 = 穿过全部允许区 + 避开禁止区 + 导数穿过导数允许区 + 避开导数禁止区
+                const ok = data.hitTarget && !data.hitForbidden
+                    && data.hitDerivativeTarget && !data.hitDerivativeForbidden;
+                if (ok) {
                     window.audioManager.playSuccess();
                 } else {
                     window.audioManager.playError();
@@ -419,9 +429,10 @@
                 this.gridSystem.clearAll();
                 this.clearExpression();
 
-                // 设置目标与禁区
+                // 设置目标与禁区（含导数允许区 / 导数禁止区）
                 this.gridSystem.setTargetCells(data.roundState.targetCells || []);
                 this.gridSystem.forbiddenCells = data.roundState.forbiddenCells || [];
+                this.gridSystem.setDerivativeCells(data.roundState.derivativeTargetCells, data.roundState.derivativeForbiddenCells);
                 // 闯关模式每关独立，清空上一关遗留的历史函数与历史格子
                 this.gridSystem.functionHistory = [];
                 this.gridSystem.usedCells = [];
@@ -453,6 +464,7 @@
                 this.clearExpression();
                 this.gridSystem.setTargetCells(data.roundState.targetCells || []);
                 this.gridSystem.forbiddenCells = data.roundState.forbiddenCells || [];
+                this.gridSystem.setDerivativeCells(data.roundState.derivativeTargetCells, data.roundState.derivativeForbiddenCells);
                 // 竞速每关独立，清空历史函数
                 this.gridSystem.functionHistory = [];
                 this.gridSystem.draw();
@@ -588,6 +600,37 @@
             if (this.isP2PMode && this._p2pMatchMode === 'ranked'
                 && this.p2pController && this.p2pController.isHost && this._leaderboardService) {
                 this._submitP2PELO(data);
+            }
+
+            // ★ 对局正常结束：房主向观战者推送带结果报告的观战快照，
+            //   观众端收到 _gameOver 后弹出结果报告（含比分 / 判负原因 / 双方昵称）。
+            if (this.isP2PMode && this.p2pController && this.p2pController.isHost
+                && this._spectateEnabled && this._lobby && this._p2pRoomCode) {
+                try {
+                    const snapshot = this.buildSyncSnapshot();
+                    snapshot._gameOver = {
+                        winner: data.winner,
+                        scores: data.scores,
+                        forfeit: data.forfeit || null,
+                        players: snapshot.players || null
+                    };
+                    this._lobby.sendSpectateSync(snapshot);
+                } catch (e) {
+                    console.warn('[UI][P2P] 推送对局结束报告给观众失败：', e);
+                }
+            }
+
+            // ★ 对局正常结束：立即断开 P2P 连接（PeerJS 信令 + DataChannel），
+            //   避免连接长期挂起占用资源、并防止残留房间影响下一局。
+            //   注意：上面的 ELO 上报与观战快照均走 Lobby WS，不依赖 P2P 连接，故可安全先断。
+            //   再战（rematch）：连接已断开时由房间弹窗重新建房/加入（见 handleRestart 守卫）。
+            if (this.isP2PMode && this.p2pController) {
+                try { this.p2pController.disconnect(); } catch (e) { /* 忽略 */ }
+            }
+            // 对局已结束：立刻停止房主的观战快照周期推送（否则会继续每 500ms 广播，
+            // 观众端持续收到重复快照；结束报告已在上面单独推送过一次）
+            if (typeof this._stopSpectateSync === 'function') {
+                try { this._stopSpectateSync(); } catch (e) { /* 忽略 */ }
             }
 
             // Summa Reaction Hook

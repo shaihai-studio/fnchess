@@ -33,14 +33,13 @@
  */
 class P2PController {
     // ═══ 静态信令服务器配置（全局生效） ═══
-    // 默认使用自托管服务器 http://p2p.shaihai.cn/（server/index.js）
-    // 可通过 window.P2P_SIGNALING 覆盖，例如：
+    // 可通过 window.P2P_SIGNALING 覆盖（index.html 已默认按「与页面同源」推导），例如：
     //   window.P2P_SIGNALING = { host: 'localhost', port: 9000, secure: false };
     // 若服务器启用了 HTTPS/TLS，需将 secure 改为 true
     static signaling = (typeof window !== 'undefined' && window.P2P_SIGNALING)
-        ? { host: 'p2p.shaihai.cn', port: 24026, path: '/', secure: true, debug: 0, ...window.P2P_SIGNALING }
+        ? { host: 'p2p2.shaihai.cn', port: 24026, path: '/', secure: true, debug: 0, ...window.P2P_SIGNALING }
         : {
-            host: 'p2p.shaihai.cn',
+            host: 'p2p2.shaihai.cn',
             port: 24026,
             path: '/',
             secure: true,
@@ -52,28 +51,18 @@ class P2PController {
     static ensurePeerJs() {
         if (typeof window.Peer !== 'undefined') return Promise.resolve();
         if (P2PController._peerJsPromise) return P2PController._peerJsPromise;
+        // 安全：只加载本地 vendor 副本，不再回退 unpkg CDN（供应链风险，且会被 CSP 拦截）。
+        // 本地副本缺失是部署问题，应显式报错而不是静默从外网拉脚本。
         P2PController._peerJsPromise = new Promise((resolve, reject) => {
-            const sources = [
-                'files/vendor/peerjs/peerjs.min.js',
-                'https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js'
-            ];
-            let idx = 0;
-            const tryLoad = () => {
-                if (idx >= sources.length) {
-                    reject(new Error('无法加载 PeerJS（请检查网络）'));
-                    return;
-                }
-                const s = document.createElement('script');
-                s.src = sources[idx++];
-                s.async = true;
-                s.onload = () => {
-                    if (typeof window.Peer !== 'undefined') resolve();
-                    else tryLoad(); // 加载完成但全局未定义（可能是坏文件），尝试下一个源
-                };
-                s.onerror = () => tryLoad();
-                document.head.appendChild(s);
+            const s = document.createElement('script');
+            s.src = 'files/vendor/peerjs/peerjs.min.js';
+            s.async = true;
+            s.onload = () => {
+                if (typeof window.Peer !== 'undefined') resolve();
+                else reject(new Error('PeerJS 本地副本加载异常（未导出 Peer）'));
             };
-            tryLoad();
+            s.onerror = () => reject(new Error('PeerJS 本地副本加载失败：files/vendor/peerjs/peerjs.min.js'));
+            document.head.appendChild(s);
         });
         return P2PController._peerJsPromise;
     }
@@ -154,6 +143,8 @@ class P2PController {
         this.onSyncRequest  = null;  // () => void
         // 对方发来 Summa 表情包（轻量消息：无 ack、无 gen 校验，丢失无副作用）
         this.onSummaEmoji   = null;  // (mood) => void
+        // 对方发来聊天消息（轻量消息：无 ack、无 gen 校验）
+        this.onChat         = null;  // (text) => void
         // 对手身份（排行榜 ELO 上报用）：(payload) => void，payload={playerId, nickname}
         this.onPlayerInfo   = null;  // (payload) => void
         // 返回当前状态指纹 { version, round, player, phase }，未初始化返回 null（用于 sync_verify）
@@ -176,39 +167,53 @@ class P2PController {
         // 断线清理已执行标志（DataChannel close/error 可能连续触发，防重复清理/重复弹窗）
         this._disconnectHandled = false;
 
-        this.iceServers = P2PController.getIceServers();
-        this._codeChars = '0123456789';
-        this._cachedIceServers = null;  // 服务端拉取的完整 ICE 配置缓存
-    }
-
-    /**
-     * 共享 ICE 配置（STUN + TURN）：P2PController 实例与 RaceRoomController 静态调用统一来源。
-     * 注意：TURN 账号密码为硬编码长期凭证（历史遗留），上架后建议服务端改为限时凭证下发。
-     */
-    static getIceServers() {
-        return [
-            // IP 直连 STUN（coturn 服务器同时提供 STUN 服务，绕开公共 STUN 域名 DNS 解析失败）
-            { urls: 'stun:124.222.7.170:3478' },
+        // ICE 兜底配置（仅在 /api/ice 不可用时使用）：
+        // 自建 coturn（p2p2.shaihai.cn:3478）提供 STUN，另加公共 STUN 提高打洞成功率。
+        // TURN 中继必须使用服务端签发的限时凭证，故此处不含 TURN。
+        this.iceServers = [
+            { urls: 'stun:p2p2.shaihai.cn:3478' },
             { urls: 'stun:stun.cloudflare.com:3478' },
             { urls: 'stun:stun.qq.com:3478' },
-            { urls: 'stun:stun.miwifi.com:3478' },
-            {
-                urls: [
-                    'turn:124.222.7.170:3478?transport=udp',
-                    'turn:124.222.7.170:3478?transport=tcp'
-                ],
-                username: 'turnuser',
-                credential: 'shaihaiisthebest'
-            }
+            { urls: 'stun:stun.miwifi.com:3478' }
         ];
+        this._codeChars = '0123456789';
+        this._cachedIceServers = null;  // 服务端下发的完整 ICE 配置缓存
+        this._cachedIceExp = 0;         // 缓存过期时间戳（按服务端 ttl 提前 60s 失效）
     }
 
-    // ─── 获取 ICE 配置（STUN 兜底，公共信令服务器无 TURN） ───
+    // ─── 获取 ICE 配置 ───────────────────────────────────────
+    // 优先向服务端 GET /api/ice 换取「STUN + 限时 TURN 凭证」（coturn TURN REST API），
+    // 失败时回落静态 STUN 列表（保证无服务端时仍可直连，只是没有中继兜底）。
 
     async _fetchIceServers() {
-        if (this._cachedIceServers) return this._cachedIceServers;
-        // 公共 PeerJS 服务器不支持动态 TURN 配置，直接使用 STUN
+        const now = Date.now();
+        if (this._cachedIceServers && this._cachedIceExp > now) return this._cachedIceServers;
+        try {
+            const base = (typeof AuthService !== 'undefined' && AuthService.API_BASE) ? AuthService.API_BASE : '';
+            if (base) {
+                // 3s 超时保护：凭证拉取失败/过慢时直接回落 STUN，不能让建房流程被网络问题卡住
+                const ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+                const timer = ctrl ? setTimeout(() => { try { ctrl.abort(); } catch (e) { /* 忽略 */ } }, 3000) : null;
+                try {
+                    const resp = await fetch(base + '/ice', {
+                        method: 'GET', cache: 'no-store',
+                        signal: ctrl ? ctrl.signal : undefined
+                    });
+                    const data = await resp.json();
+                    if (data && Array.isArray(data.iceServers) && data.iceServers.length) {
+                        this._cachedIceServers = data.iceServers;
+                        // 凭证有效期 ttl 秒；提前 60s 重新拉取，避免边界处凭证刚过期
+                        const ttl = Number(data.ttl) > 0 ? Number(data.ttl) : 600;
+                        this._cachedIceExp = now + Math.max(60, ttl - 60) * 1000;
+                        return this._cachedIceServers;
+                    }
+                } finally {
+                    if (timer) clearTimeout(timer);
+                }
+            }
+        } catch (e) { /* 忽略：回落静态 STUN */ }
         this._cachedIceServers = this.iceServers;
+        this._cachedIceExp = now + 5 * 60 * 1000; // 兜底配置短缓存，便于服务恢复后自动升级
         return this._cachedIceServers;
     }
 
@@ -606,6 +611,11 @@ class P2PController {
                 if (this.onSummaEmoji) this.onSummaEmoji(data.mood || 'neutral');
                 break;
 
+            case 'chat':
+                // 对方发来聊天消息：透传给 UI 展示（不校验 gen，无 ack）
+                if (this.onChat) this.onChat(String(data.text || '').slice(0, 40));
+                break;
+
             case 'quit':
                 // 对方主动退出（主动点击退出/解散，非意外断线）：
                 // 置位标志并通知 UI 立即结算（本方不进入 60s 重连等待）；
@@ -837,6 +847,7 @@ class P2PController {
     sendTimeout(player)              { this.send({ type: 'timeout', player, gen: this._gen }); }
     sendRematchRequest()             { this.send({ type: 'rematch_request' }); }
     sendSummaEmoji(mood)             { this.send({ type: 'summa_emoji', mood }); }
+    sendChat(text)                   { this.send({ type: 'chat', text: String(text || '').slice(0, 40) }); }
     sendSyncRequest()                {
         console.log('[P2P] 发送 request_sync');
         const token = this._reqToken(++this._reqSyncSeq);

@@ -21,7 +21,20 @@ class LeaderboardService {
         this._nonce = null;               // 当前可用的一次性 nonce
         this._nonceExp = 0;
         this._nonceWaiters = [];          // 等待 nonce 的 Promise resolve 队列
+        // 竞速权威计时会话的等待队列（按 FIFO 配对服务端 race_start_result）
+        this._raceSessionWaiters = [];
         this._signChain = Promise.resolve(); // 2026-08-15 修复 #65：签名上报串行化链，避免并发抢同一一次性 nonce
+        // 一次性迁移（v2）：旧版本在"上报之前"就写入 function_chess_rt_last_*，一旦上报被拒
+        // （未登录 / 无权威计时会话等），该关会被本地永久跳过 → 竞速分关榜始终为空。
+        // 这里清除一次历史标记，让各关成绩在下次通关时重新上报（服务端按"取更短用时"幂等，不会变差）。
+        try {
+            if (!localStorage.getItem('function_chess_rt_migr_v2')) {
+                Object.keys(localStorage)
+                    .filter((k) => k.indexOf('function_chess_rt_last_') === 0)
+                    .forEach((k) => localStorage.removeItem(k));
+                localStorage.setItem('function_chess_rt_migr_v2', '1');
+            }
+        } catch (e) { /* 忽略（隐私模式等） */ }
         this.onSubmitResult = null;       // (data) => void（verify_failed / rate_limited / too_fast 等）
         if (this.lobby) {
             const self = this;
@@ -49,24 +62,45 @@ class LeaderboardService {
             };
             // 不用 onConnectionChange（UILobby 进入大厅时会覆盖该回调），改用轮询 flush：
             // 连接建立后，把等待中的消息统一补发出去。
-            // 按需启停（修复：原先 500ms 定时器常驻空转，全程占用主线程唤醒）
-            this._flushTimer = null;
+            this._flushTimer = setInterval(() => self._flushPending(), 500);
         }
-    }
-
-    _startFlushTimer() {
-        if (this._flushTimer) return;
-        this._flushTimer = setInterval(() => this._flushPending(), 500);
-    }
-
-    _stopFlushTimer() {
-        if (this._flushTimer) { clearInterval(this._flushTimer); this._flushTimer = null; }
     }
 
     _ensureConnected() {
         if (!this.lobby) return;
         if (this.lobby.isConnected) return;
         this.lobby.connect();
+    }
+
+    /**
+     * 单机成绩上报不做登录拦截。
+     *
+     * 排行榜本身支持匿名身份（playerId 为主键、签名的 sigId 也用 playerId），
+     * 玩家登录后服务端会把该 UUID 名下的成绩并入账号（auth.js 的 migrateUuidToUser），
+     * 因此「闯关通关 / 竞速单机」等单机流程不应弹出登录框打断游戏。
+     * 需要强制登录的只有联机能力（建房/入房/观战/喊话），由服务端 auth_required 守卫。
+     *
+     * @returns {boolean} 恒为 true（允许上报）
+     */
+    _requireLoginForSubmit() {
+        return true;
+    }
+
+    /**
+     * 阶段3：当前玩家身份键。
+     * 登录 → 'u'+userId（同一账号多设备共享排名）；
+     * 未登录 → playerId（行为与现状一致）。
+     * @returns {{playerId:string, userId:(number|null), idKey:string}}
+     */
+    _myIdentity() {
+        const playerId = typeof PlayerProfile !== 'undefined' ? PlayerProfile.getPlayerId() : '';
+        let userId = null;
+        if (window.AuthService && typeof window.AuthService.getUserId === 'function') {
+            const uid = window.AuthService.getUserId();
+            userId = (uid != null && uid !== '') ? uid : null;
+        }
+        const idKey = userId ? 'u' + String(userId) : String(playerId);
+        return { playerId, userId, idKey };
     }
 
     _send(obj) {
@@ -76,13 +110,12 @@ class LeaderboardService {
             // 未就绪：入队，连接建立后统一发送
             this._pendingSends.push(obj);
             if (this._pendingSends.length > 200) this._pendingSends.shift(); // 防内存堆积
-            this._startFlushTimer();
             this._ensureConnected();
         }
     }
 
     _flushPending() {
-        if (!this._pendingSends.length) { this._stopFlushTimer(); return; }
+        if (!this._pendingSends.length) return;
         if (!this.lobby || !this.lobby.isConnected) return; // 尚未连接，继续等待
         const batch = this._pendingSends;
         this._pendingSends = [];
@@ -92,6 +125,15 @@ class LeaderboardService {
     }
 
     _handleResult(data) {
+        // 竞速权威计时会话回执：服务端历史上不回传 id（仅 {ok, raceSessionId}），
+        // 若走下面的 id 配对会直接 return → 会话申请永远 5s 超时返回 null →
+        // rtN 上报被服务端以 no_session 拒绝 → 竞速分关榜始终为空。
+        // 这里改为按 FIFO 配对（startRaceSession 已串行化），并对带 id 的新版回执同样兼容。
+        if (data && data.type === 'race_start_result') {
+            const w = (this._raceSessionWaiters || []).shift();
+            if (w) { try { w(data); } catch (e) { /* 忽略 */ } }
+            return;
+        }
         const id = data && data.id;
         if (!id) return;
         // 彗星分关榜查询结果：缓存该关全服最短 token（供本地算 plv / 胜利弹窗展示）
@@ -108,6 +150,12 @@ class LeaderboardService {
     _handleChallenge(data) {
         this._nonce = String((data && data.nonce) || '');
         this._nonceExp = Number((data && data.exp) || 0) || (Date.now() + 120000);
+        // 安全：优先使用服务端随 nonce 下发的会话签名密钥（主密钥不再硬编码在前端）
+        try {
+            if (typeof VerifyCrypto !== 'undefined' && VerifyCrypto.setSessionKey) {
+                VerifyCrypto.setSessionKey((data && data.sigKey) || null);
+            }
+        } catch (e) { /* 忽略：回落旧密钥，不影响上报 */ }
         const waiters = this._nonceWaiters;
         this._nonceWaiters = [];
         for (const w of waiters) { try { w(); } catch (e) { /* 忽略 */ } }
@@ -165,22 +213,42 @@ class LeaderboardService {
         });
     }
 
+    /**
+     * 上报昵称：已登录时统一使用「账号登录名」（排行榜昵称与账号一致；历史记录由服务端维护脚本
+     * 按 userId→登录名 做一致性改写），未登录沿用本地昵称。
+     * 返回完整登录名（不做本地截断，服务端统一截断到 10 字展示，避免两处口径不一）。
+     * @param {string} [fallback] 调用方传入的本地昵称
+     */
+    _submitNickname(fallback) {
+        try {
+            const A = window.AuthService;
+            if (A && typeof A.isLoggedIn === 'function' && A.isLoggedIn()) {
+                const u = typeof A.getUsername === 'function' ? A.getUsername() : '';
+                if (u) return String(u);
+            }
+        } catch (e) { /* 忽略：未登录或模块未加载 */ }
+        return String(fallback || '').trim();
+    }
+
     /** 带签名的上报（lr / rtN）；payload 随签名一起锁定，防篡改 */
     async _submitSigned(obj, payload) {
         if (typeof VerifyCrypto === 'undefined') { console.warn('[LB] VerifyCrypto 缺失，上报已放弃'); return { ok: false, code: 'no_crypto' }; }
-        const playerId = typeof PlayerProfile !== 'undefined' ? PlayerProfile.getPlayerId() : '';
+        const idn = this._myIdentity();
+        const playerId = idn.playerId;
+        const idKey = idn.idKey;
         const boardType = String(obj.boardType || '');
         const value = obj.value;
         const self = this;
         return this._withFreshNonce((nonce) => {
-            const sig = VerifyCrypto.sign(nonce, playerId, boardType, value, payload || {});
+            // 阶段3：签名锁定"身份键"（登录 'u'+userId，未登录 playerId），与服务端 verifySig 一致
+            const sig = VerifyCrypto.sign(nonce, idKey, boardType, value, payload || {});
             // 诊断日志（与服务端 verifySig 对账）
             try {
                 const payloadJson = JSON.stringify(payload || {});
-                const sigInput = [String(nonce || ''), String(playerId || ''), boardType, String(value === undefined ? '' : value)].join('|');
-                console.log(`[LB] sign input: boardType=${boardType} playerId="${String(playerId).slice(0, 24)}" value=${value} nonce="${String(nonce).slice(0, 16)}..." sig=${sig.slice(0, 24)}... payload=${payloadJson.slice(0, 120)} | sigInput="${sigInput.slice(0, 120)}"`);
+                const sigInput = [String(nonce || ''), String(idKey || ''), boardType, String(value === undefined ? '' : value)].join('|');
+                console.log(`[LB] sign input: boardType=${boardType} idKey="${String(idKey).slice(0, 24)}" value=${value} nonce="${String(nonce).slice(0, 16)}..." sig=${sig.slice(0, 24)}... payload=${payloadJson.slice(0, 120)} | sigInput="${sigInput.slice(0, 120)}"`);
             } catch (e) { /* 忽略诊断日志异常 */ }
-            return self._awaitSubmitResult(Object.assign({ type: 'submit_score' }, obj, { playerId, nonce, sig, payload: payload || {} }));
+            return self._awaitSubmitResult(Object.assign({ type: 'submit_score' }, obj, { playerId, userId: idn.userId, nonce, sig, payload: payload || {} }));
         });
     }
 
@@ -191,9 +259,11 @@ class LeaderboardService {
 
     /** ELO 上报（签名版，防伪造消息刷 ELO；房主/访客结算各自上报，服务器按 roomKey 去重） */
     submitEloScore(payload) {
+        // 上传需登录（方案A）：未登录不上报，返回失败（不破坏 Promise 契约）
+        if (!this._requireLoginForSubmit()) return Promise.resolve({ ok: false, code: 'login_required' });
         const p = payload || {};
         const playerId = typeof PlayerProfile !== 'undefined' ? PlayerProfile.getPlayerId() : '';
-        return this._submitSigned(Object.assign({ boardType: 'elo', value: 0 }, p, { playerId }), {});
+        return this._submitSigned(Object.assign({ boardType: 'elo', value: 0 }, p, { playerId, nickname: this._submitNickname(p.nickname) }), {});
     }
 
     /**
@@ -204,25 +274,30 @@ class LeaderboardService {
      * @param {Array}  [levels]     核验载荷：[{ level, expr, minToken }]（触发核验时服务器据此复算）
      */
     submitLRSigma(value, nickname, minTokens, levels) {
+        // 上传需登录（方案A）：未登录不上报
+        if (!this._requireLoginForSubmit()) return;
         let playerId = '';
         if (typeof PlayerProfile !== 'undefined') playerId = PlayerProfile.getPlayerId();
         const payload = {};
         if (minTokens && typeof minTokens === 'object') payload.minTokens = minTokens;
         if (Array.isArray(levels) && levels.length) payload.levels = levels;
-        this._submitSigned({ boardType: 'lr', value: Number(value) || 0, nickname: nickname || '', playerId }, payload);
+        this._submitSigned({ boardType: 'lr', value: Number(value) || 0, nickname: this._submitNickname(nickname), playerId }, payload);
     }
 
-    /** 上报竞速分关 Time Attack 用时：boardType = rt{levelId}，value = 该关最佳用时(秒)；附题数供服务器难度下限拦截 */
+    /** 上报竞速分关 Time Attack 用时：boardType = rt{levelId}，value = 该关最佳用时(秒)；附题数供服务器难度下限拦截
+     *  @returns {Promise<{ok:boolean, code?:string}>} 服务器受理结果（调用方据此决定是否记录本地"已上报"标记） */
     submitRaceTime(levelId, seconds, nickname, solvedCount, totalRounds, raceSessionId) {
+        // 上传需登录（方案A）：未登录不上报
+        if (!this._requireLoginForSubmit()) return Promise.resolve({ ok: false, code: 'login_required' });
         let playerId = '';
         if (typeof PlayerProfile !== 'undefined') playerId = PlayerProfile.getPlayerId();
         const payload = {};
         // 阶段一：服务端权威计时。raceSessionId 放入 payload（随签名锁定），服务端以此校验会话并用 now-startTs 计算权威用时
         if (raceSessionId) payload.raceSessionId = String(raceSessionId);
-        this._submitSigned({
+        return this._submitSigned({
             boardType: 'rt' + Number(levelId),
             value: Number(seconds) || 0,
-            nickname: nickname || '',
+            nickname: this._submitNickname(nickname),
             playerId,
             solvedCount: Number(solvedCount) || 0,
             totalRounds: Number(totalRounds) || 0
@@ -238,14 +313,17 @@ class LeaderboardService {
     startRaceSession(levelId) {
         return new Promise((resolve) => {
             const id = 'rs' + (++this._querySeq);
-            const timer = setTimeout(() => {
-                this._pendingQueries.delete(id);
-                resolve(null);
-            }, 5000);
-            this._pendingQueries.set(id, (data) => {
+            const waiter = (data) => {
                 clearTimeout(timer);
                 resolve(data && data.ok ? String(data.raceSessionId || '') : null);
-            });
+            };
+            const timer = setTimeout(() => {
+                const i = this._raceSessionWaiters.indexOf(waiter);
+                if (i >= 0) this._raceSessionWaiters.splice(i, 1);
+                console.warn('[LB] 竞速权威计时会话申请超时（未收到 race_start_result）');
+                resolve(null);
+            }, 5000);
+            this._raceSessionWaiters.push(waiter);
             this._send({ type: 'race_start', levelId: Number(levelId) || 0, id: String(id) });
         });
     }
@@ -256,19 +334,24 @@ class LeaderboardService {
      * 返回 Promise<{ ok, code, score, delta, tier, games, wins }>（服务器未连/验签失败时 ok=false）
      */
     submitRaceScore(payload) {
+        // 上传需登录（方案A）：未登录不上报
+        if (!this._requireLoginForSubmit()) return Promise.resolve({ ok: false, code: 'login_required' });
         if (typeof VerifyCrypto === 'undefined') return Promise.resolve({ ok: false, code: 'no_crypto' });
         const p = payload || {};
-        const playerId = typeof PlayerProfile !== 'undefined' ? PlayerProfile.getPlayerId() : '';
+        const idn = this._myIdentity();
+        const playerId = idn.playerId;
+        const idKey = idn.idKey;
         const self = this;
         // 2026-08-15 修复 #65：走串行化链，确保竞速结算的 nonce 独占且等结果回来再发下一个
         return this._withFreshNonce((nonce) => {
-            const sig = VerifyCrypto.sign(nonce, playerId, 'rsc', 0, p);
+            const sig = VerifyCrypto.sign(nonce, idKey, 'rsc', 0, p);
             return self._awaitSubmitResult({
                 type: 'submit_score',
                 boardType: 'rsc',
                 value: 0,
-                nickname: String(p.nickname || '') || '',
+                nickname: this._submitNickname(p.nickname),
                 playerId,
+                userId: idn.userId,
                 nonce,
                 sig,
                 payload: p
@@ -283,13 +366,18 @@ class LeaderboardService {
 
     /** 玩家举报（90s 间隔由服务器控制；被举报者下次 lr 强制核验） */
     async report(target, reason) {
+        // 举报也需登录（方案A）：未登录不上报
+        if (!this._requireLoginForSubmit()) return;
         if (typeof VerifyCrypto === 'undefined') return;
-        const playerId = typeof PlayerProfile !== 'undefined' ? PlayerProfile.getPlayerId() : '';
-        if (!playerId || !target || target === playerId) return;
+        const idn = this._myIdentity();
+        const playerId = idn.playerId;
+        const idKey = idn.idKey;
+        if (!playerId || !target || target === idKey) return;
         // 2026-08-15 修复 #65：走串行化链
         return this._withFreshNonce((nonce) => {
-            const sig = VerifyCrypto.sign(nonce, playerId, '', '', {});
-            return this._awaitSubmitResult({ type: 'report', target: String(target || ''), playerId, reason: String(reason || ''), nonce, sig });
+            const sig = VerifyCrypto.sign(nonce, idKey, '', '', {});
+            // 阶段3：target 为被举报者的"身份键"（榜单行返回 idKey）
+            return this._awaitSubmitResult({ type: 'report', target: String(target || ''), targetIdKey: String(target || ''), playerId, userId: idn.userId, reason: String(reason || ''), nonce, sig });
         });
     }
 
@@ -300,21 +388,27 @@ class LeaderboardService {
      * 服务器未连 / 超时 / 验签失败时 resolve { ok:false }。
      */
     deleteMyScores(mode) {
+        // 清榜也需登录（方案A）：未登录不上报
+        if (!this._requireLoginForSubmit()) return Promise.resolve({ ok: false, code: 'login_required' });
         if (typeof VerifyCrypto === 'undefined') return Promise.resolve({ ok: false });
-        const playerId = typeof PlayerProfile !== 'undefined' ? PlayerProfile.getPlayerId() : '';
+        const idn = this._myIdentity();
+        const playerId = idn.playerId;
+        const idKey = idn.idKey;
         if (!playerId) return Promise.resolve({ ok: false });
         // 2026-08-15 修复 #65：走串行化链（原用 _pendingQueries[id]，现统一 FIFO 配对 submit_result）
         return this._withFreshNonce((nonce) => {
-            const sig = VerifyCrypto.sign(nonce, playerId, '', '', {});
-            return this._awaitSubmitResult({ type: 'delete_my_scores', playerId, mode: String(mode || ''), nonce, sig });
+            const sig = VerifyCrypto.sign(nonce, idKey, '', '', {});
+            return this._awaitSubmitResult({ type: 'delete_my_scores', playerId, userId: idn.userId, mode: String(mode || ''), nonce, sig });
         });
     }
 
-    /** 查询榜单；boardType: 'lr' | 'rt{level}' | 'pl{level}' | 'elo'；回调收到 leaderboard_result */
+    /** 查询榜单；boardType: 'lr' | 'rt{level}' | 'pl{level}' | 'elo'；回调收到 leaderboard_result
+     *  阶段3：附带当前登录 userId，服务端据此算 isMe */
     query(boardType, playerId, callback) {
         const id = 'q' + (++this._querySeq);
         if (typeof callback === 'function') this._pendingQueries.set(id, callback);
-        this._send({ type: 'query_leaderboard', boardType: String(boardType), playerId: String(playerId || ''), id: String(id) });
+        const idn = this._myIdentity();
+        this._send({ type: 'query_leaderboard', boardType: String(boardType), playerId: String(playerId || ''), userId: idn.userId, id: String(id) });
     }
 
     /** 批量查询玩家 ELO（联机开场 VS 用）；回调收到 { id, players: {playerId: {elo,nickname,...}} } */

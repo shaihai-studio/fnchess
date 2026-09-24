@@ -122,6 +122,7 @@ if (typeof UIController === 'undefined') {
     UIController.prototype.setCampaignLevelBestStars = function(levelId, stars) {
         try {
             localStorage.setItem(`function_chess_campaign_best_stars_${levelId}`, String(Math.max(0, Number(stars) || 0)));
+            if (window.fnProgressChanged) window.fnProgressChanged();   // 进度变更 → 防抖同步到账号
         } catch (e) { }
     }
 ;
@@ -130,6 +131,7 @@ if (typeof UIController === 'undefined') {
     UIController.prototype.setCampaignCollectedStars = function(stars) {
         try {
             localStorage.setItem('function_chess_campaign_stars', String(Math.max(0, Number(stars) || 0)));
+            if (window.fnProgressChanged) window.fnProgressChanged();
         } catch (e) { }
     }
 ;
@@ -148,16 +150,18 @@ if (typeof UIController === 'undefined') {
             this.refreshUnsovableDifficultyVisibility();
             this.updateCampaignGlobalProgressText(stars);
 
+            const devMode = this.getDeveloperModeEnabled();
+            const effectiveUnlockedMax = devMode ? total : unlockedMax;
             const current = Number(this.campaignLevelSelect.value || 1);
             this.campaignLevelSelect.innerHTML = '';
             for (let i = 1; i <= total; i++) {
                 const opt = document.createElement('option');
                 opt.value = String(i);
-                opt.textContent = i <= unlockedMax ? `关卡 ${i}` : `关卡 ${i}（未解锁）`;
-                opt.disabled = i > unlockedMax;
+                opt.textContent = i <= effectiveUnlockedMax ? `关卡 ${i}` : `关卡 ${i}（未解锁）`;
+                opt.disabled = i > effectiveUnlockedMax;
                 this.campaignLevelSelect.appendChild(opt);
             }
-            const fixed = Math.min(Math.max(1, current), unlockedMax || 1);
+            const fixed = Math.min(Math.max(1, current), effectiveUnlockedMax || 1);
             this.campaignLevelSelect.value = String(fixed);
         } catch (e) {
             this.campaignProgressText.textContent = '关卡加载失败，请确认关卡数据已内置。';
@@ -247,7 +251,8 @@ if (typeof UIController === 'undefined') {
             if (data.unlockRestored) {
                 lines.push('<span style="color:#22c55e;">已正常通关，LRΣ 已恢复（+10）</span>');
             }
-            this.campaignVictoryText.innerHTML = `${levelText}<br>` + lines.join('<br>');
+            // levelText 含 levelId（自制关卡包可来自用户导入文件）→ 转义后再入 innerHTML
+            this.campaignVictoryText.innerHTML = `${FnEscapeHtml(levelText)}<br>` + lines.join('<br>');
         }
         // 彗星结算（满分 10 颗，缓存全服最优 → 本地算 plv；首次通关缓存为空则取 10）
         // 解锁通关：无彗星
@@ -277,9 +282,8 @@ if (typeof UIController === 'undefined') {
             try {
                 const lrSigma = this.calculateLRSigma(this.getCampaignClearedMax());
                 if (Number.isFinite(lrSigma) && lrSigma >= 0) {
-                    const profile = PlayerProfile.getProfile();
                     console.log(`[LB] 解锁通关同步 LRΣ=${lrSigma}（已扣解锁惩罚，不提交分关纪录）`);
-                    this._leaderboardService.submitLRSigma(lrSigma, profile.nickname, {}, []);
+                    this._leaderboardService.submitLRSigma(lrSigma, PlayerProfile.getUsername(), {}, []);
                     this.refreshLeaderboardIfOpen();
                 }
             } catch (e) { /* 上报失败静默降级，不影响结算界面 */ console.error('[LB] 解锁通关 LRΣ 同步异常:', e); }
@@ -298,10 +302,9 @@ if (typeof UIController === 'undefined') {
                     if (lrSigma > last) {
                         // 注意：不在此处 setItem！由 LeaderboardService.onSubmitResult 在服务器
                         // 真正接受后才写 last（避免上报失败时 last 虚高导致永远不报）
-                        const profile = PlayerProfile.getProfile();
                         const sub = this.buildLRSubmissionPayload();
                         console.log(`[LB] 已提交 LRΣ=${lrSigma}, minTokens=${Object.keys(sub.minTokens).length} 关, levels=${sub.levels.length} 关`);
-                        this._leaderboardService.submitLRSigma(lrSigma, profile.nickname, sub.minTokens, sub.levels);
+                        this._leaderboardService.submitLRSigma(lrSigma, PlayerProfile.getUsername(), sub.minTokens, sub.levels);
                         this.refreshLeaderboardIfOpen();
                     }
                 } else {
@@ -343,9 +346,8 @@ if (typeof UIController === 'undefined') {
             if (!Number.isFinite(lrSigma) || lrSigma <= 0) return;
             // 每次打开游戏都自动同步一次（服务器对同分忽略、不刷新更新时间，无害）
             // 这样即使之前被清分 / 服务器重启 / 老版本升级，都能重新对齐到服务器。
-            const profile = PlayerProfile.getProfile();
             const sub = this.buildLRSubmissionPayload();
-            this._leaderboardService.submitLRSigma(lrSigma, profile.nickname, sub.minTokens, sub.levels);
+            this._leaderboardService.submitLRSigma(lrSigma, PlayerProfile.getUsername(), sub.minTokens, sub.levels);
         } catch (e) { /* 静默降级，不影响游戏 */ }
     }
 ;
@@ -402,6 +404,7 @@ if (typeof UIController === 'undefined') {
     UIController.prototype.setCampaignLevelBestRecord = function(levelId, length) {
         try {
             localStorage.setItem(`function_chess_campaign_best_${levelId}`, String(length));
+            if (window.fnProgressChanged) window.fnProgressChanged();   // 进度变更 → 防抖同步到账号
         } catch (e) { }
     }
 ;
@@ -428,6 +431,7 @@ if (typeof UIController === 'undefined') {
             if (!arr.includes(key)) {
                 arr.push(key);
                 localStorage.setItem('function_chess_campaign_unlocked_play', JSON.stringify(arr));
+                if (window.fnProgressChanged) window.fnProgressChanged();
             }
         } catch (e) { /* 忽略 */ }
     }
@@ -439,6 +443,7 @@ if (typeof UIController === 'undefined') {
             const key = String(levelId);
             const arr = this.getCampaignUnlockedPlaySet().filter(x => x !== key);
             localStorage.setItem('function_chess_campaign_unlocked_play', JSON.stringify(arr));
+            if (window.fnProgressChanged) window.fnProgressChanged();
         } catch (e) { /* 忽略 */ }
     }
 ;
@@ -819,6 +824,8 @@ if (typeof UIController === 'undefined') {
         if (!this.campaignLevelGrid || !this.campaignLevelTitle || !this.campaignLevelProgress) return;
         // 自定义关卡包：按 js 原始顺序渲染，全部可玩，无解锁机制
         if (this.campaignDifficulty === 'custom') { this.renderCustomCampaignLevelGrid(); return; }
+        // 开发者模式：所有关卡解锁可玩
+        const devMode = this.getDeveloperModeEnabled();
         const range = this.getDifficultyRange(this.campaignDifficulty);
         this.campaignLevelTitle.textContent = `选择关卡：${range.label}`;
 
@@ -886,7 +893,7 @@ if (typeof UIController === 'undefined') {
             // 渲染分数关卡 1/2 ~ 1/20
             for (let denom = 2; denom <= 20; denom++) {
                 const id = `1/${denom}`;
-                const locked = denom > fracUnlocked;
+                const locked = !devMode && denom > fracUnlocked;
                 const isCleared = denom <= fracCleared;
                 const level = this.campaignPack && Array.isArray(this.campaignPack.levels)
                     ? this.campaignPack.levels.find(l => String(l.id) === id) : null;
@@ -896,7 +903,7 @@ if (typeof UIController === 'undefined') {
             // 整数关卡
             const unlockedMax = Math.min(total, cleared + 1);
             for (let id = range.start; id <= range.end; id++) {
-                const locked = id > unlockedMax;
+                const locked = !devMode && id > unlockedMax;
                 const isCleared = id <= cleared;
                 makeCell(id, locked, isCleared, String(id), null);
             }
@@ -947,8 +954,9 @@ if (typeof UIController === 'undefined') {
 // 反三角函数元素集合（解锁后可在普通及以上难度/对战中使用）
     UIController.prototype.inverseTrigElements = ['asin', 'acos', 'atan'];
 
-// isInverseTrigUnlocked — 是否解锁：分数关全部通关（1/2~1/20，即 fracCleared >= 20）
+// isInverseTrigUnlocked — 是否解锁：分数关全部通关（1/2~1/20，即 fracCleared >= 20）；开发者模式恒为 true
     UIController.prototype.isInverseTrigUnlocked = function() {
+        if (this.getDeveloperModeEnabled()) return true;
         return (typeof this.getCampaignFractionClearedMax === 'function')
             && this.getCampaignFractionClearedMax() >= 20;
     }
@@ -1026,15 +1034,17 @@ if (typeof UIController === 'undefined') {
 
 // ─── sgn / floor 分难度解锁机制 ─────────────────────────────────
 
-// sgn 解锁条件：通关专家难度（专家末关 81 已通关）
+// sgn 解锁条件：通关专家难度（专家末关 81 已通关）；开发者模式恒为 true
     UIController.prototype.isSgnUnlocked = function() {
+        if (this.getDeveloperModeEnabled()) return true;
         const expertEnd = (typeof this.getDifficultyRange === 'function')
             ? this.getDifficultyRange('expert').end : 81;
         return this.getCampaignClearedMax() >= expertEnd;
     }
 
-// floor 解锁条件：通关无解难度（无解末关 90 已通关）
+// floor 解锁条件：通关无解难度（无解末关 90 已通关）；开发者模式恒为 true
     UIController.prototype.isFloorUnlocked = function() {
+        if (this.getDeveloperModeEnabled()) return true;
         const unsolvableEnd = (typeof this.getDifficultyRange === 'function')
             ? this.getDifficultyRange('unsolvable').end : 90;
         return this.getCampaignClearedMax() >= unsolvableEnd;
@@ -1122,6 +1132,8 @@ if (typeof UIController === 'undefined') {
         if (!gc) return null;
         // 测试模式始终允许
         if (typeof gc.isTestMode === 'function' && gc.isTestMode()) return null;
+        // 开发者模式始终允许（所有函数可用）
+        if (this.getDeveloperModeEnabled()) return null;
         const lower = expression.toLowerCase();
         const usesSgn = /\bsgn\b/.test(lower);
         const usesFloor = /\bfloor\b/.test(lower);
@@ -1168,6 +1180,44 @@ if (typeof UIController === 'undefined') {
     UIController.prototype.setFunctionEnabled = function(name, v) {
         try {
             localStorage.setItem('function_chess_function_enabled_' + name, v ? '1' : '0');
+        } catch (e) { }
+    }
+;
+
+// getDerivativeModeEnabled — 导数模式是否开启（绘制函数时额外绘制一阶导数，默认关闭）
+    UIController.prototype.getDerivativeModeEnabled = function() {
+        try {
+            const raw = localStorage.getItem('function_chess_derivative_mode');
+            if (raw === null) return false;
+            return raw === '1';
+        } catch (e) {
+            return false;
+        }
+    }
+;
+
+// setDerivativeModeEnabled — 设置导数模式开关
+    UIController.prototype.setDerivativeModeEnabled = function(v) {
+        try {
+            localStorage.setItem('function_chess_derivative_mode', v ? '1' : '0');
+        } catch (e) { }
+    }
+;
+
+// getDeveloperModeEnabled — 是否开启开发者模式（解锁全部关卡 + 全部函数可用）
+    UIController.prototype.getDeveloperModeEnabled = function() {
+        try {
+            return localStorage.getItem('function_chess_developer_mode') === '1';
+        } catch (e) {
+            return false;
+        }
+    }
+;
+
+// setDeveloperModeEnabled — 设置开发者模式开关
+    UIController.prototype.setDeveloperModeEnabled = function(v) {
+        try {
+            localStorage.setItem('function_chess_developer_mode', v ? '1' : '0');
         } catch (e) { }
     }
 ;
@@ -1228,6 +1278,7 @@ if (typeof UIController === 'undefined') {
                 const enabled = !locked && this.getFunctionEnabled(f.name);
                 const btn = document.createElement('button');
                 btn.type = 'button';
+                btn.dataset.fname = f.name;
                 btn.className = 'function-setting-item' + (enabled ? ' active' : '') + (locked ? ' locked' : '');
                 btn.disabled = locked;
                 btn.innerHTML =
@@ -1245,6 +1296,63 @@ if (typeof UIController === 'undefined') {
                 listEl.appendChild(btn);
             });
         }
+        /* 导数模式 / 开发者模式入口已关闭（仅注释入口绑定，实现全部保留）：
+           实现仍在 getDerivativeModeEnabled / setDerivativeModeEnabled、getDeveloperModeEnabled /
+           setDeveloperModeEnabled（本文件上方）与 FunctionRenderer.drawDerivative。
+           如需恢复入口，取消本段注释并恢复 index.html 中对应两个按钮即可。
+
+        // 导数模式开关：开启后绘制函数时额外绘制其一阶导数（灰色，不参与判定）
+        const derivToggle = document.getElementById('derivative-mode-toggle');
+        if (derivToggle) {
+            const updateDerivToggle = () => {
+                const on = this.getDerivativeModeEnabled();
+                derivToggle.classList.toggle('active', on);
+                const st = document.getElementById('derivative-mode-state');
+                if (st) st.textContent = on ? '已开启' : '已关闭';
+            };
+            updateDerivToggle();
+            derivToggle.onclick = () => {
+                if (window.audioManager) window.audioManager.playClick();
+                this.setDerivativeModeEnabled(!this.getDerivativeModeEnabled());
+                updateDerivToggle();
+            };
+        }
+        // 开发者模式开关：开启后解锁全部关卡，且 asin/acos/atan/sgn/floor 均可用
+        const devToggle = document.getElementById('developer-mode-toggle');
+        if (devToggle) {
+            const updateDevToggle = () => {
+                const on = this.getDeveloperModeEnabled();
+                devToggle.classList.toggle('active', on);
+                const st = document.getElementById('developer-mode-state');
+                if (st) st.textContent = on ? '已开启' : '已关闭';
+            };
+            const reRenderFunctionItems = () => {
+                // 刷新函数项：开发者模式下 asin/sgn/floor 不再锁定，可直接启用
+                const listEl = document.getElementById('function-settings-list');
+                if (!listEl) return;
+                const funcBtns = listEl.querySelectorAll('.function-setting-item');
+                funcBtns.forEach(btn => {
+                    const name = btn.dataset && btn.dataset.fname;
+                    if (!name) return;
+                    const locked = this.isFunctionSettingLocked(name);
+                    btn.disabled = locked;
+                    btn.classList.toggle('locked', locked);
+                    const stEl = btn.querySelector('.fs-state');
+                    const enabled = !locked && this.getFunctionEnabled(name);
+                    btn.classList.toggle('active', enabled);
+                    if (stEl) stEl.textContent = locked ? '未解锁' : (enabled ? '已启用' : '已禁用');
+                });
+                this.refreshFunctionPanelBtn();
+            };
+            updateDevToggle();
+            devToggle.onclick = () => {
+                if (window.audioManager) window.audioManager.playClick();
+                this.setDeveloperModeEnabled(!this.getDeveloperModeEnabled());
+                updateDevToggle();
+                reRenderFunctionItems();
+            };
+        }
+        */   // ← 导数模式 / 开发者模式入口注释结束
         const closeBtn = document.getElementById('function-settings-close');
         if (closeBtn) {
             const onClose = () => {

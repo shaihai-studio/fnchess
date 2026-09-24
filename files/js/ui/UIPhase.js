@@ -87,35 +87,64 @@ if (typeof UIController === 'undefined') {
         
         let message = '';
         
+        // 闯关模式：提示语不使用"扣/加几分、得分"等分数表述（无对战得分概念，只有通过/未通过）
+        const isCampaign = state.gameMode === 'campaign'
+            || !!(this.gameController && this.gameController.campaignState && this.gameController.campaignState.active);
+        
+        // 导数判定是否通过（仅当关卡定义了导数区时才有约束）
+        const derivTarget = data.hitDerivativeTarget;
+        const derivForbidden = data.hitDerivativeForbidden;
+        const derivTotal = data.derivativeTargetCount || 0;
+        const derivHit = data.derivativeHitCount || 0;
+        const isSuccess = !!data.hitTarget && !data.hitForbidden && derivTarget && !derivForbidden;
+        
+        // 失败尾缀：非闯关显示"扣1分"，闯关只说明未通过
+        const failTail = isCampaign ? '，闯关未通过' : '！扣1分';
+        const partialTail = isCampaign ? '，闯关未通过' : '，扣1分';
+        const scoreTxt = isCampaign ? '' : `，得分: ${data.score}`;
+        
         if (data.hitForbidden) {
-            message = `❌ ${playerDisplay}的函数进入禁止区！扣1分`;
+            message = `❌ ${playerDisplay}的函数进入禁止区${failTail}`;
             this.flashGrid('forbidden');
+            this.showScorePopup(constructorPlayer, -1);
+        } else if (derivForbidden) {
+            message = `❌ ${playerDisplay}的导数进入导数禁止区${failTail}`;
+            this.flashGrid('forbidden');
+            this.showScorePopup(constructorPlayer, -1);
+        } else if (derivTarget === false) {
+            // 导数允许区：部分穿过时提示"只穿过 x/y"（对齐普通目标的"只命中 x/y"）
+            if (derivTotal > 1 && derivHit > 0) {
+                message = `❌ ${playerDisplay}的导数只穿过 ${derivHit}/${derivTotal} 个导数允许区${partialTail}`;
+            } else {
+                message = `❌ ${playerDisplay}的导数未穿过全部导数允许区${failTail}`;
+            }
             this.showScorePopup(constructorPlayer, -1);
         } else if (data.hitTarget) {
             // 多个目标格的情况
             if (data.targetCount > 1) {
-                message = `✅ ${playerDisplay}命中全部 ${data.targetCount} 个目标！函数类型: ${data.functionType.type}，得分: ${data.score}`;
+                message = `✅ ${playerDisplay}命中全部 ${data.targetCount} 个目标！函数类型: ${data.functionType.type}${scoreTxt}`;
             } else {
-                message = `✅ ${playerDisplay}命中目标！函数类型: ${data.functionType.type}，得分: ${data.score}`;
+                message = `✅ ${playerDisplay}命中目标！函数类型: ${data.functionType.type}${scoreTxt}`;
             }
             this.flashGrid('target');
             this.showScorePopup(constructorPlayer, data.score);
         } else {
             // 多个目标格但未全部命中的情况
             if (data.targetCount > 1 && data.hitCount > 0) {
-                message = `❌ ${playerDisplay}只命中 ${data.hitCount}/${data.targetCount} 个目标，扣1分`;
+                message = `❌ ${playerDisplay}只命中 ${data.hitCount}/${data.targetCount} 个目标${partialTail}`;
             } else {
-                message = `❌ ${playerDisplay}未命中目标！扣1分`;
+                message = `❌ ${playerDisplay}未命中目标${failTail}`;
             }
             this.showScorePopup(constructorPlayer, -1);
         }
         
         // Summa Reaction Hook
         if (state.gameMode === 'ai' && window.summaCharacter) {
-            const isSuccess = data.hitTarget && !data.hitForbidden;
             const contextArgs = { 
                 hitTarget: data.hitTarget, 
                 hitForbidden: data.hitForbidden, 
+                hitDerivativeTarget: derivTarget,
+                hitDerivativeForbidden: derivForbidden,
                 targetCount: data.targetCount || 1, 
                 expression: data.expression 
             };
@@ -129,7 +158,7 @@ if (typeof UIController === 'undefined') {
             }
         }
         
-        this.showMessage(message, data.hitTarget && !data.hitForbidden ? 'success' : 'error');
+        this.showMessage(message, isSuccess ? 'success' : 'error');
         this.updateScoreboard();
     }
 ;

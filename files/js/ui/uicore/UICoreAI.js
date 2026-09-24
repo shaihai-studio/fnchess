@@ -153,16 +153,22 @@
     }
 ;
 
+// _sanitizeDisplayName — 昵称可能来自对端/服务端快照，统一去控制字符并限长（渲染层另有转义）
+    UIController.prototype._sanitizeDisplayName = function(name) {
+        if (typeof name !== 'string') return '';
+        return name.replace(/[\u0000-\u001F\u007F]/g, '').trim().slice(0, 32);
+    };
+
 // getPlayerDisplayName
     UIController.prototype.getPlayerDisplayName = function(playerId, turn = false) {
         if (!playerId) return '未知';
 
         const myName = (typeof PlayerProfile !== 'undefined' && typeof PlayerProfile.getNickname === 'function')
-            ? PlayerProfile.getNickname() : null;
+            ? (this._sanitizeDisplayName(PlayerProfile.getNickname()) || null) : null;
 
         // 观战端：优先使用房主快照携带的双方昵称（替代"玩家A/玩家B"）
         if (this._isSpectating && this._spectateNicknames && this._spectateNicknames[playerId]) {
-            const sn = this._spectateNicknames[playerId];
+            const sn = this._sanitizeDisplayName(this._spectateNicknames[playerId]) || String(playerId).slice(0, 32);
             return turn ? `${sn}的回合` : sn;
         }
 
@@ -173,7 +179,7 @@
             const isMe = playerId === this.p2pController.myPlayerId;
             const name = isMe
                 ? (myName || '我')
-                : (this._p2pOpponentProfile?.nickname || `玩家${playerId}`);
+                : (this._sanitizeDisplayName(this._p2pOpponentProfile?.nickname) || `玩家${String(playerId).slice(0, 16)}`);
             return turn ? `${name}的回合` : name;
         }
 

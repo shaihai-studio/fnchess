@@ -22,7 +22,7 @@
 | 12 | P2 | index.html | 触屏设备触发无意义的磁性吸附/光晕计算；缺 favicon（404）；缺 theme-color 等 App 元信息 | 磁性/光晕按 pointer:fine 守卫；新增 favicon（64px）、apple-touch-icon、theme-color、mobile-web-app-capable 等 meta |
 | 13 | P2 | files/css/style.css | 触控目标尺寸不足 44px 的控件（stepper 箭头/页签/返回圆钮等）；WKWebView 输入框聚焦自动放大；小屏模态框内边距过大 | @media (pointer:coarse) 统一提升触控目标 ≥44px、输入控件字号 16px、禁用 hover 粘滞；≤480px 模态框收窄内边距并适配 safe-area 底部 |
 | 14 | P2 | files/css/editor.css | 编辑器画布触屏绘制时可能触发浏览器滚动/选中；dpad 仅 30px | #gridCanvas touch-action:none + 禁止选中/长按菜单；pointer:coarse 下 dpad/工具按钮放大至 44px |
-| 15 | P1 | p2p.shaihai.cn / Capacitor | 实测公告/版本接口无 Access-Control-Allow-Origin，App 内（capacitor://localhost / https://localhost origin）fetch 必被 CORS 拦截 | capacitor.config.json 启用 CapacitorHttp（enabled:true），App 内全部 fetch 经原生层转发绕过 CORS；WebSocket 信令不受 CORS 约束（服务端需不校验或放行 Origin，见 RELEASE-GUIDE §5） |
+| 15 | P1 | 服务端 CORS / Capacitor | 实测（旧服务器）公告/版本接口无 Access-Control-Allow-Origin，App 内（capacitor://localhost / https://localhost origin）fetch 必被 CORS 拦截 | capacitor.config.json 启用 CapacitorHttp（enabled:true），App 内全部 fetch 经原生层转发绕过 CORS；**新服务器已补齐 CORS 白名单**（`p2p2.shaihai.cn:24026` + `p2p/p2p2.shaihai.cn` 正则 + localhost），WebSocket 信令不受 CORS 约束 |
 
 ## 二、打包工程问题
 
@@ -83,7 +83,7 @@
 
 | 能力 | 结论 | 处理方式 |
 |------|------|----------|
-| HTTP API（公告/版本/排行榜 fetch） | ⚠️ 实测 `p2p.shaihai.cn` 未返回 `Access-Control-Allow-Origin`，App 内 origin 为 `capacitor://localhost`（iOS）/ `https://localhost`（Android），直接 fetch 必被拦截 | 已在 capacitor.config.json 启用 `CapacitorHttp.enabled=true`，App 内 fetch 经原生层转发，**完全绕过 CORS**，服务端无需改动 |
+| HTTP API（公告/版本/排行榜 fetch） | ⚠️ 旧服务器（`p2p.shaihai.cn`）未返回 `Access-Control-Allow-Origin`；App 内 origin 为 `capacitor://localhost`（iOS）/ `https://localhost`（Android），直接 fetch 会被拦截 | 双重保障：① `capacitor.config.json` 启用 `CapacitorHttp.enabled=true`，App 内 fetch 经原生层转发绕过 CORS；② 新服务器 `server/index.js` 已放行白名单来源（含 `p2p2.shaihai.cn:24026` 与 localhost），跨源 fetch 亦可正常 |
 | WebSocket（PeerJS 信令 / 匹配大厅） | ✅ WebSocket 不受 CORS 约束；风险仅在于服务端若校验 Origin | 服务端需放行 `capacitor://localhost` / `https://localhost`，或不做 Origin 校验（已写入 RELEASE-GUIDE §5） |
 | WebRTC DataChannel | ✅ iOS WKWebView（iOS 14.3+）与 Android System WebView 均支持；本项目仅用 DataChannel 传棋局数据，不申请音视频权限 | 无需特殊处理；保留 TURN 中继兜底（见 A3 修复） |
 | Android scheme | ✅ `androidScheme: https`（`https://localhost`），避免混合内容与 `file://` 限制 | 已在 capacitor.config.json 配置 |

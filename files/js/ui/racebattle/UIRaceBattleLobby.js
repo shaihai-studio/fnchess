@@ -73,11 +73,22 @@ UIController.prototype._ensureRaceLobby = function() {
             this._renderRaceLobbyRooms();
         },
         onGuestJoining: (code, info) => {
-            if (info && info.nickname) {
-                this._raceLobbySetStatus('connected', `${info.nickname} 加入房间（${info.currentPlayers}/${info.maxPlayers}）`);
-            }
+            // 注意：这是「大厅已放行、对方正在建立 P2P 连接」的阶段事件；真正加入成功以
+            // 成员列表（UIRaceBattleRoom 的 onMemberJoined，即 race_member_joined）为准。
+            // 历史上此处直接写「已加入房间」，一旦握手丢包就会出现「提示有人加入、房主成员列表
+            // 却没变化」的误导（用户反馈缺陷）——因此文案区分，并启动待加入看门狗给出网络提示。
+            const nick = (info && info.nickname) || '有玩家';
+            this._raceLobbySetStatus('connecting', `${nick} 正在加入…（正在建立连接）`);
+            this._rbClearPendingGuest();
+            this._rbGuestPendingNick = nick;
+            this._rbGuestPendingTimer = setTimeout(() => {
+                this._rbGuestPendingTimer = null;
+                this._raceLobbySetStatus('error', '对方连接未完成。' + this._rbNetworkHint());
+                this.raceBattleToast(this._rbNetworkHint());
+            }, 12000);
         },
         onGuestLeft: (code, info) => {
+            this._rbClearPendingGuest();
             if (info && info.nickname) this._raceLobbySetStatus('connected', `${info.nickname} 离开房间`);
         },
         onJoinAccepted: (code) => {
@@ -174,6 +185,7 @@ UIController.prototype._closeRaceLobby = function(keep) {
         }
     } catch (e) {}
     if (keep) return;
+    if (typeof this._rbClearPendingGuest === 'function') this._rbClearPendingGuest();
     this._rbLobby = null;
     this._rbLobbyConnected = false;
     this._rbLobbyOpen = false;
@@ -214,6 +226,20 @@ UIController.prototype._rbStopLobbyTtlTimer = function() {
     if (this._rbLobbyTtlTimer) { clearInterval(this._rbLobbyTtlTimer); this._rbLobbyTtlTimer = null; }
 };
 
+/** 统一网络提示（联机失败处复用同一文案；RaceRoomController 未加载时退回同义文案） */
+UIController.prototype._rbNetworkHint = function() {
+    if (typeof RaceRoomController !== 'undefined' && RaceRoomController.NETWORK_HINT) {
+        return RaceRoomController.NETWORK_HINT;
+    }
+    return '网络异常，请更换网络环境（如切换到 WiFi、关闭 VPN）后重试';
+};
+
+/** 清除「有人正在加入」看门狗（对方真正加入 / 离开 / 关闭大厅时调用） */
+UIController.prototype._rbClearPendingGuest = function() {
+    if (this._rbGuestPendingTimer) { clearTimeout(this._rbGuestPendingTimer); this._rbGuestPendingTimer = null; }
+    this._rbGuestPendingNick = '';
+};
+
 /** 状态条（颜色用内联样式，不依赖外部 CSS 类） */
 UIController.prototype._raceLobbySetStatus = function(kind, text) {
     if (!this.raceLobbyStatus) return;
@@ -233,7 +259,10 @@ UIController.prototype._raceLobbyReasonText = function(reason) {
         already_joined: '你已在该房间中',
         mode_mismatch: '模式不匹配',
         elo_range: '段位差距超出房间限制',
-        tier_mismatch: '该房间仅限同竞速段位玩家加入'
+        tier_mismatch: '该房间仅限同竞速段位玩家加入',
+        self_join: '不能加入自己创建的房间',
+        same_account: '同一个账号不能和自己竞速，请换一个账号',
+        same_device: '同一台设备上的账号不能和自己竞速'
     };
     return map[reason] || ('加入失败：' + (reason || '未知原因'));
 };
@@ -259,7 +288,10 @@ UIController.prototype._renderRaceLobbyRooms = function() {
         return;
     }
     const diffNames = ['简单', '普通', '困难', '极难', '地狱', '噩梦', '深渊'];
-    const items = rooms.map((r) => {
+    const items = rooms
+        // 竞速房不支持观战，对局中的房间仅用于大厅速览统计，不在列表展示
+        .filter((r) => r.status !== 'playing')
+        .map((r) => {
         const opts = r.options || {};
         const st = opts.stamina || 1;
         const df = opts.difficulty || 1;

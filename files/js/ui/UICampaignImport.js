@@ -4,6 +4,135 @@ if (typeof UIController === 'undefined') {
     console.error('[UICampaignImport] UIController must be loaded before this file');
 }
 
+// ── 安全：宽松数据字面量解析（替代 new Function 求值）──
+// 背景：关卡包此前用 new Function('return (' + expr + ')')() 求值任意 JS 文本，
+// 导入一个恶意 .js 关卡包即可在导入瞬间执行任意代码。改为只认「数据」的解析器：
+// 接受 对象/数组/字符串/数字/true/false/null，允许注释、单引号、无引号键、尾逗号；
+// 任何可执行结构（函数调用、标识符、表达式、赋值）一律抛错拒绝。
+function fnParseRelaxedJson(text) {
+    const s = String(text);
+    let i = 0;
+    const fail = () => { throw new SyntaxError('relaxed-json'); };
+    const ws = () => {
+        for (;;) {
+            const c = s[i];
+            if (c === ' ' || c === '\t' || c === '\n' || c === '\r') { i++; continue; }
+            if (c === '/' && s[i + 1] === '/') { const nl = s.indexOf('\n', i); i = nl < 0 ? s.length : nl + 1; continue; }
+            if (c === '/' && s[i + 1] === '*') { const end = s.indexOf('*/', i + 2); if (end < 0) fail(); i = end + 2; continue; }
+            return;
+        }
+    };
+    const readString = () => {
+        const q = s[i];
+        if (q !== '"' && q !== "'") fail();
+        i++;
+        let out = '';
+        const map = { n: '\n', t: '\t', r: '\r', b: '\b', f: '\f', '"': '"', "'": "'", '/': '/', '\\': '\\' };
+        while (i < s.length) {
+            const c = s[i];
+            if (c === '\\') {
+                const n = s[i + 1];
+                if (n === 'u') {
+                    const hex = s.substr(i + 2, 4);
+                    if (!/^[0-9a-fA-F]{4}$/.test(hex)) fail();
+                    out += String.fromCharCode(parseInt(hex, 16));
+                    i += 6; continue;
+                }
+                if (!(n in map)) fail();
+                out += map[n]; i += 2; continue;
+            }
+            if (c === q) { i++; return out; }
+            out += c; i++;
+        }
+        fail();
+    };
+    const readNumber = () => {
+        const m = /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/.exec(s.slice(i));
+        if (!m) fail();
+        i += m[0].length;
+        return Number(m[0]);
+    };
+    const readValue = (depth) => {
+        if (depth > 8) fail();
+        ws();
+        const c = s[i];
+        if (c === '{') {
+            i++;
+            const o = {};
+            ws();
+            if (s[i] === '}') { i++; return o; }
+            for (;;) {
+                ws();
+                let k;
+                if (s[i] === '"' || s[i] === "'") k = readString();
+                else {
+                    const m = /^[A-Za-z_$][\w$]*/.exec(s.slice(i));
+                    if (!m) fail();
+                    k = m[0]; i += k.length;
+                }
+                ws();
+                if (s[i] !== ':') fail();
+                i++;
+                o[k] = readValue(depth + 1);
+                ws();
+                if (s[i] === ',') { i++; ws(); if (s[i] === '}') { i++; return o; } continue; }
+                if (s[i] === '}') { i++; return o; }
+                fail();
+            }
+        }
+        if (c === '[') {
+            i++;
+            const a = [];
+            ws();
+            if (s[i] === ']') { i++; return a; }
+            for (;;) {
+                a.push(readValue(depth + 1));
+                ws();
+                if (s[i] === ',') { i++; ws(); if (s[i] === ']') { i++; return a; } continue; }
+                if (s[i] === ']') { i++; return a; }
+                fail();
+            }
+        }
+        if (c === '"' || c === "'") return readString();
+        const rest = s.slice(i);
+        if (/^true\b/.test(rest)) { i += 4; return true; }
+        if (/^false\b/.test(rest)) { i += 5; return false; }
+        if (/^null\b/.test(rest)) { i += 4; return null; }
+        if (/^-?(?:0|[1-9]\d*)/.test(rest)) return readNumber();
+        fail();
+    };
+    const out = readValue(0);
+    ws();
+    if (i < s.length) fail(); // 尾部多余内容（调用/表达式等）一律拒绝
+    return out;
+}
+
+// ── 安全：关卡对象字段白名单与长度上限（导入包不可信）──
+function fnSanitizeLevel(l) {
+    if (!l || typeof l !== 'object' || Array.isArray(l)) return null;
+    const CELL_KEYS = ['targetCells', 'forbiddenCells', 'derivativeTargetCells', 'derivativeForbiddenCells'];
+    const cells = (arr, max) => (Array.isArray(arr) ? arr : []).slice(0, max)
+        .map((c) => (c && typeof c === 'object' && isFinite(Number(c.x)) && isFinite(Number(c.y))
+            ? { x: Number(c.x), y: Number(c.y) } : null))
+        .filter(Boolean);
+    const out = {};
+    for (const k of Object.keys(l).slice(0, 40)) {
+        const val = l[k];
+        if (CELL_KEYS.indexOf(k) >= 0) { out[k] = cells(val, 400); continue; }
+        if (k === 'lockedElements') {
+            out[k] = (Array.isArray(val) ? val : []).slice(0, 64).map((v) => String(v).slice(0, 8));
+            continue;
+        }
+        if (typeof val === 'string') out[k] = val.replace(/[\u0000-\u001F\u007F]/g, '').slice(0, 128);
+        else if (typeof val === 'number' && isFinite(val)) out[k] = val;
+        else if (typeof val === 'boolean') out[k] = val;
+        // 其余类型（嵌套对象/数组/函数）一律丢弃
+    }
+    if (out.id === undefined || out.id === null) return null;
+    if (!Array.isArray(out.targetCells) || !out.targetCells.length) return null;
+    return out;
+}
+
 // initCampaignImport — 在难度选择界面注入「导入 .js 关卡」按钮与隐藏文件输入
     UIController.prototype.initCampaignImport = function() {
         const host = document.getElementById('campaign-step-difficulty');
@@ -120,15 +249,16 @@ if (typeof UIController === 'undefined') {
                 if (norm) return norm;
             } catch (e) { /* fallthrough */ }
         }
-        // 3) JS 表达式（去掉尾逗号后用 Function 求值，兼容对象/数组字面量 /
-        //    const X = [...]; var X = {...}; export default [...] 等赋值式）
+        // 3) 宽松数据字面量（兼容 const X = [...]; var X = {...}; export default [...]
+        //    / module.exports = [...] 等赋值式，以及尾逗号、注释、单引号、无引号键）
+        //    安全：原先此处用 new Function 求值任意 JS（等同 eval），导入恶意关卡包即可执行任意
+        //    代码；改为只解析数据字面量的 fnParseRelaxedJson，含可执行结构一律拒绝。
         try {
-            const sanitized = t.replace(/,\s*([}\]])/g, '$1');
-            const expr = sanitized
+            const expr = t
                 .replace(/^\s*(?:const|let|var)\s+[A-Za-z_$][\w$]*\s*=\s*/, '')
-                .replace(/^\s*export\s+default\s*/, '')
+                .replace(/^\s*(?:export\s+default|module\.exports)\s*=?\s*/, '')
                 .replace(/;?\s*$/, '');
-            const v = new Function('return (' + expr + ');')();
+            const v = fnParseRelaxedJson(expr);
             const norm = this._normalizePack(v);
             if (norm) return norm;
         } catch (e) { /* fallthrough */ }
@@ -137,10 +267,16 @@ if (typeof UIController === 'undefined') {
 ;
 
 // _normalizePack — 把「纯数组」包成 { levels }；对象含 levels 直接用
+//                  同时对关卡逐条做字段白名单与长度上限裁剪（导入包来自用户文件/粘贴文本，不可信）
     UIController.prototype._normalizePack = function(v) {
-        if (Array.isArray(v)) return { levels: v };
-        if (v && typeof v === 'object' && Array.isArray(v.levels)) return v;
-        return null;
+        let src = v;
+        if (Array.isArray(src)) src = { levels: src };
+        if (!src || typeof src !== 'object' || !Array.isArray(src.levels)) return null;
+        const levels = src.levels.slice(0, 500).map(fnSanitizeLevel).filter(Boolean);
+        if (!levels.length) return null;
+        const pack = { levels: levels };
+        if (typeof src.name === 'string') pack.name = src.name.replace(/[\u0000-\u001F\u007F]/g, '').slice(0, 64);
+        return pack;
     }
 ;
 
