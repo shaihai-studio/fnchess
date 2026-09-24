@@ -157,7 +157,8 @@ if (typeof UIController === 'undefined') {
         const tooltip = document.createElement('div');
         tooltip.id = 'history-function-tooltip';
         tooltip.className = 'history-function-tooltip';
-        tooltip.innerHTML = `<div style="font-weight: bold;">第 ${round} 回合</div><div style="margin-top: 4px;">${expression}</div>`;
+        // expression / round 可能来自 state_sync（对端同步），必须转义后再入 innerHTML
+        tooltip.innerHTML = `<div style="font-weight: bold;">第 ${FnEscapeHtml(round)} 回合</div><div style="margin-top: 4px;">${FnEscapeHtml(expression)}</div>`;
         
         tooltip.style.position = 'fixed';
         tooltip.style.left = `${event.clientX + 15}px`;
@@ -283,12 +284,13 @@ if (typeof UIController === 'undefined') {
         const gc = this.gameController;
         const state = gc.getGameState();
 
-        // 棋盘：目标格 / 禁止区 / 历史格 / 历史函数
+        // 棋盘：目标格 / 禁止区 / 导数区 / 历史格 / 历史函数
         this.gridSystem.clearAll();
         this.gridSystem.setTargetCells(state.roundState.targetCells);
         // 复制数组，避免 gridSystem 与 GameController 共用引用，
         // 否则 P2P 同步后本地再次选择禁止格时会因“已存在”而跳过绘制。
         this.gridSystem.forbiddenCells = (state.roundState.forbiddenCells || []).slice();
+        this.gridSystem.setDerivativeCells(state.roundState.derivativeTargetCells, state.roundState.derivativeForbiddenCells);
         this.gridSystem.usedCells = (state.usedCells || []).slice();
         this.gridSystem.functionHistory = (state.functionHistory || []).slice();
         this.gridSystem.currentRound = state.currentRound;
@@ -393,6 +395,10 @@ if (typeof UIController === 'undefined') {
                     // 重新绘制所有测试模式函数，避免新函数绘制时把旧函数覆盖掉
                     await this.redrawTestModeFunctions();
 
+                    // 绘制完成后快速强制刷新一次画布（非动画，人眼不可见），
+                    // 确保函数图像稳定显示（修复个别情况下绘制完成后图像被隐藏的问题）
+                    await this.redrawAllTestFunctions();
+
                     // 渲染后再刷新一次，确保调试层/曲线层都稳定显示
                     await this.postRenderRefresh();
 
@@ -414,6 +420,10 @@ if (typeof UIController === 'undefined') {
 
                     // 重新绘制所有测试模式函数，避免新函数绘制时把旧函数覆盖掉
                     await this.redrawTestModeFunctions();
+
+                    // 绘制完成后快速强制刷新一次画布（非动画，人眼不可见），
+                    // 确保函数图像稳定显示（修复个别情况下绘制完成后图像被隐藏的问题）
+                    await this.redrawAllTestFunctions();
 
                     // 渲染后再刷新一次，确保调试层/曲线层都稳定显示
                     await this.postRenderRefresh();
@@ -478,6 +488,8 @@ if (typeof UIController === 'undefined') {
         const state = this.gameController.getGameState();
         const targetCells = state.roundState.targetCells;
         const forbiddenCells = state.roundState.forbiddenCells;
+        const derivTargetCells = state.roundState.derivativeTargetCells || [];
+        const derivForbiddenCells = state.roundState.derivativeForbiddenCells || [];
         
         // 碰撞检测 - 检测所有目标格（视觉检测）
         const hitTargets = [];
@@ -493,11 +505,27 @@ if (typeof UIController === 'undefined') {
             hitForbidden = this.detector.checkHitForbidden(polyline, forbiddenCells, this.gridSystem);
         }
         
+        // 导数判定：导数须穿过导数允许区、避开导数禁止区（仅当关卡定义了导数区时生效）
+        let hitDerivativeTargets = [];
+        let hitDerivativeForbidden = false;
+        if (derivTargetCells.length > 0 || derivForbiddenCells.length > 0) {
+            const derivPoints = this.renderer.sampleDerivative(expression, range.min, range.max);
+            const derivPolyline = this.renderer.convertToPolyline(derivPoints);
+            for (const cell of derivTargetCells) {
+                if (this.detector.checkHitTarget(derivPolyline, cell, this.gridSystem)) {
+                    hitDerivativeTargets.push(cell);
+                }
+            }
+            if (derivForbiddenCells.length > 0) {
+                hitDerivativeForbidden = this.detector.checkHitForbidden(derivPolyline, derivForbiddenCells, this.gridSystem);
+            }
+        }
+        
         // 分析函数类型
         const functionType = this.parser.analyzeFunctionType(expression);
         
         // 评估结果
-        this.gameController.evaluateResult(hitTargets, hitForbidden, functionType);
+        this.gameController.evaluateResult(hitTargets, hitForbidden, functionType, hitDerivativeTargets, hitDerivativeForbidden);
     }
 ;
 

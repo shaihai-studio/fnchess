@@ -10,6 +10,11 @@
  *   sha256(utf8"中文")                    = 72726d8818f693066ceb69afa364218b692e62ea92b385782363780f47529c21
  */
 class VerifyCrypto {
+    /** 旧版内置密钥：仅在服务端未下发会话密钥（旧服务端/降级）时使用 */
+    static get LEGACY_SECRET() {
+        return 'fnchess-lb-secret-2026-08-05';
+    }
+
     static utf8Bytes(str) {
         const out = [];
         for (let i = 0; i < str.length; i++) {
@@ -116,11 +121,20 @@ class VerifyCrypto {
         return n;
     }
 
+    /**
+     * 会话签名密钥：由服务端随 nonce 一并下发（主密钥不再写死在前端，可轮换/失效）。
+     * 旧服务端不下发时保持 null → 回落到内置旧密钥以兼容。
+     */
+    static setSessionKey(key) {
+        VerifyCrypto._sessionKey = (typeof key === 'string' && key) ? key : null;
+    }
+
     /** 计算上报签名（与 server verifySig 的拼串规则一致） */
     static sign(nonce, playerId, boardType, value, payload) {
         const levelsHash = VerifyCrypto.sha256Hex(VerifyCrypto.bytesToLatin1(VerifyCrypto.utf8Bytes(JSON.stringify(payload))));
+        const secret = VerifyCrypto._sessionKey || VerifyCrypto.LEGACY_SECRET;
         return VerifyCrypto.hmacSHA256Hex(
-            'fnchess-lb-secret-2026-08-05',
+            secret,
             [String(nonce || ''), String(playerId || ''), String(boardType || ''), String(value === undefined ? '' : value), levelsHash].join('|')
         );
     }

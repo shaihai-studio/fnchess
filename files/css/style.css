@@ -1338,6 +1338,112 @@ body::before {
     opacity: 0.35;
     pointer-events: none;
 }
+/* 对战聊天入口按钮（右下角，表情按钮左侧，仅联机对局显示） */
+.canvas-fab-btn.chat-fab {
+    right: 198px;
+    background: rgba(20, 20, 40, 0.55);
+    color: #e2e8f0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.canvas-fab-btn.chat-fab:hover {
+    background: rgba(59, 130, 246, 0.5);
+}
+.canvas-fab-btn.chat-fab.chat-cooldown {
+    opacity: 0.35;
+    pointer-events: none;
+}
+/* 对战聊天：消息气泡显示区（与 Summa 表情同区域，底部边角弹出） */
+.battle-chat-box {
+    position: fixed;
+    bottom: 150px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 2200;
+    width: min(360px, calc(100vw - 60px));
+    pointer-events: none;
+}
+.battle-chat-messages {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 220px;
+    overflow-y: auto;
+    scrollbar-width: none;
+}
+.battle-chat-messages::-webkit-scrollbar { display: none; }
+.battle-chat-msg {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 100%;
+    font-size: 13px;
+    line-height: 1.35;
+    animation: chat-msg-in 0.22s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+.battle-chat-msg.mine { justify-content: flex-end; }
+.battle-chat-msg.theirs { justify-content: flex-start; }
+.battle-chat-label {
+    flex-shrink: 0;
+    font-size: 11px;
+    font-weight: 700;
+    color: #94a3b8;
+    padding: 2px 6px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.08);
+}
+.battle-chat-msg.mine .battle-chat-label { color: #bfdbfe; }
+.battle-chat-text {
+    max-width: 70%;
+    word-break: break-word;
+    padding: 6px 10px;
+    border-radius: 12px;
+    background: rgba(30, 41, 59, 0.92);
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    color: #f1f5f9;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+}
+.battle-chat-msg.mine .battle-chat-text {
+    background: rgba(37, 99, 235, 0.85);
+    border-color: rgba(59, 130, 246, 0.5);
+    color: #ffffff;
+}
+@keyframes chat-msg-in {
+    from { transform: translateY(10px); opacity: 0; }
+    to   { transform: translateY(0); opacity: 1; }
+}
+/* 对战聊天输入面板 */
+.battle-chat-input-panel {
+    position: fixed;
+    bottom: 150px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 2200;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: min(360px, calc(100vw - 60px));
+    padding: 8px;
+    border-radius: 12px;
+    background: rgba(9, 14, 28, 0.96);
+    border: 1px solid rgba(59, 130, 246, 0.4);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+.battle-chat-input-panel input {
+    flex: 1;
+    min-width: 0;
+    height: 32px;
+    padding: 0 10px;
+    border-radius: 8px;
+    border: 1px solid rgba(148, 163, 184, 0.3);
+    background: rgba(30, 41, 59, 0.6);
+    color: #f1f5f9;
+    font-size: 13px;
+    outline: none;
+}
+.battle-chat-input-panel input:focus { border-color: rgba(59, 130, 246, 0.7); }
+.battle-chat-input-panel input::placeholder { color: #64748b; }
 /* Summa 表情面板：右下角按钮上方弹出的 3×3 情绪立绘网格 */
 .summa-emoji-panel {
     position: fixed;
@@ -1825,6 +1931,14 @@ body::before {
 
 /* 锁点：fixed 定位，初始居右侧 */
 .summa-root {
+    /* ── 立绘尺寸（分辨率自适应）──────────────────────────────
+       脸/眼睛/瞳孔全部按 --summa-size 等比缩放：上限 256px，
+       矮屏（手机横屏/小窗口）按 42vh 收缩，避免遮挡棋盘。
+       注意：不要给 .summa-body / .summa-face-wrap / .summa-avatar 写内联尺寸，
+       否则会覆盖下面的移动端媒体查询（历史上就是这样导致小屏立绘过大的）。 */
+    --summa-size: min(256px, 42vh);
+    --summa-eye: calc(var(--summa-size) * 0.1016);     /* 26/256 */
+    --summa-pupil: calc(var(--summa-size) * 0.046875); /* 12/256 */
     position: fixed;
     right: 20px;
     top: 50%;
@@ -1867,6 +1981,8 @@ body::before {
     display: flex;
     flex-direction: column;
     align-items: center;
+    width: var(--summa-size);
+    height: var(--summa-size);
     will-change: transform;   /* GPU 加速 */
     transform-origin: center center;  /* 链式物理：绕角色中心旋转 */
     pointer-events: none;     /* 让超出 root 的部分不可点击 */
@@ -1875,8 +1991,8 @@ body::before {
 /* 立绘 + 眼部叠加容器 */
 .summa-face-wrap {
     position: relative;
-    width: 220px;
-    height: 220px;
+    width: var(--summa-size);
+    height: var(--summa-size);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1886,8 +2002,8 @@ body::before {
 
 /* 情绪立绘底图 */
 .summa-avatar {
-    width: 220px;
-    height: 220px;
+    width: var(--summa-size);
+    height: var(--summa-size);
     object-fit: contain;
     filter: drop-shadow(0 0 18px rgba(167, 139, 250, 0.45));
     display: block;
@@ -1899,8 +2015,8 @@ body::before {
    左眼 / 右眼的具体位置在下方单独调整 */
 .summa-eye {
     position: absolute;
-    width: 26px;
-    height: 26px;
+    width: var(--summa-eye);
+    height: var(--summa-eye);
     overflow: hidden;
     border-radius: 50%;
     pointer-events: none;
@@ -1914,14 +2030,14 @@ body::before {
 /* 眼珠：深色圆，偏移由 JS translate 控制 */
 .summa-pupil {
     position: absolute;
-    width: 12px;
-    height: 12px;
+    width: var(--summa-pupil);
+    height: var(--summa-pupil);
     background: rgba(30, 20, 60, 0.75);
     border-radius: 50%;
     top: 50%;
     left: 50%;
-    margin-top: -6px;
-    margin-left: -6px;
+    margin-top: calc(var(--summa-pupil) / -2);
+    margin-left: calc(var(--summa-pupil) / -2);
     will-change: transform;
     pointer-events: none;
 }
@@ -2182,6 +2298,14 @@ body::before {
     color: rgba(255, 255, 255, 0.55);
     letter-spacing: 0.3em;
     animation: splashHintPulse 2.4s ease-in-out infinite alternate;
+}
+
+/* 启动界面的兜底小提示：若点击/按键无反应，提示刷新重试 */
+.splash-refresh-hint {
+    margin-top: 18px;
+    font-size: clamp(12px, 2vw, 14px);
+    color: rgba(255, 255, 255, 0.28);
+    letter-spacing: 0.05em;
 }
 
 @keyframes splashContentFadeIn {
@@ -2995,10 +3119,29 @@ body::before {
 .lobby-host-banner, .spectator-overlay, .p2p-await-banner {
     cursor: grab;
     touch-action: none;
+    transition: box-shadow 0.2s ease, transform 0.2s ease;
 }
 .lobby-host-banner.dragging, .spectator-overlay.dragging, .p2p-await-banner.dragging {
     cursor: grabbing;
     user-select: none;
+}
+
+/* 可拖动浮层：悬浮阴影 + 拖动手柄图标，让用户看得出手持拖动 */
+.lobby-host-banner::before, .spectator-overlay::before, .p2p-await-banner::before {
+    content: '≡';
+    font-size: 14px;
+    line-height: 1;
+    color: rgba(255, 255, 255, 0.45);
+    letter-spacing: -2px;
+    opacity: 0.7;
+    transition: opacity 0.2s ease;
+}
+.lobby-host-banner:hover::before, .spectator-overlay:hover::before, .p2p-await-banner:hover::before {
+    opacity: 1;
+}
+/* 悬浮阴影：静止时略微抬升、可抓取的立体感（不改 transform，避免覆盖 banner 的居中定位） */
+.lobby-host-banner:hover, .spectator-overlay:hover, .p2p-await-banner:hover {
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.12);
 }
 
 /* 退出确认弹窗 */
@@ -3846,6 +3989,9 @@ body::before {
     .canvas-fab-btn.emoji-fab {
         right: 110px;
     }
+    .canvas-fab-btn.chat-fab {
+        right: 158px;
+    }
     .canvas-fab-btn.unlock-fab {
         right: 110px;
     }
@@ -3973,8 +4119,15 @@ body::before {
         font-size: 14px;
     }
     
+    /* 超小屏不再隐藏回合信息，改用紧凑排版保证对战关键信息可见 */
     .round-info {
-        display: none; /* 超小屏隐藏回合信息 */
+        display: flex;
+        gap: 3px;
+        font-size: 9px;
+        white-space: nowrap;
+    }
+    .round-info .current {
+        font-size: 12px;
     }
     
     .main-container {
@@ -4118,8 +4271,9 @@ body.device-mobile {
         font-size: 13px;
     }
 
-    /* Summa 角色 - 缩小并调整位置 */
+    /* Summa 角色 - 缩小并调整位置（立绘尺寸统一由 --summa-size 驱动，眼睛/瞳孔按比例自动跟随） */
     .summa-root {
+        --summa-size: min(184px, 40vh);
         right: 4px;
         width: 32px;
         height: 140px;
@@ -4127,24 +4281,6 @@ body.device-mobile {
     .summa-hitbox {
         width: 32px;
         height: 140px;
-    }
-    .summa-face-wrap {
-        width: 160px;
-        height: 160px;
-    }
-    .summa-avatar {
-        width: 160px;
-        height: 160px;
-    }
-    .summa-eye {
-        width: 20px;
-        height: 20px;
-    }
-    .summa-pupil {
-        width: 10px;
-        height: 10px;
-        margin-top: -5px;
-        margin-left: -5px;
     }
     .summa-message {
         font-size: 12px;
@@ -4684,6 +4820,32 @@ body.device-mobile {
 .function-setting-item.locked .fs-state {
     color: #f59e0b;
 }
+/* 导数模式开关：横跨整个面板宽度 */
+.function-setting-item.derivative-mode-item {
+    grid-column: 1 / -1;
+    margin-top: 10px;
+}
+.function-setting-item.derivative-mode-item.active {
+    background: rgba(59, 130, 246, 0.14);
+    border-color: #3b82f6;
+}
+.function-setting-item.derivative-mode-item.active .fs-name,
+.function-setting-item.derivative-mode-item.active .fs-state {
+    color: #60a5fa;
+}
+/* 开发者模式开关：横跨整个面板宽度，开启用醒目紫金配色 */
+.function-setting-item.developer-mode-item {
+    grid-column: 1 / -1;
+    margin-top: 10px;
+}
+.function-setting-item.developer-mode-item.active {
+    background: rgba(168, 85, 247, 0.16);
+    border-color: #a855f7;
+}
+.function-setting-item.developer-mode-item.active .fs-name,
+.function-setting-item.developer-mode-item.active .fs-state {
+    color: #d8b4fe;
+}
 
 /* 反三角函数未解锁按钮：保持锁定外观但可点击（弹出解锁提示） */
 .element-btn.inverse-trig-locked {
@@ -5179,6 +5341,25 @@ button.btn-back-circle.round-back-abs {
     margin-top: 8px;
     line-height: 1.5;
 }
+/* 排行榜未登录提示条 */
+.leaderboard-login-tip {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 12px;
+    padding: 8px 12px;
+    font-size: 13px;
+    color: #fbbf24;
+    background: rgba(251, 191, 36, 0.10);
+    border: 1px solid rgba(251, 191, 36, 0.25);
+    border-radius: 10px;
+}
+.leaderboard-login-tip-btn {
+    white-space: nowrap;
+    color: #fbbf24;
+    border-color: rgba(251, 191, 36, 0.5);
+}
 .leaderboard-race-selector {
     display: flex;
     align-items: center;
@@ -5557,10 +5738,12 @@ button.btn-back-circle.round-back-abs {
 /* 背景模式：模糊（仅背景模糊，不变暗） */
 .float-keypad.keypad-bg-blur {
     background: transparent;
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    /* 模糊度：默认背景模式，7px 比原先 12px 更轻，保证按键文字清晰可读 */
+    backdrop-filter: blur(7px);
+    -webkit-backdrop-filter: blur(7px);
 }
 .float-keypad-header {
+    position: relative;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -5569,8 +5752,26 @@ button.btn-back-circle.round-back-abs {
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     touch-action: none; /* 拖动由标题栏接管，面板其余区域保留滚动 */
     flex: 0 0 auto;
+    transition: background 0.2s ease;
 }
+.float-keypad-header:hover { background: rgba(255, 255, 255, 0.06); }
 .float-keypad-header:active { cursor: grabbing; }
+/* 标题栏拖动手柄图标（≡ 提示可拖动），绝对定位不影响 flex 布局 */
+.float-keypad-header::before {
+    content: '≡';
+    position: absolute;
+    left: calc(4px * var(--kp-w-scale));
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: calc(14px * var(--kp-w-scale));
+    line-height: 1;
+    color: #64748b;
+    letter-spacing: -2px;
+    opacity: 0.75;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+}
+.float-keypad-header:hover::before { opacity: 1; }
 .float-keypad-title {
     font-size: calc(13px * var(--kp-w-scale));
     color: #94a3b8;
@@ -5579,6 +5780,7 @@ button.btn-back-circle.round-back-abs {
     display: inline-flex;
     align-items: baseline;
     gap: 6px;
+    padding-left: calc(16px * var(--kp-w-scale)); /* 给左侧拖动手柄腾出空间 */
     /* 标题栏新增两个尺寸调节按钮后空间变窄：标题自动收缩省略，不挤压按钮 */
     flex: 0 1 auto;
     min-width: 0;
@@ -5588,8 +5790,8 @@ button.btn-back-circle.round-back-abs {
 }
 /* 标题右侧「可拖动」小字 */
 .float-keypad-drag-hint {
-    font-size: 10px;
-    color: #64748b;
+    font-size: calc(10px * var(--kp-w-scale));
+    color: #94a3b8;
     letter-spacing: 0.5px;
 }
 .float-keypad-actions { display: flex; align-items: center; gap: calc(6px * var(--kp-w-scale)); }
@@ -6045,7 +6247,7 @@ body.float-keypad-mode #clear-btn { display: none !important; }
     color: #cffafe;
     font-size: 22px;
     line-height: 1;
-    cursor: pointer;
+    cursor: grab; /* 可拖动（点击展开） */
     display: flex;
     align-items: center;
     justify-content: center;
@@ -6055,7 +6257,7 @@ body.float-keypad-mode #clear-btn { display: none !important; }
     border-color: rgba(34, 211, 238, 0.9);
     box-shadow: 0 0 16px rgba(34, 211, 238, 0.4);
 }
-.float-keypad-fab:active { transform: scale(0.95); }
+.float-keypad-fab:active { cursor: grabbing; transform: scale(0.95); }
 
 /* ============================================================
    开始界面（精简首页）：标题居中靠上 + 开始游戏 + 关于我们

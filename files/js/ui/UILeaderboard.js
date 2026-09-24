@@ -10,7 +10,7 @@ if (typeof UIController === 'undefined') {
         this.leaderboardList = document.getElementById('leaderboard-list');
         this.leaderboardTip = document.getElementById('leaderboard-tip');
         this.leaderboardMyRankEl = document.getElementById('leaderboard-myrank');
-        this.leaderboardNicknameInput = document.getElementById('leaderboard-nickname-input');
+        this.leaderboardUsernameInput = document.getElementById('leaderboard-username-input');
         this._leaderboardBoard = 'lr';
         this._leaderboardQuerying = false;
 
@@ -49,11 +49,16 @@ if (typeof UIController === 'undefined') {
             });
         }
 
-        const saveBtn = document.getElementById('leaderboard-nickname-save');
-        if (saveBtn) saveBtn.addEventListener('click', () => this._leaderboardSaveNickname());
-        if (this.leaderboardNicknameInput) {
-            this.leaderboardNicknameInput.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter') this._leaderboardSaveNickname();
+        // 用户名只读展示（昵称已与用户名合并，不再提供修改入口）
+
+        // 未登录提示：点击"登录/注册"打开登录面板
+        this.leaderboardLoginTip = document.getElementById('leaderboard-login-tip');
+        const loginTipBtn = document.getElementById('leaderboard-login-tip-btn');
+        if (loginTipBtn) {
+            loginTipBtn.addEventListener('click', () => {
+                if (typeof window.AuthPanel !== 'undefined') {
+                    window.AuthPanel.open();
+                }
             });
         }
 
@@ -62,10 +67,6 @@ if (typeof UIController === 'undefined') {
             this.bindModalDismiss(this.leaderboardModal, () => this.hideModal(this.leaderboardModal));
         }
 
-        // 首次进入昵称设置弹窗（之后仍可在排行榜里修改昵称）
-        this.initNicknamePrompt();
-        this.maybeShowNicknamePrompt();
-
         // 页面加载后自动同步已通关的闯关记录（老玩家升级新版本后的首次同步；只同步闯关）
         setTimeout(() => {
             if (typeof this.syncCampaignRecordsOnLoad === 'function') this.syncCampaignRecordsOnLoad();
@@ -73,73 +74,21 @@ if (typeof UIController === 'undefined') {
     }
 ;
 
-// initNicknamePrompt
-    UIController.prototype.initNicknamePrompt = function() {
-        this.nicknameModal = document.getElementById('nickname-modal');
-        this.nicknameInput = document.getElementById('nickname-input');
-        if (!this.nicknameModal || !this.nicknameInput) return;
-        const confirmBtn = document.getElementById('nickname-confirm-btn');
-        const cancelBtn = document.getElementById('nickname-cancel-btn');
-        if (confirmBtn) confirmBtn.addEventListener('click', () => this._nicknamePromptConfirm());
-        if (cancelBtn) cancelBtn.addEventListener('click', () => this._nicknamePromptCancel());
-        this.nicknameInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') this._nicknamePromptConfirm();
-        });
-        // 点击遮罩关闭 = 取消
-        this.bindModalDismiss(this.nicknameModal, () => this._nicknamePromptCancel());
-    }
-;
-
-// maybeShowNicknamePrompt
-    UIController.prototype.maybeShowNicknamePrompt = function() {
-        if (typeof PlayerProfile === 'undefined') return;
-        if (PlayerProfile.hasProfile()) return; // 非首次进入，不再弹
-        if (!this.nicknameModal || !this.nicknameInput) return;
-        const self = this;
-        // 等主菜单入场动画结束后再弹出，避免抢焦点；
-        // 若用户已快速进入对局（开始界面关闭），推迟到回到主菜单后再弹，
-        // 避免弹窗遮挡棋盘且对局计时器在弹窗期间空走扣分。
-        const tryShow = () => {
-            if (PlayerProfile.hasProfile()) return; // 等待期间已设置过昵称
-            if (self.nicknameModal && self.nicknameModal.style.display !== 'none' && self.nicknameModal.style.display !== '') return; // 已弹出
-            const startModal = document.getElementById('start-modal');
-            const inGame = startModal && startModal.style.display === 'none';
-            if (inGame) { setTimeout(tryShow, 3000); return; }
-            if (self.nicknameInput) self.nicknameInput.value = PlayerProfile.getNickname();
-            self.showModal(self.nicknameModal);
-        };
-        setTimeout(tryShow, 900);
-    }
-;
-
-// _nicknamePromptConfirm
-    UIController.prototype._nicknamePromptConfirm = function() {
-        if (window.audioManager) window.audioManager.playClick();
-        let name = null;
-        if (this.nicknameInput && typeof PlayerProfile !== 'undefined') {
-            name = PlayerProfile.setNickname(this.nicknameInput.value);
-        }
-        this.hideModal(this.nicknameModal);
-        if (name && typeof this.showMessage === 'function') {
-            this.showMessage(`昵称已设置：${name}`, 'success');
-        }
-    }
-;
-
-// _nicknamePromptCancel
-    UIController.prototype._nicknamePromptCancel = function() {
-        if (window.audioManager) window.audioManager.playClick();
-        this.hideModal(this.nicknameModal);
-    }
-;
-
 // openLeaderboard
     UIController.prototype.openLeaderboard = function() {
+        // 排行榜可未登录查看（只读浏览榜单）；仅"上报成绩"需登录（见各上报入口）
         if (window.audioManager) window.audioManager.playClick();
-        // 展示当前昵称
-        if (typeof PlayerProfile !== 'undefined') {
-            const p = PlayerProfile.getProfile();
-            if (this.leaderboardNicknameInput) this.leaderboardNicknameInput.value = p.nickname;
+        // 展示当前用户名（昵称已与用户名合并，只读展示）
+        if (this.leaderboardUsernameInput) {
+            const logged = !!(window.AuthService && window.AuthService.isLoggedIn());
+            const name = (typeof PlayerProfile !== 'undefined') ? PlayerProfile.getUsername() : '';
+            this.leaderboardUsernameInput.value = logged ? name : '';
+            this.leaderboardUsernameInput.placeholder = logged ? '' : '未登录（登录后显示用户名）';
+        }
+        // 未登录提示：已登录隐藏，未登录显示"登录后即可上传数据"
+        if (this.leaderboardLoginTip) {
+            const logged = !!(window.AuthService && window.AuthService.isLoggedIn());
+            this.leaderboardLoginTip.style.display = logged ? 'none' : 'flex';
         }
         if (this.leaderboardMyRankEl) this.leaderboardMyRankEl.textContent = '';
         // 保险：若排行榜弹窗状态残留（entering/exiting 卡住），强制复位再打开，
@@ -288,8 +237,10 @@ if (typeof UIController === 'undefined') {
                         ? `${row.wins}胜 ${row.games}局`
                         : '';
                 // 举报按钮：LR∑ 榜 / 彗星分关榜 显示，且不能举报自己
+                // 阶段3：data-target 用身份键（idKey），供服务端按身份键定位被举报者
+                const reportTarget = row.idKey || row.playerId || '';
                 const reportBtn = ((boardType === 'lr' || isCometBoard) && !row.isMe)
-                    ? `<button class="leaderboard-report-btn" data-action="report" data-target="${this._escapeHtml(row.playerId || '')}" data-name="${this._escapeHtml(row.nickname || '')}">举报</button>`
+                    ? `<button class="leaderboard-report-btn" data-action="report" data-target="${this._escapeHtml(reportTarget)}" data-name="${this._escapeHtml(row.nickname || '')}">举报</button>`
                     : '';
                 html += `
                     <div class="leaderboard-row${row.isMe ? ' me' : ''}">
@@ -342,16 +293,7 @@ if (typeof UIController === 'undefined') {
 ;
 
 // _leaderboardSaveNickname
-    UIController.prototype._leaderboardSaveNickname = function() {
-        if (typeof PlayerProfile === 'undefined') return;
-        const input = this.leaderboardNicknameInput;
-        if (!input) return;
-        const name = PlayerProfile.setNickname(input.value);
-        input.value = name;
-        if (window.audioManager) window.audioManager.playClick();
-        this.showMessage('昵称已保存，下次对局自动带上新昵称', 'success');
-    }
-;
+// 昵称已与用户名合并：用户名即展示名，注册后不可修改，故不再提供保存入口。
 
 // _initRaceLevelSelector：自定义竞速/彗星关卡下拉（替代原生 select，避免 30 关展开超出屏幕）
     UIController.prototype._initRaceLevelSelector = function() {

@@ -47,6 +47,11 @@ UIController.prototype._ensureRaceBattleFields = function() {
     this._rbReady = true;
     this._rbBusy = false; // U5: 创建/加入异步互斥标志
     this._rbClockOffset = 0; // 访客端时钟校准偏移（房主=0，仅开局时按 goAt 估算一次）
+    // 对局局次：rematch 复用同一房间码，上报积分时附加该维度，
+    // 避免服务端按 roomCode 去重把同一房间的第二局成绩当成重复上报丢弃
+    this._rbMatchSeq = 0;
+    // 本局积分结算结果：新对局必须清空，否则结算面板会回显上一局的积分增量
+    this._rbMyScoreResult = null;
 
     this.raceBattleModal = document.getElementById('race-battle-modal');
     this.raceBattleRankTag = document.getElementById('race-battle-rank-tag');
@@ -162,6 +167,14 @@ UIController.prototype._ensureRaceBattleFields = function() {
 // ─── 入口：打开/关闭房间弹窗 ────────────────────────────────────
 
 UIController.prototype.openRaceBattleModal = function() {
+    // ── 方案A：联机竞速必须登录。未登录 → 提示并弹登录框，登录成功后再进 ──
+    if (!window.AuthService || !window.AuthService.isLoggedIn()) {
+        const self = this;
+        if (window.AuthPanel && typeof window.AuthPanel.requireLogin === 'function') {
+            window.AuthPanel.requireLogin(() => { self.openRaceBattleModal(); });
+        }
+        return;
+    }
     this._ensureRaceBattleFields();
     // 竞速联机：先选排位/休闲模式
     const sel = document.getElementById('p2p-mode-select-modal');

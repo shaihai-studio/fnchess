@@ -151,10 +151,12 @@ class SummaCharacter {
         this.container.innerHTML = `
             <div id="summa-root" class="summa-root" style="display:none;">
                 <div id="summa-message" class="summa-message"></div>
-                <div id="summa-body" class="summa-body" style="width:256px; height:256px;">
+                <!-- 尺寸全部由 CSS 变量 --summa-size 驱动（见 style.css 的 .summa-root）：
+                     切勿再写内联 width/height，否则会覆盖移动端媒体查询，导致小屏立绘过大 -->
+                <div id="summa-body" class="summa-body">
                     <div id="summa-hitbox" class="summa-hitbox"></div>
-                    <div id="summa-face-wrap" class="summa-face-wrap" style="width:256px; height:256px;">
-                        <img id="summa-avatar" class="summa-avatar" style="width:256px; height:256px; object-fit:contain;"
+                    <div id="summa-face-wrap" class="summa-face-wrap">
+                        <img id="summa-avatar" class="summa-avatar"
                              src="${this.imageMap.neutral}" alt="Summa">
 
                         <!-- 左眼覆盖层 -->
@@ -385,14 +387,14 @@ class SummaCharacter {
      * 在 [-10, 10] 区间以 0.5 为步长采样，检查是否存在非法值
      */
     _sampleHasNaN(expression) {
-        try {
-            const fn = new Function('x', `try { return (${expression}); } catch(e) { return NaN; }`);
-            for (let x = -10; x <= 10; x += 0.5) {
-                const val = fn(x);
-                if (!isFinite(val) || isNaN(val)) return true;
-            }
-        } catch (e) {
-            return true;
+        // 安全：不再用 new Function 执行任意串（等同 eval，AI 表达式串可借此执行任意 JS）。
+        // 改为受限求值：白名单字符/标识符 + 既有 FunctionParser 解析求值；解析失败按「非法」处理。
+        if (typeof SafeExpression === 'undefined' || typeof SafeExpression.parse !== 'function') return true;
+        const parsed = SafeExpression.parse(expression);
+        if (!parsed || !parsed.ok) return true;
+        for (let x = -10; x <= 10; x += 0.5) {
+            const val = parsed.evaluate(x);
+            if (!isFinite(val) || isNaN(val)) return true;
         }
         return false;
     }

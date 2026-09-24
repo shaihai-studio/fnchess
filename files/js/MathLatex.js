@@ -102,7 +102,9 @@ window.MathLatex = (function () {
                     case 'asin': return '\\operatorname{asin}\\left(' + arg + '\\right)';
                     case 'acos': return '\\operatorname{acos}\\left(' + arg + '\\right)';
                     case 'atan': return '\\operatorname{atan}\\left(' + arg + '\\right)';
-                    case 'floor': return '\\lfloor ' + arg + '\\rfloor';
+                    // 尾随 {} 用于终结控制字：floor(x)x 若直接拼成 '\rfloorx'，KaTeX 会当成
+                    // 一个未知命令整体渲染失败（用户反馈：预览把 \rfloorx 识别为整体）
+                    case 'floor': return '\\lfloor ' + arg + '\\rfloor{}';
                     case 'sgn': return '\\operatorname{sgn}\\left(' + arg + '\\right)';
                     case 'ln': return '\\ln\\left(' + arg + '\\right)';
                     case 'sqrt': return '\\sqrt{' + arg + '}';

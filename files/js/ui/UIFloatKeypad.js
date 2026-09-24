@@ -216,7 +216,7 @@ if (typeof UIController === 'undefined') {
                 { name: '遮光', cls: 'keypad-bg-shade' },
                 { name: '模糊', cls: 'keypad-bg-blur' }
             ];
-            this._keypadBgIndex = 1; // 默认遮光
+            this._keypadBgIndex = 2; // 默认模糊（用户偏好；模糊度见 .keypad-bg-blur 的 backdrop-filter）
             const applyBgMode = (index) => {
                 const mode = this._keypadBgModes[index];
                 // 先移除所有背景类，再加当前模式类（遮光 = 基础样式，透明/模糊为覆盖类）

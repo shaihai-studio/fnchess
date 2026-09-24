@@ -10,14 +10,12 @@ if (typeof UIController === 'undefined') {
 // enterSpectatorMode
     // 观众进入观战：关闭主页/联机弹窗 → 初始化只读 GameController → 加入观战频道
     UIController.prototype.enterSpectatorMode = function(code) {
-        // 已处于观战（重复进入 / 退出后重进）时，先干净地退出旧频道再重新加入，
+        // 已处于观战（重复进入 / 退出后重进）时，先走完整退出流程清理观战 UI/回调，
         // 避免叠加监听、状态残留导致第二次进入卡死或收不到快照。
-        if (this._isSpectating) {
-            try {
-                if (this._lobby && this._spectatorCode) this._lobby.leaveSpectate(this._spectatorCode);
-            } catch (e) {}
-            this._isSpectating = false;
-            this._spectatorCode = null;
+        // 用 _spectateReentry 标志让 exitSpectatorMode 跳过"返回主页"，因为重入马上要继续进入观战。
+        if (this._isSpectating && typeof this.exitSpectatorMode === 'function') {
+            this._spectateReentry = true;
+            try { this.exitSpectatorMode(); } finally { this._spectateReentry = false; }
         }
         const lobby = this._lobby;
         if (!lobby || !lobby.isConnected) {
@@ -28,6 +26,7 @@ if (typeof UIController === 'undefined') {
         this._isSpectating = true;
         this._spectateNicknames = null;       // 房主快照携带的双方昵称（替代"玩家A/玩家B"）
         this._lastSpectateNoticeKey = null;   // 通知去重（观战快照循环推送，防止重复弹窗）
+        this._lastSpectateGameOverKey = null; // 对局结果报告去重（防止重复弹窗）
         // 观战状态下禁用 P2P 相关操作入口
         this.isP2PMode = false;
         // 观众端必须作为「纯被动接收方」：清掉可能残留的 p2pActionSender，
@@ -68,6 +67,8 @@ if (typeof UIController === 'undefined') {
         lobby.onSpectateJoinRejected = (roomCode, reason) => {
             if (reason === 'elo_range') {
                 this.showMessage('该房间开启了「仅限相近ELO」，你的段位不在允许观战范围内', 'warning');
+            } else if (reason === 'self_spectate') {
+                this.showMessage('这是你自己所在的房间，无法观战自己', 'warning');
             } else {
                 this.showMessage('该房间不可观战（可能已关闭观战或对局结束）', 'warning');
             }
@@ -164,6 +165,37 @@ if (typeof UIController === 'undefined') {
     }
 ;
 
+// _handleSpectateGameOver
+    // 对局正常结束时，房主推送带 _gameOver 的观战快照 → 观众端弹出结果报告。
+    // 对相同结果去重，避免观战快照循环推送导致重复弹窗。
+    UIController.prototype._handleSpectateGameOver = function(gameOver) {
+        if (!gameOver || typeof gameOver !== 'object') return;
+        // 用比分 + 胜者 + 判负信息作为去重键
+        const key = JSON.stringify({
+            winner: gameOver.winner,
+            scores: gameOver.scores,
+            forfeit: gameOver.forfeit
+        });
+        if (this._lastSpectateGameOverKey === key) return;
+        this._lastSpectateGameOverKey = key;
+        // 采用房主快照携带的双方昵称，使结果报告显示真实昵称而非"玩家A/玩家B"
+        if (gameOver.players && typeof gameOver.players === 'object') {
+            this._spectateNicknames = gameOver.players;
+        }
+        this.updateHeaderPlayerNames();
+        // 复用对战结束弹窗展示比分与胜负（观战中亦可查看）
+        try {
+            this.showGameOver({
+                winner: gameOver.winner,
+                scores: gameOver.scores,
+                forfeit: gameOver.forfeit
+            });
+        } catch (e) {
+            console.warn('[UI][P2P] 观众展示对局结果报告失败：', e);
+        }
+    }
+;
+
 // _updateSpectatorRoomCode
     UIController.prototype._updateSpectatorRoomCode = function(code) {
         const el = document.getElementById('spectator-room-code');
@@ -187,10 +219,20 @@ if (typeof UIController === 'undefined') {
         if (payload._notice) {
             this._handleSpectateNotice(payload._notice);
         }
+        // ★ 对局正常结束：房主推送带结果报告的观战快照 → 观众端弹出结果报告（比分/判负原因/昵称）
+        if (payload._gameOver && typeof payload._gameOver === 'object') {
+            this._handleSpectateGameOver(payload._gameOver);
+        }
         // 房主转发的 Summa 表情事件 → 观众端弹出展示
         // （保留方向语义：房主发的右侧小图、访客发的左侧大图，与房主视角一致）
         if (payload._emoji && payload._emoji.mood) {
             this._showSummaEmoji(payload._emoji.mood, payload._emoji.fromOpponent !== false);
+        }
+        // 房主转发的对战聊天消息 → 观众端只读展示（观战者不能发送）
+        if (payload._chat && payload._chat.text) {
+            if (typeof this._showChatMessage === 'function') {
+                this._showChatMessage(payload._chat.text, payload._chat.fromMe === true);
+            }
         }
         const applied = gc.loadStateSnapshot(payload.gc);
         if (!applied) return;
@@ -216,21 +258,27 @@ if (typeof UIController === 'undefined') {
 
 // exitSpectatorMode
     // 观众退出观战：离开观战频道 → 隐藏观战 UI → 返回主界面
+    // 注意：即使 _isSpectating 已为 false（例如重入观战失败残留），也要无条件执行 UI 清理，
+    // 否则观战遮罩/水印/只读样式残留，会让后续新对局仍被当作"在观战"而无法操作。
     UIController.prototype.exitSpectatorMode = function() {
-        if (!this._isSpectating) return;
+        const wasSpectating = this._isSpectating;
         this._isSpectating = false;
         // 防御：停掉可能残留的本地选格子倒计时（观众端只读，不应有任何扣分/判负）
         if (this.gameController && typeof this.gameController.stopTargetTimer === 'function') {
             this.gameController.stopTargetTimer();
         }
         const lobby = this._lobby;
-        if (lobby && this._spectatorCode) {
-            lobby.leaveSpectate(this._spectatorCode);
-            // 解除观战回调，避免残留触发
+        if (lobby && this._spectatorCode && wasSpectating) {
+            try { lobby.leaveSpectate(this._spectatorCode); } catch (e) {}
+        }
+        // 解除观战回调：无论 _spectatorCode 是否已清空都要解绑，
+        // 否则残留回调会在下次观战/新对局中被迟到快照触发
+        if (lobby) {
             lobby.onSpectateState = null;
             lobby.onSpectateJoined = null;
             lobby.onSpectateJoinRejected = null;
             lobby.onSpectateEnded = null;
+            lobby.onSpectateEmoji = null;
         }
         this._spectatorCode = null;
         this._spectateNicknames = null;
@@ -258,7 +306,33 @@ if (typeof UIController === 'undefined') {
         const exitFab = document.getElementById('exit-fab-btn');
         if (confirmFab) confirmFab.style.display = '';
         if (exitFab) exitFab.style.display = '';
+        // ★ 还原 updatePhaseUI 观战分支设置的元素区 / 悬浮输入栏只读样式
+        // （pointerEvents='none'、opacity='0.5'），否则退出观战后元素仍不可点、输入仍被锁，
+        // 新对局看起来仍像在观战。后续 updatePhaseUI 会按当前对局的 blockInput 重新计算。
+        if (this.elementsContainer) {
+            this.elementsContainer.style.pointerEvents = '';
+            this.elementsContainer.style.opacity = '';
+        }
+        if (this.floatKeypadBody) {
+            this.floatKeypadBody.style.pointerEvents = '';
+            this.floatKeypadBody.style.opacity = '';
+        }
+        // ★ 观战用 initGame(8,'normal','p2p') 强制了 gameMode='p2p'、置空 p2pActionSender。
+        //   退出时必须把 gameMode 复位为本地模式：否则残留的 gameMode==='p2p' 会让后续
+        //   handleExit 走 _cleanupP2P() 分支（断开大厅连接），再点「观战」就被
+        //   isConnected 守卫直接拒绝——表现为"退出观战后重新进入无法观战"。
+        if (this.gameController) {
+            this.gameController.p2pActionSender = null;
+            this.gameController.gameMode = 'local';
+        }
+        // 清空观战期残留的表达式与光标，避免污染新对局的输入栏
+        this.expressionElements = [];
+        this.cursorIndex = 0;
+        if (!wasSpectating) return; // 原本就不在观战：只做清理，不再弹提示、不再返回主页
         this.showMessage('已退出观战');
+        // 重入观战场景：exitSpectatorMode 由 enterSpectatorMode 内部调用，跳过"返回主页"，
+        // 因为马上要继续进入观战（否则 handleRestart 会把主界面顶出来干扰重入）。
+        if (this._spectateReentry) return;
         // 返回开始界面（观战结束即回主页）
         this.handleRestart();
     }

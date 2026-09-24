@@ -16,6 +16,8 @@ UIController.prototype.initEditor = function() {
             nextId: '1/3',
             targetCells: [{ x: -0.5, y: 0 }],
             forbiddenCells: [{ x: 0, y: 0.5 }],
+            derivativeTargetCells: [],
+            derivativeForbiddenCells: [],
             lockedElements: []
         },
         {
@@ -24,6 +26,8 @@ UIController.prototype.initEditor = function() {
             nextId: '1/4',
             targetCells: [{ x: 0.5, y: 0.5 }],
             forbiddenCells: [{ x: 0, y: 0 }],
+            derivativeTargetCells: [],
+            derivativeForbiddenCells: [],
             lockedElements: ['+']
         }
     ];
@@ -46,6 +50,8 @@ UIController.prototype.initEditor = function() {
         selectEnabled: false,
         selection: null,
         swapMouse: false,
+        leftType: 'target',
+        rightType: 'forbidden',
         referenceExpr: '',
         history: [],
         historyIndex: -1,
@@ -55,7 +61,7 @@ UIController.prototype.initEditor = function() {
     // #14：通用 id（id/difficulty/status/exportBox/nextId/fileNameInput）在浏览器中会污染 window 全局
     // （window.status 甚至是内建属性），统一加 editor- 前缀；此处把对象 key 保持原名、只改 DOM 查找名。
     const EDITOR_ID_REMAP = { id: 'editor-id', difficulty: 'editor-difficulty', nextId: 'editor-nextId', exportBox: 'editor-exportBox', fileNameInput: 'editor-fileNameInput', status: 'editor-status' };
-    const els = Object.fromEntries(['id','difficulty','nextId','targetCells','forbiddenCells','lockedElements','exportBox','levelList','gridCanvas','status','btnBack','btnCloseLeft','btnCloseRight','btnShowLeft','btnShowRight','btnCopyOne','btnAdd','btnDelete','btnCopyExport','btnDownload','btnImportFile','btnImportText','editorImportFile','fileNameInput','precisionSelect','btnRect','btnLine','btnBrush','btnSelect','btnSwapMouse','btnUndo','btnFx','fxPanel','fxInput','btnFxClear','anchorModeSelect','btnArrowUp','btnArrowDown','btnArrowLeft','btnArrowRight','btnTrash','lockElementPanel'].map(id => [id, document.getElementById(EDITOR_ID_REMAP[id] || id)]));
+    const els = Object.fromEntries(['id','difficulty','nextId','targetCells','forbiddenCells','derivativeTargetCells','derivativeForbiddenCells','lockedElements','exportBox','levelList','gridCanvas','status','btnBack','btnCloseLeft','btnCloseRight','btnShowLeft','btnShowRight','btnCopyOne','btnAdd','btnDelete','btnCopyExport','btnDownload','btnImportFile','btnImportText','editorImportFile','fileNameInput','precisionSelect','btnRect','btnLine','btnBrush','btnSelect','btnSwapMouse','btnUndo','btnFx','fxPanel','fxInput','btnFxClear','anchorModeSelect','btnArrowUp','btnArrowDown','btnArrowLeft','btnArrowRight','btnTrash','lockElementPanel','editorLeftType','editorRightType'].map(id => [id, document.getElementById(EDITOR_ID_REMAP[id] || id)]));
     const ctx = els.gridCanvas.getContext('2d');
 
     // 锁定元素快捷面板：从解析器可用元素构建，点击元素按钮即锁定/解锁（无需手动输入坐标或编号）
@@ -130,11 +136,13 @@ UIController.prototype.initEditor = function() {
         els.nextId.value = lvl.nextId ?? '';
         els.targetCells.value = fmtArr(lvl.targetCells || []);
         els.forbiddenCells.value = fmtArr(lvl.forbiddenCells || []);
+        els.derivativeTargetCells.value = fmtArr(lvl.derivativeTargetCells || []);
+        els.derivativeForbiddenCells.value = fmtArr(lvl.derivativeForbiddenCells || []);
         els.lockedElements.value = (lvl.lockedElements || []).map(x => `"${x}"`).join('\n');
         renderList();
         renderLockPanel();
         draw();
-        autoGrow(els.targetCells); autoGrow(els.forbiddenCells); autoGrow(els.lockedElements);
+        autoGrow(els.targetCells); autoGrow(els.forbiddenCells); autoGrow(els.derivativeTargetCells); autoGrow(els.derivativeForbiddenCells); autoGrow(els.lockedElements);
     }
 
     function commitFormToLevel() {
@@ -144,12 +152,14 @@ UIController.prototype.initEditor = function() {
         lvl.nextId = els.nextId.value.trim() === 'null' || els.nextId.value.trim() === '' ? null : els.nextId.value.trim();
         try { lvl.targetCells = safeJsonArray(parseLines(els.targetCells.value)); } catch {}
         try { lvl.forbiddenCells = safeJsonArray(parseLines(els.forbiddenCells.value)); } catch {}
+        try { lvl.derivativeTargetCells = safeJsonArray(parseLines(els.derivativeTargetCells.value)); } catch {}
+        try { lvl.derivativeForbiddenCells = safeJsonArray(parseLines(els.derivativeForbiddenCells.value)); } catch {}
         try { lvl.lockedElements = parseLines(els.lockedElements.value).map(v => JSON.parse(v)); } catch {}
         renderList();
         renderLockPanel();
         draw();
         pushHistory();
-        autoGrow(els.targetCells); autoGrow(els.forbiddenCells); autoGrow(els.lockedElements);
+        autoGrow(els.targetCells); autoGrow(els.forbiddenCells); autoGrow(els.derivativeTargetCells); autoGrow(els.derivativeForbiddenCells); autoGrow(els.lockedElements);
     }
 
     function renderList() {
@@ -158,7 +168,7 @@ UIController.prototype.initEditor = function() {
             const div = document.createElement('div');
             div.className = 'item';
             div.style.outline = i === state.current ? '2px solid rgba(124,219,157,.45)' : 'none';
-            div.innerHTML = `<div><strong>${lvl.id || '(未命名)'}</strong><small>${(lvl.targetCells||[]).length} 目标 · ${(lvl.forbiddenCells||[]).length} 禁区 · ${(lvl.lockedElements||[]).length} 锁定</small></div><button class="ghost">编辑</button>`;
+            div.innerHTML = `<div><strong>${FnEscapeHtml(lvl.id || '(未命名)')}</strong><small>${(lvl.targetCells||[]).length} 目标 · ${(lvl.forbiddenCells||[]).length} 禁区 · ${(lvl.derivativeTargetCells||[]).length} 导允 · ${(lvl.derivativeForbiddenCells||[]).length} 导禁 · ${(lvl.lockedElements||[]).length} 锁定</small></div><button class="ghost">编辑</button>`;
             div.querySelector('button').onclick = () => { state.current = i; syncFormFromLevel(); };
             els.levelList.appendChild(div);
         });
@@ -296,6 +306,8 @@ UIController.prototype.initEditor = function() {
         const lvl = currentLevel();
         (lvl.targetCells || []).forEach((p, i) => drawCellRect(p, 'rgba(34,197,94,0.5)', `T${i+1}`));
         (lvl.forbiddenCells || []).forEach((p, i) => drawCellRect(p, 'rgba(239,68,68,0.5)', `F${i+1}`));
+        (lvl.derivativeTargetCells || []).forEach((p, i) => drawCellRect(p, 'rgba(34,211,238,0.5)', `dT${i+1}`));
+        (lvl.derivativeForbiddenCells || []).forEach((p, i) => drawCellRect(p, 'rgba(236,72,153,0.5)', `dF${i+1}`));
         const ds = state.dragState;
         const showRect = ds && (ds.rectMode || (ds.selectMode && !ds.moveMode));
         drawSelectionRect(showRect ? ds : null);
@@ -315,6 +327,8 @@ UIController.prototype.initEditor = function() {
                        "nextId":  ${nextId === null ? 'null' : `"${nextId}"`},
                        "targetCells":  ${JSON.stringify(lvl.targetCells, null, 4).replace(/\n/g, '\n                                           ')},
                        "forbiddenCells":  ${JSON.stringify(lvl.forbiddenCells, null, 4).replace(/\n/g, '\n                                            ')},
+                       "derivativeTargetCells":  ${JSON.stringify(lvl.derivativeTargetCells || [], null, 4).replace(/\n/g, '\n                                              ')},
+                       "derivativeForbiddenCells":  ${JSON.stringify(lvl.derivativeForbiddenCells || [], null, 4).replace(/\n/g, '\n                                                ')},
                        "lockedElements":  ${JSON.stringify(lvl.lockedElements, null, 4).replace(/\n/g, '\n                                              ')}
                    }`;
     }
@@ -335,6 +349,15 @@ UIController.prototype.initEditor = function() {
     els.anchorModeSelect.onchange = () => {
         state.anchorMode = els.anchorModeSelect.value;
         setStatus(state.anchorMode === 'center' ? '点击基准：中心' : '点击基准：左下角');
+    };
+    // 左右键放置类型选择器（允许区/禁止区/导数允许区/导数禁止区）
+    els.editorLeftType.onchange = () => {
+        state.leftType = els.editorLeftType.value;
+        setStatus(`左键放置已设为：${CELL_TYPE_NAMES[state.leftType]}`);
+    };
+    els.editorRightType.onchange = () => {
+        state.rightType = els.editorRightType.value;
+        setStatus(`右键放置已设为：${CELL_TYPE_NAMES[state.rightType]}`);
     };
     // 四个工具互斥：开启一个会关闭其余；关闭选中会清空选择集
     const setTool = (tool) => {
@@ -367,8 +390,13 @@ UIController.prototype.initEditor = function() {
     els.btnSwapMouse.onclick = () => {
         state.swapMouse = !state.swapMouse;
         els.btnSwapMouse.classList.toggle('active', state.swapMouse);
-        els.btnSwapMouse.textContent = state.swapMouse ? '左键:禁止 右键:目标' : '左键:目标 右键:禁止';
-        setStatus(state.swapMouse ? '已互换：左键禁止区 / 右键目标格' : '已恢复：左键目标格 / 右键禁止区');
+        const syncSwapText = () => {
+            const lName = CELL_TYPE_NAMES[state.leftType] || '允许区';
+            const rName = CELL_TYPE_NAMES[state.rightType] || '禁止区';
+            els.btnSwapMouse.textContent = state.swapMouse ? `左键:${rName} 右键:${lName}` : `左键:${lName} 右键:${rName}`;
+        };
+        syncSwapText();
+        setStatus(state.swapMouse ? '已互换左/右键放置类型' : '已恢复左/右键放置类型');
     };
     els.btnUndo.onclick = () => { doUndo(); };
 
@@ -444,10 +472,10 @@ UIController.prototype.initEditor = function() {
     els.btnFxClear.onclick = () => { clearTimeout(fxTimer); els.fxInput.value = ''; applyFxNow(''); };
 
     els.id.oninput = els.difficulty.oninput = els.nextId.oninput = () => { commitFormToLevel(); };
-    els.targetCells.oninput = els.forbiddenCells.oninput = els.lockedElements.oninput = () => { commitFormToLevel(); };
+    els.targetCells.oninput = els.forbiddenCells.oninput = els.derivativeTargetCells.oninput = els.derivativeForbiddenCells.oninput = els.lockedElements.oninput = () => { commitFormToLevel(); };
 
     els.btnBack.onclick = () => { this.closeEditor(); };
-    els.btnAdd.onclick = () => { state.levels.push({ id: `new-${state.levels.length+1}`, difficulty: 'fraction', nextId: null, targetCells: [], forbiddenCells: [], lockedElements: [] }); state.current = state.levels.length - 1; syncFormFromLevel(); pushHistory(); };
+    els.btnAdd.onclick = () => { state.levels.push({ id: `new-${state.levels.length+1}`, difficulty: 'fraction', nextId: null, targetCells: [], forbiddenCells: [], derivativeTargetCells: [], derivativeForbiddenCells: [], lockedElements: [] }); state.current = state.levels.length - 1; syncFormFromLevel(); pushHistory(); };
     els.btnDelete.onclick = () => { if (state.levels.length <= 1) return setStatus('至少保留一个关卡'); state.levels.splice(state.current,1); state.current = Math.max(0, state.current - 1); syncFormFromLevel(); pushHistory(); };
     els.btnCopyExport.onclick = async () => { const text = exportAll(); await navigator.clipboard.writeText(text); setStatus('导出文本已复制'); };
     els.btnDownload.onclick = () => {
@@ -490,6 +518,8 @@ ${exportAll()}
             nextId: l.nextId ?? null,
             targetCells: Array.isArray(l.targetCells) ? l.targetCells : [],
             forbiddenCells: Array.isArray(l.forbiddenCells) ? l.forbiddenCells : [],
+            derivativeTargetCells: Array.isArray(l.derivativeTargetCells) ? l.derivativeTargetCells : [],
+            derivativeForbiddenCells: Array.isArray(l.derivativeForbiddenCells) ? l.derivativeForbiddenCells : [],
             lockedElements: Array.isArray(l.lockedElements) ? l.lockedElements : []
         }));
         state.current = 0;
@@ -571,38 +601,47 @@ ${exportAll()}
         return { x: Math.floor(p.x), y: Math.floor(p.y) };
     };
     const sameCell = (a, b) => a.x === b.x && a.y === b.y;
+    // 4 种格子类型 → 关卡字段映射：允许区 / 禁止区 / 导数允许区 / 导数禁止区
+    const CELL_FIELDS = {
+        target: 'targetCells',
+        forbidden: 'forbiddenCells',
+        dTarget: 'derivativeTargetCells',
+        dForbidden: 'derivativeForbiddenCells'
+    };
+    const CELL_TYPE_NAMES = { target: '允许区', forbidden: '禁止区', dTarget: '导数允许区', dForbidden: '导数禁止区' };
     const typeForButton = (btn) => {
         const left = btn === 0;
-        return state.swapMouse ? (left ? 'forbidden' : 'target') : (left ? 'target' : 'forbidden');
+        const base = left ? state.leftType : state.rightType;
+        // swapMouse 仍可互换左/右
+        return state.swapMouse ? (left ? state.rightType : state.leftType) : base;
     };
     const removeCellAt = (level, cell) => {
-        const targetIndex = (level.targetCells || []).findIndex(p => sameCell(p, cell));
-        if (targetIndex !== -1) {
-            level.targetCells.splice(targetIndex, 1);
-            return 'target';
-        }
-        const forbiddenIndex = (level.forbiddenCells || []).findIndex(p => sameCell(p, cell));
-        if (forbiddenIndex !== -1) {
-            level.forbiddenCells.splice(forbiddenIndex, 1);
-            return 'forbidden';
+        for (const type of ['target', 'forbidden', 'dTarget', 'dForbidden']) {
+            const arr = level[CELL_FIELDS[type]] || [];
+            const idx = arr.findIndex(p => sameCell(p, cell));
+            if (idx !== -1) {
+                arr.splice(idx, 1);
+                return type;
+            }
         }
         return null;
     };
     const addCellAt = (level, cell, type) => {
+        const field = CELL_FIELDS[type];
+        if (!field) return;
+        const arr = level[field] || (level[field] = []);
         // 幂等：目标位已是同类型格 → 直接短路，不删不落（修复画笔来回涂 / 矩形覆盖 / 直线自交 / 选区移动丢格）
-        const arr = type === 'target' ? (level.targetCells || []) : (level.forbiddenCells || []);
         if (arr.some(p => sameCell(p, cell))) return;
         // 异类型占用：删旧补新（覆盖语义）
-        const other = type === 'target' ? (level.forbiddenCells || []) : (level.targetCells || []);
-        const otherIndex = other.findIndex(p => sameCell(p, cell));
-        if (otherIndex !== -1) other.splice(otherIndex, 1);
-        if (type === 'target') level.targetCells.push(cell); else level.forbiddenCells.push(cell);
+        const existing = removeCellAt(level, cell);
+        arr.push(cell);
     };
     // 单点点击专用 toggle：同类型已存在 → 删除该格；异类型/空位 → 落格（保留「点同格取消」交互）
     const toggleCellAt = (level, cell, type) => {
         const existingType = removeCellAt(level, cell);
         if (existingType !== type) {
-            if (type === 'target') level.targetCells.push(cell); else level.forbiddenCells.push(cell);
+            const field = CELL_FIELDS[type];
+            if (field) (level[field] || (level[field] = [])).push(cell);
         }
     };
     const addCellRange = (start, end, type) => {
@@ -732,13 +771,11 @@ ${exportAll()}
         const minX = Math.min(start.x, end.x), maxX = Math.max(start.x, end.x);
         const minY = Math.min(start.y, end.y), maxY = Math.max(start.y, end.y);
         const cells = [];
-        (lvl.targetCells || []).forEach(p => {
-            if (Math.floor(p.x) >= minX && Math.floor(p.x) <= maxX && Math.floor(p.y) >= minY && Math.floor(p.y) <= maxY)
-                cells.push({ x: p.x, y: p.y, type: 'target' });
-        });
-        (lvl.forbiddenCells || []).forEach(p => {
-            if (Math.floor(p.x) >= minX && Math.floor(p.x) <= maxX && Math.floor(p.y) >= minY && Math.floor(p.y) <= maxY)
-                cells.push({ x: p.x, y: p.y, type: 'forbidden' });
+        ['target', 'forbidden', 'dTarget', 'dForbidden'].forEach(type => {
+            (lvl[CELL_FIELDS[type]] || []).forEach(p => {
+                if (Math.floor(p.x) >= minX && Math.floor(p.x) <= maxX && Math.floor(p.y) >= minY && Math.floor(p.y) <= maxY)
+                    cells.push({ x: p.x, y: p.y, type });
+            });
         });
         return cells;
     };
@@ -910,7 +947,7 @@ ${exportAll()}
         if (lpFired) { lpFired = false; e.preventDefault(); return; }
         if (state.selectEnabled || state.rectEnabled || state.lineEnabled || state.brushEnabled) return;
         const point = cellFromEvent(e);
-        toggleCellAt(currentLevel(), point, state.swapMouse ? 'forbidden' : 'target');
+        toggleCellAt(currentLevel(), point, typeForButton(0));
         syncFormFromLevel();
         pushHistory();
     });
@@ -918,7 +955,7 @@ ${exportAll()}
         if (state.selectEnabled || state.rectEnabled || state.lineEnabled || state.brushEnabled) return;
         e.preventDefault();
         const point = cellFromEvent(e);
-        toggleCellAt(currentLevel(), point, state.swapMouse ? 'target' : 'forbidden');
+        toggleCellAt(currentLevel(), point, typeForButton(2));
         syncFormFromLevel();
         pushHistory();
     });
@@ -1005,7 +1042,7 @@ UIController.prototype.openEditor = function() {
     requestAnimationFrame(() => {
         if (this._editorFit) this._editorFit();
         if (this._editorDraw) this._editorDraw();
-        ['targetCells', 'forbiddenCells', 'lockedElements'].forEach((id) => {
+        ['targetCells', 'forbiddenCells', 'derivativeTargetCells', 'derivativeForbiddenCells', 'lockedElements'].forEach((id) => {
             const el = document.getElementById(id);
             if (el && el.offsetParent !== null) { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; }
         });

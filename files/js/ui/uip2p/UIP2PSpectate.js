@@ -58,11 +58,10 @@
         const opp = this._p2pOpponentProfile;
         if (!p2p || !opp || !opp.playerId) return false;
         if (!this._leaderboardService) return false;
-        const profile = PlayerProfile.getProfile();
         const roomKey = ((this._p2pRoomCode || p2p.roomCode) || 'room') + '#' + (p2p._gen || 0);
         // isForfeitSelf=true：本方弃权判负（对手胜）；false：对手弃权（本方胜）
         this._leaderboardService.submitEloScore({
-            nickname: profile.nickname,
+            nickname: PlayerProfile.getUsername(),
             opponentPlayerId: opp.playerId,
             opponentNickname: opp.nickname || '棋手',
             scoreA: isForfeitSelf ? 0 : 1,

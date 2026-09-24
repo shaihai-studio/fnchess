@@ -11,7 +11,6 @@
         if (typeof PlayerProfile === 'undefined') return;
         const p2p = this.p2pController;
         if (!p2p || !data || !data.scores) return;
-        const profile = PlayerProfile.getProfile();
         const opp = this._p2pOpponentProfile;
         // 对手身份未交换成功（异常情况）→ 静默跳过，不上报
         if (!opp || !opp.playerId) return;
@@ -28,7 +27,7 @@
         // roomCode + 对局 gen 组成唯一结算键：防止 rematch（房间码不变）被服务器去重误伤
         const roomKey = ((this._p2pRoomCode || p2p.roomCode) || 'room') + '#' + (p2p._gen || 0); // [P7] 用 UI 层持久真实房间码，避免正常结束时 p2p.roomCode 已被清空致去重失效
         this._leaderboardService.submitEloScore({
-            nickname: profile.nickname,
+            nickname: PlayerProfile.getUsername(),
             opponentPlayerId: opp.playerId,
             opponentNickname: opp.nickname || '棋手',
             scoreA,

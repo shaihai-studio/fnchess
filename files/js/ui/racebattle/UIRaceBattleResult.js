@@ -10,6 +10,9 @@
 
 UIController.prototype.raceBattleShowResult = function(result) {
     this._ensureRaceBattleFields();
+    // 进入结算态：标记已结算并停掉「只剩一人」重判定时器，避免重复构建/广播
+    this._rbResultSettled = true;
+    if (this._rbSoloCheckTimer) { clearTimeout(this._rbSoloCheckTimer); this._rbSoloCheckTimer = null; }
     // 结算展示 = 对局已结束，清理断线恢复上下文
     this._rbClearResumeContext();
     // 2026-08-12 修复重复音效：结算弹窗可能被「本地提前结算」与「房主广播刷新」先后触发，
@@ -139,6 +142,11 @@ UIController.prototype.raceBattleBackToMenu = function() {
     this._rbMatchStarted = false;
     if (this._rbRoom) this._rbRoom.matchStarted = false; // 房间回到等待/关闭状态：大厅阶段退出按踢出处理
     this.raceIsMultiplayer = false; // 返回主菜单，恢复单人竞速记录
+    // 2026-08-20 修复：联机竞速对局中 setRaceFixedRange(true) 把坐标系固定在 20x20，
+    // 退出时必须复位，否则后续本地/人机/联机对战会残留 20x20（与单人竞速 UIRace 退出行为保持一致）
+    if (this.gridSystem && typeof this.gridSystem.setRaceFixedRange === 'function') {
+        this.gridSystem.setRaceFixedRange(false);
+    }
     this._raceBattleSwitchJoinButton('join');
     this._closeRaceLobby(keep);
     if (!keep) {

@@ -341,20 +341,27 @@ UIController.prototype._rbHandleLevelDoneMsg = function(payload, fromPlayerId) {
 
 UIController.prototype._rbCheckResult = function() {
     if (!this._rbIsHost) return;
-    // 掉线/弃权者不再阻塞结算：仅需所有"在线活跃"成员完成即结算，掉线者自动垫底
+    if (this._rbResultSettled) return; // 已结算：避免重复构建/广播（新对局在 raceBattleStartMatch 复位）
+    // 掉线与弃权者不再阻塞结算：
+    //   - 短抖（宽限期内）仍算在场，保留重连机会；
+    //   - 超过宽限仍未恢复 → 视为退出，剩余玩家立即获胜，无需完成剩余题目。
     const alive = this._rbMembers
-        .filter((m) => {
-            const p = this._rbProgress[m.playerId];
-            return !(p && (p.disconnected || p.abandoned));
-        })
-        .map((m) => m.playerId);
-    // 2026-08-12 需求：n-1 名在线玩家已完成 → 剩余 1 名必为最后一名，直接结算，无需再等
+        .map((m) => m.playerId)
+        .filter((id) => !this._rbIsMemberGone(id));
+    // n-1 名在场玩家已完成 → 剩余 1 名必为最后一名，直接结算，无需再等
     const done = alive.filter((id) => this._rbProgress[id] && this._rbProgress[id].finished).length;
     if (alive.length - done > 1) return;
+    if (alive.length === 1) {
+        // 只剩自己且尚未完成：明确告知"直接获胜"，避免玩家以为还要做完剩余题目
+        const meP = this._rbProgress[alive[0]];
+        if (!meP || !meP.finished) this.raceBattleToast('其他玩家已离开，本局判定你获胜');
+    }
     this._rbBuildAndBroadcastResult();
 };
 
 UIController.prototype._rbBuildAndBroadcastResult = function() {
+    if (this._rbResultSettled) return null;
+    this._rbResultSettled = true;
     const result = this._rbBuildResult();
     // 房主：先展示本地结算，再上报自己的积分
     this.raceBattleShowResult(this._raceBattleResultView(result));
@@ -378,7 +385,8 @@ UIController.prototype._rbBuildResult = function() {
             finishTime: p.finishTime || 0,
             level: p.level || 1,
             puzzle: p.puzzle || 0,
-            abandoned: !!(p.abandoned || p.disconnected),
+            // 掉线失联（超过宽限）同样按弃权处理：否则未标弃权的掉线者会按进度排到留下的人前面
+            abandoned: !!(p.abandoned || p.disconnected || this._rbIsMemberGone(id)),
             isMe: id === this._rbMyId
         };
     });

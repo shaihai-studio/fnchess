@@ -23,6 +23,10 @@ class GridSystem {
             targetBorder: '#22c55e',
             forbidden: 'rgba(239, 68, 68, 0.3)',
             forbiddenBorder: '#ef4444',
+            derivativeTarget: 'rgba(34, 211, 238, 0.35)',  // 导数允许区：半透明青色
+            derivativeTargetBorder: '#22d3ee',
+            derivativeForbidden: 'rgba(236, 72, 153, 0.35)',  // 导数禁止区：半透明梅红
+            derivativeForbiddenBorder: '#ec4899',
             background: '#0a0a1a'
         };
         
@@ -30,6 +34,8 @@ class GridSystem {
         this.targetCell = null; // {x, y} - 兼容旧代码
         this.targetCells = []; // [{x, y}, ...] - 多个目标格
         this.forbiddenCells = []; // [{x, y}, ...]
+        this.derivativeTargetCells = []; // 导数允许区（青色）
+        this.derivativeForbiddenCells = []; // 导数禁止区（梅红）
         
         // 历史使用过的格子
         this.usedCells = []; // [{x, y, type: 'target'|'forbidden', round: number}, ...]
@@ -307,6 +313,15 @@ class GridSystem {
         this.targetCell = this.targetCells[0] || null; // 兼容旧代码
         this.draw();
     }
+
+    /**
+     * 设置导数允许区 / 导数禁止区（闯关关卡可定义）
+     */
+    setDerivativeCells(targetCells, forbiddenCells) {
+        this.derivativeTargetCells = (targetCells || []).slice();
+        this.derivativeForbiddenCells = (forbiddenCells || []).slice();
+        this.draw();
+    }
     
     /**
      * 添加禁止区
@@ -346,6 +361,8 @@ class GridSystem {
         this.targetCell = null;
         this.targetCells = [];  // 清空当前回合的目标格
         this.forbiddenCells = [];  // 清空当前回合的禁区
+        this.derivativeTargetCells = [];  // 清空导数允许区
+        this.derivativeForbiddenCells = [];  // 清空导数禁止区
         // 注意：不清空 usedCells，这是历史格子，需要在下一回合显示为灰色
         if (this.isRaceMode) {
             this.usedCells = [];
@@ -376,6 +393,9 @@ class GridSystem {
         
         // 绘制禁止区
         this.drawForbiddenCells();
+        
+        // 绘制导数区（导数允许区青色 / 导数禁止区梅红）
+        this.drawDerivativeCells();
         
         // 绘制网格线
         this.drawGridLines();
@@ -698,6 +718,37 @@ class GridSystem {
             
             // 边框
             ctx.strokeStyle = this.colors.forbiddenBorder;
+            ctx.lineWidth = 2;
+            ctx.strokeRect(topLeft.x, topLeft.y, width, height);
+        }
+    }
+    
+    /**
+     * 绘制导数区（导数允许区：半透明青色；导数禁止区：半透明梅红）
+     */
+    drawDerivativeCells() {
+        const ctx = this.ctx;
+        // 导数允许区
+        for (const cell of this.derivativeTargetCells) {
+            const topLeft = this.mathToCanvas(cell.x, cell.y + 1);
+            const bottomRight = this.mathToCanvas(cell.x + 1, cell.y);
+            const width = bottomRight.x - topLeft.x;
+            const height = bottomRight.y - topLeft.y;
+            ctx.fillStyle = this.colors.derivativeTarget;
+            ctx.fillRect(topLeft.x, topLeft.y, width, height);
+            ctx.strokeStyle = this.colors.derivativeTargetBorder;
+            ctx.lineWidth = 2;
+            ctx.strokeRect(topLeft.x, topLeft.y, width, height);
+        }
+        // 导数禁止区
+        for (const cell of this.derivativeForbiddenCells) {
+            const topLeft = this.mathToCanvas(cell.x, cell.y + 1);
+            const bottomRight = this.mathToCanvas(cell.x + 1, cell.y);
+            const width = bottomRight.x - topLeft.x;
+            const height = bottomRight.y - topLeft.y;
+            ctx.fillStyle = this.colors.derivativeForbidden;
+            ctx.fillRect(topLeft.x, topLeft.y, width, height);
+            ctx.strokeStyle = this.colors.derivativeForbiddenBorder;
             ctx.lineWidth = 2;
             ctx.strokeRect(topLeft.x, topLeft.y, width, height);
         }

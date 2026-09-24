@@ -54,25 +54,34 @@ class RaceRoomController {
         return { host: 'localhost', port: 9000, path: '/peerjs', secure: false, debug: 0 };
     }
 
-    /** 懒加载 PeerJS：与 P2PController 统一来源与版本（本地 vendor 1.5.2 优先，离线/CDN 被墙可用） */
+    /**
+     * 联机失败时的统一网络提示。
+     * 仅用于「无法判定为房间不存在/满员/模式不符」的场景（握手超时、信令异常、链路中断），
+     * 避免各处措辞不一，也便于 UI 复用同一文案做 toast。
+     */
+    static get NETWORK_HINT() {
+        return '网络异常，联机未完成。请更换网络环境（如切换到 WiFi、关闭 VPN）后重试';
+    }
+
+    /** 握手重试节奏（ms）：0 → 1.2s → 2.5s → 5s 共 4 次，累计约 8.7s 后判定失败 */
+    static get HANDSHAKE_DELAYS() {
+        return [0, 1200, 2500, 5000];
+    }
+
+    /** 懒加载 PeerJS：只加载本地 vendor 副本（不再回退 CDN：供应链风险 + 会被 CSP 拦截） */
     static ensurePeerJs() {
+        // 与 P2PController 共用同一加载逻辑与路径，避免两处副本不一致
+        if (typeof P2PController !== 'undefined' && P2PController.ensurePeerJs) {
+            return P2PController.ensurePeerJs();
+        }
         return new Promise((resolve, reject) => {
             if (typeof Peer !== 'undefined') { resolve(); return; }
-            const sig = RaceRoomController.signaling;
-            const base = sig.secure ? 'https' : 'http';
-            const portStr = sig.port && sig.port !== 80 && sig.port !== 443 ? ':' + sig.port : '';
-            // 修复：原先优先从信令服务器远程加载且 CDN 回退为 1.5.4（与 P2PController 的 1.5.2 不一致），
-            // 统一为：本地 vendor → 信令服务器副本 → CDN 1.5.2
-            const sources = [
-                'files/vendor/peerjs/peerjs.min.js',
-                `${base}://${sig.host}${portStr}/peerjs/peerjs.min.js`,
-                `${base}://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js`
-            ];
             let tried = 0;
             const load = () => {
-                if (tried >= sources.length) { reject(new Error('PeerJS 加载失败')); return; }
+                if (tried >= 2) { reject(new Error('PeerJS 加载失败：本地副本不可用')); return; }
+                tried++;
                 const s = document.createElement('script');
-                s.src = sources[tried++];
+                s.src = 'files/vendor/peerjs/peerjs.min.js';
                 s.onload = () => resolve();
                 s.onerror = () => load();
                 document.head.appendChild(s);
@@ -84,10 +93,10 @@ class RaceRoomController {
     /** 拉取 STUN/TURN 配置（与 P2PController 共享同一来源，失败则用公共 STUN） */
     static async _fetchIceServers() {
         try {
-            // 修复：原先误用 P2PController._fetchIceServers（实例方法，静态访问恒为 undefined），
-            // 导致联机竞速丢失 TURN 配置，严格 NAT 下必连不上。改为共享静态方法。
-            if (typeof P2PController !== 'undefined' && typeof P2PController.getIceServers === 'function') {
-                return P2PController.getIceServers();
+            // 与 P2PController 共享：优先服务端 /api/ice 下发的「STUN + 限时 TURN 凭证」，
+            // 失败时 P2PController 内部回落静态 STUN 列表。
+            if (typeof P2PController !== 'undefined' && P2PController._fetchIceServers) {
+                return await P2PController._fetchIceServers();
             }
         } catch (e) { /* 忽略，走回退 */ }
         return [{ urls: 'stun:stun.l.google.com:19302' }];
@@ -131,6 +140,13 @@ class RaceRoomController {
         this._hbIntervalMs = 3000;       // 每 3s 互发一次 ping（更快感知掉线）
         this._hbStaleMs = 9000;          // 9s 无响应视为失联（3 个 ping 周期）
 
+        // ── 身份握手（race_hello / race_welcome）确认与重试 ────
+        // 历史缺陷：race_hello 只在 conn.open 时发一次，弱网丢包后不再重发 → 房主永远收不到该成员，
+        // 表现为「有人加入房间但房主列表无变化、加入者卡在连接中无法就绪」。
+        this._handshakeTimer = null;     // guest: 握手重试定时器
+        this._handshakeStep = 0;         // guest: 已发送次数
+        this._helloTimers = new Map();   // host: peerId -> 等待 race_hello 的超时定时器
+
         // ── 房间解散标记 ─────────────────────────────────────
         this._roomClosed = false;
 
@@ -149,6 +165,7 @@ class RaceRoomController {
         this.onMemberLeft = null;          // (member) => void
         this.onMemberState = null;         // (member) => void 连接状态变化
         this.onMessage = null;             // (payload, fromPlayerId) => void 通用消息
+        this.onChat = null;                // (text, fromPlayerId) => void 聊天消息
         this.onRoomClosed = null;          // (reason) => void
         this.onReconnectingChange = null;  // (bool) => void
         this.onReconnected = null;         // () => void 重连成功
@@ -460,10 +477,25 @@ class RaceRoomController {
         conn.on('open', () => {
             this._guestLastSeen.set(peerId, Date.now());
             /* 等待 race_hello 完成身份握手 */
+            // 弱网下 race_hello 可能丢包：10s 内仍未完成握手就关闭该连接，避免僵尸连接堆积
+            // （访客侧同时有 4 次退避重试，正常情况下 1s 内即可完成）
+            this._clearHelloTimer(peerId);
+            this._helloTimers.set(peerId, setTimeout(() => {
+                this._helloTimers.delete(peerId);
+                if (this._disconnecting || this._guestPlayerId.has(peerId)) return;
+                console.warn('[RaceRoom] 连接 ' + peerId + ' 建立后 10s 未收到 race_hello，主动关闭');
+                try { conn.close(); } catch (e) { /* 忽略 */ }
+            }, 10000));
         });
         conn.on('data', (data) => this._handleHostSideMessage(conn, data));
-        conn.on('close', () => this._handleGuestConnClosed(conn));
-        conn.on('error', () => this._handleGuestConnClosed(conn));
+        conn.on('close', () => { this._clearHelloTimer(peerId); this._handleGuestConnClosed(conn); });
+        conn.on('error', () => { this._clearHelloTimer(peerId); this._handleGuestConnClosed(conn); });
+    }
+
+    /** 房主侧：清理「等待 race_hello」的超时定时器 */
+    _clearHelloTimer(peerId) {
+        const t = this._helloTimers.get(peerId);
+        if (t) { clearTimeout(t); this._helloTimers.delete(peerId); }
     }
 
     /** 房主侧：处理访客发来的消息 */
@@ -471,6 +503,8 @@ class RaceRoomController {
         if (!data || !data.type) return;
         // 心跳：任意消息到达都视为该访客在线（更新最后活跃时间）
         if (conn && conn.peer) this._guestLastSeen.set(conn.peer, Date.now());
+        // 连接有数据往来即取消「等待 race_hello」看门狗（race_hello 到达时尤为关键）
+        if (conn && conn.peer) this._clearHelloTimer(conn.peer);
         if (this._reconnecting && data.type === 'race_hello') {
             // 重连期间收到握手 → 视为重连成功，解除房主端重连状态
             this._handleReconnectSuccess();
@@ -565,13 +599,19 @@ class RaceRoomController {
                 break;
             }
             case 'race_msg':
-                if (this.onMessage) {
+                {
                     const from = this._guestPlayerId.get(conn.peer) || '';
-                    try { this.onMessage(data.payload || {}, from); } catch (e) { console.error(e); }
-                }
-                // 需要广播的消息转发给其他访客
-                if (data.broadcast) {
-                    this._broadcast({ type: 'race_msg', from: this._guestPlayerId.get(conn.peer) || '', payload: data.payload }, conn.peer);
+                    const payload = data.payload || {};
+                    if (payload.type === 'race_chat') {
+                        // 聊天消息：本地展示 + 转发给其他访客
+                        if (this.onChat) { try { this.onChat(String(payload.text || '').slice(0, 40), from); } catch (e) { console.error(e); } }
+                    } else if (this.onMessage) {
+                        try { this.onMessage(payload, from); } catch (e) { console.error(e); }
+                    }
+                    // 需要广播的消息转发给其他访客
+                    if (data.broadcast) {
+                        this._broadcast({ type: 'race_msg', from: from, payload: payload }, conn.peer);
+                    }
                 }
                 break;
             default:
@@ -638,20 +678,64 @@ class RaceRoomController {
         this._hostConn = conn;
         conn.on('open', () => {
             this._hostLastSeen = Date.now();
-            // 身份握手（携带模式，房主侧校验排位/休闲一致）
-            try {
-                conn.send({
-                    type: 'race_hello',
-                    playerId: this.myPlayerId,
-                    nickname: this.myNickname,
-                    profileId: this.myProfileId,
-                    mode: this.roomMode
-                });
-            } catch (e) {}
+            this._startRaceHandshake(conn);
         });
         conn.on('data', (data) => this._handleGuestSideMessage(data));
         conn.on('close', () => this._handleHostConnClosed());
         conn.on('error', () => this._handleHostConnClosed());
+    }
+
+    /** 访客侧：发送身份握手（可重发；携带模式供房主校验排位/休闲一致） */
+    _sendRaceHello(conn) {
+        const c = conn || this._hostConn;
+        if (!c || c.open === false) return false;
+        try {
+            c.send({
+                type: 'race_hello',
+                playerId: this.myPlayerId,
+                nickname: this.myNickname,
+                profileId: this.myProfileId,
+                mode: this.roomMode
+            });
+            return true;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    /**
+     * 访客侧：握手确认与退避重试。
+     * 收到 race_welcome 视为完成（由 _handleGuestSideMessage 调 _clearRaceHandshake）；
+     * 重试用尽仍未确认 → 给出明确的网络问题提示，避免用户卡在「连接中」且房主列表无变化。
+     */
+    _startRaceHandshake(conn) {
+        this._clearRaceHandshake();
+        const delays = RaceRoomController.HANDSHAKE_DELAYS;
+        const attempt = () => {
+            if (this._disconnecting || this.isConnected) { this._clearRaceHandshake(); return; }
+            if (this._handshakeStep >= delays.length) {
+                this._clearRaceHandshake();
+                this.isConnecting = false;
+                console.warn('[RaceRoom] 身份握手超时（race_hello 重试 ' + delays.length + ' 次未收到 race_welcome）');
+                this._notifyStatus('error', RaceRoomController.NETWORK_HINT);
+                if (this.onHandshakeFailed) { try { this.onHandshakeFailed(); } catch (e) { /* 忽略 */ } }
+                // 握手失败：主动关闭半开连接，避免长时间挂起占位
+                try { if (this._hostConn) this._hostConn.close(); } catch (e) { /* 忽略 */ }
+                return;
+            }
+            const wait = delays[this._handshakeStep++];
+            this._handshakeTimer = setTimeout(() => {
+                this._sendRaceHello(conn);
+                attempt();
+            }, wait);
+        };
+        attempt();
+    }
+
+    /** 取消握手重试（收到 welcome / 主动退出 / 重置状态时调用） */
+    _clearRaceHandshake() {
+        if (this._handshakeTimer) { clearTimeout(this._handshakeTimer); this._handshakeTimer = null; }
+        this._handshakeStep = 0;
     }
 
     /** 访客侧：处理房主发来的消息 */
@@ -672,6 +756,7 @@ class RaceRoomController {
             case 'race_pong':
                 break;
             case 'race_welcome': {
+                this._clearRaceHandshake();  // 握手确认：取消后续重试
                 this.isConnecting = false;
                 this.isConnected = true;
                 const list = Array.isArray(data.members) ? data.members : [];
@@ -691,6 +776,7 @@ class RaceRoomController {
             }
             case 'race_hello_ack':
                 if (data.ok === false) {
+                    this._clearRaceHandshake(); // 已被房主明确拒绝：无需继续重试
                     var reason = data.reason || '';
                     var ackMsg = '加入失败';
                     if (reason === 'room_full') ackMsg = '房间已满员';
@@ -703,8 +789,13 @@ class RaceRoomController {
                 }
                 break;
             case 'race_msg':
-                if (this.onMessage) {
-                    try { this.onMessage(data.payload || {}, data.from || ''); } catch (e) { console.error(e); }
+                {
+                    const payload = data.payload || {};
+                    if (payload.type === 'race_chat') {
+                        if (this.onChat) { try { this.onChat(String(payload.text || '').slice(0, 40), data.from || ''); } catch (e) { console.error(e); } }
+                    } else if (this.onMessage) {
+                        try { this.onMessage(payload, data.from || ''); } catch (e) { console.error(e); }
+                    }
                 }
                 break;
             case 'race_member_joined':
@@ -791,6 +882,13 @@ class RaceRoomController {
     }
 
     // ─── 消息发送 ────────────────────────────────────────────
+
+    /** 发送聊天消息（对局中所有人可见：房主→全访客，访客→房主→转发其他访客） */
+    sendChat(text) {
+        const t = String(text || '').slice(0, 40);
+        if (!t) return false;
+        return this.send({ type: 'race_chat', text: t }, true);
+    }
 
     /** 发送消息：房主→全部访客；访客→房主（broadcast=true 时房主会转发给其他访客） */
     send(payload, broadcast = true) {
@@ -929,6 +1027,10 @@ class RaceRoomController {
     _stopHeartbeat() {
         if (this._hbTimer) { clearInterval(this._hbTimer); this._hbTimer = null; }
         this._guestLastSeen.clear();
+        // 联动清理握手相关定时器（disconnect / _resetState 都会走这里）
+        this._clearRaceHandshake();
+        for (const t of this._helloTimers.values()) clearTimeout(t);
+        this._helloTimers.clear();
     }
 
     _heartbeatTick() {
@@ -972,8 +1074,10 @@ class RaceRoomController {
             this._notifyStatus('error', '房间码已被占用，请重试');
         } else if (type === 'peer-unavailable') {
             this._notifyStatus('error', '找不到该房间，请确认房间码');
-        } else if (type === 'network') {
-            this._notifyStatus('error', '网络连接异常');
+        } else if (type === 'network' || type === 'server-error' || type === 'socket-error' || type === 'socket-closed') {
+            // 纯网络原因：给出统一的排查建议，而不是模糊的"网络连接异常"
+            this._notifyStatus('error', RaceRoomController.NETWORK_HINT);
+            if (this.onHandshakeFailed) { try { this.onHandshakeFailed(); } catch (e) { /* 忽略 */ } }
         } else {
             this._notifyStatus('error', '连接失败：' + (err.message || '未知错误'));
         }

@@ -33,8 +33,15 @@
         if (this._lwReady) return;
         this._lwReady = true;
         // -1 表示探针尚未连接成功（未知）
-        this._lwCounts = { p2pRanked: -1, p2pCasual: -1, raceRanked: -1, raceCasual: -1 };
+        // 每个格子维护两个计数：wait=可进入（等待中）房间数（红），play=进行中对战数（蓝）
+        this._lwCounts = { p2pRanked: { wait: -1, play: -1 }, p2pCasual: { wait: -1, play: -1 }, raceRanked: { wait: -1, play: -1 }, raceCasual: { wait: -1, play: -1 } };
         this._lwProbes = {};
+        // 全服喊话：最近消息缓存 + 未读数（收起时提示用）
+        this._lwShouts = [];
+        this._lwShoutUnread = 0;
+        // 在线人数（-1 = 未知，服务端 online_stats 广播后更新）
+        this._lwOnline = -1;
+        this._lwOnlineTs = 0;
         this._lwBuildDom();
         this._lwRestoreState();
         this._lwConnect();
@@ -48,7 +55,9 @@
         root.innerHTML =
             '<div class="lw-header">' +
                 '<span class="lw-title">匹配大厅速览</span>' +
+                '<span class="lw-online" id="lw-online" title="当前可连接服务器的在线人数">在线 <b id="lw-online-count">--</b></span>' +
                 '<span class="lw-dot"></span>' +
+                '<span class="lw-drag-hint">按住拖动</span>' +
                 '<button type="button" class="lw-btn lw-close" title="隐藏浮窗">×</button>' +
             '</div>' +
             '<div class="lw-body">' +
@@ -56,9 +65,23 @@
                     LW_CELLS.map((c) =>
                         '<div class="lw-cell" data-lw-key="' + c.key + '">' +
                             '<span class="lw-cell-name">' + c.name + '</span>' +
-                            '<span class="lw-badge">0</span>' +
+                            '<span class="lw-badge-wrap">' +
+                                '<span class="lw-badge lw-badge-wait">0</span>' +
+                                '<span class="lw-badge lw-badge-play">0</span>' +
+                            '</span>' +
                         '</div>'
                     ).join('') +
+                '</div>' +
+                '<div class="lw-shout-wrap">' +
+                    '<div class="lw-shout-head">' +
+                        '<span class="lw-shout-title">全服喊话</span>' +
+                        '<span class="lw-shout-badge" id="lw-shout-badge" style="display:none;">0</span>' +
+                    '</div>' +
+                    '<div class="lw-shout-feed" id="lw-shout-feed"></div>' +
+                    '<div class="lw-shout-input-row">' +
+                        '<input type="text" class="lw-shout-input" id="lw-shout-input" maxlength="30" placeholder="喊话（30字内）" autocomplete="off">' +
+                        '<button type="button" class="lw-shout-send" id="lw-shout-send">发送</button>' +
+                    '</div>' +
                 '</div>' +
             '</div>';
         document.body.appendChild(root);
@@ -67,7 +90,7 @@
         mini.id = 'lobby-watch-mini';
         mini.className = 'lobby-watch-mini';
         mini.title = '展开匹配大厅速览';
-        mini.innerHTML = '<span>大厅速览</span><span class="lw-mini-badge">0</span>';
+        mini.innerHTML = '<span>大厅速览</span><span class="lw-mini-online" id="lw-mini-online" title="在线人数">在线 --</span><span class="lw-mini-badge">0</span>';
         document.body.appendChild(mini);
 
         // 缓存元素
@@ -79,12 +102,21 @@
             dot: root.querySelector('.lw-dot'),
             miniBadge: mini.querySelector('.lw-mini-badge'),
             cells: {},
-            badges: {}
+            badges: {},
+            shoutFeed: root.querySelector('#lw-shout-feed'),
+            shoutInput: root.querySelector('#lw-shout-input'),
+            shoutSend: root.querySelector('#lw-shout-send'),
+            shoutBadge: root.querySelector('#lw-shout-badge'),
+            online: root.querySelector('#lw-online-count'),
+            miniOnline: mini.querySelector('#lw-mini-online')
         };
         LW_CELLS.forEach((c) => {
             const cell = root.querySelector('.lw-cell[data-lw-key="' + c.key + '"]');
             els.cells[c.key] = cell;
-            els.badges[c.key] = cell.querySelector('.lw-badge');
+            els.badges[c.key] = {
+                wait: cell.querySelector('.lw-badge-wait'),
+                play: cell.querySelector('.lw-badge-play')
+            };
         });
         this._lwEls = els;
 
@@ -95,6 +127,14 @@
         LW_CELLS.forEach((c) => {
             els.cells[c.key].addEventListener('click', () => this._lwOpen(c.key));
         });
+
+        // 全服喊话：发送 + 回车发送
+        if (els.shoutSend) els.shoutSend.addEventListener('click', () => this._lwSendShout());
+        if (els.shoutInput) {
+            els.shoutInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') { e.preventDefault(); this._lwSendShout(); }
+            });
+        }
 
         // 拖动：仅标题栏触发（按钮不触发拖动，避免吞掉点击），位置持久化于 localStorage: dragpos:lobby-watch
         this._lwMakeDraggable();
@@ -158,6 +198,9 @@
         } catch (e) { /* 忽略 */ }
         els.mini.style.display = 'none';
         this._lwSaveState();
+        // 展开时清空喊话未读数并刷新喊话 feed
+        this._lwShoutUnread = 0;
+        this._lwRenderShouts();
     };
 
     // 将速览框夹回屏幕内
@@ -270,50 +313,274 @@
             const lobby = new MatchLobbyController();
             lobby.currentLobbyMode = c.mode;
             lobby.onConnectionChange = (connected) => {
-                if (!connected) this._lwCounts[c.key] = -1; // 掉线视为未知
+                if (!connected) this._lwCounts[c.key] = { wait: -1, play: -1 }; // 掉线视为未知
                 this._lwRender();
             };
             lobby.onRoomsUpdate = (rooms) => {
-                let n = 0;
+                let wait = 0, play = 0;
                 (rooms || []).forEach((r) => {
-                    if (!r || r.status === 'playing') return; // 进行中的房间不算
-                    if (c.isRace ? (r.isRace === true) : (r.isRace !== true)) n++;
+                    if (!r) return;
+                    if (c.isRace ? (r.isRace !== true) : (r.isRace === true)) return;
+                    if (r.status === 'playing') play++;      // 进行中的对战（蓝圈）
+                    else if (r.status !== 'playing') wait++; // 等待中可进入的房间（红圈）
                 });
-                this._lwCounts[c.key] = n;
+                this._lwCounts[c.key] = { wait, play };
                 this._lwRender();
             };
+            // 全服喊话：任一探针收到历史列表/新喊话都处理（用 ts 去重，避免 4 路重复渲染）
+            lobby.onShoutList = (shouts) => this._lwReceiveShouts(shouts || [], false);
+            lobby.onShoutNew = (entry) => this._lwReceiveShouts([entry], true);
+            // 在线人数与战局数：服务端广播，任一探针收到即更新（多路用 ts 去重）
+            lobby.onOnlineStats = (stats) => this._lwReceiveOnlineStats(stats);
+            lobby.onShoutRejected = (data) => {
+                const secs = (data && data.retryAfter) || 30;
+                if (typeof this.showMessage === 'function') {
+                    this.showMessage('喊话太频繁，请 ' + secs + ' 秒后再试', 'warning');
+                }
+            };
+            // 强制登录：探针连接可能建立于登录之前（未带 token），服务端拒绝联机动作时
+            // 必须引导登录并重连探针，否则会静默失败（用户只看到"没反应"）
+            lobby.onAuthRequired = (action) => this._lwHandleAuthRequired(action);
             this._lwProbes[c.key] = lobby;
         });
         // 统一连接（连接成功后自动 fetch 并每 2.5s 刷新）
         Object.keys(this._lwProbes).forEach((k) => this._lwProbes[k].connect());
+        // 连接建立后拉取一次全服喊话历史（任一探针返回即可）
+        const anyProbe = this._lwProbes[LW_CELLS[0].key];
+        if (anyProbe && typeof anyProbe.fetchShouts === 'function') {
+            let tries = 0;
+            const t = setInterval(() => {
+                tries++;
+                if (anyProbe.isConnected && anyProbe.ws && anyProbe.ws.readyState === WebSocket.OPEN) {
+                    clearInterval(t);
+                    anyProbe.fetchShouts();
+                    return;
+                }
+                // 20s 内仍未连上（离线 / 未登录未建立连接）则放弃，避免定时器常驻
+                if (tries > 40) clearInterval(t);
+            }, 500);
+        }
+    };
+
+    // 服务端回 auth_required：说明当前连接未携带有效登录态
+    // - 本机已登录（登录发生在连接建立之后）→ 重连探针，让握手带上最新 token
+    // - 本机未登录 → 引导登录，登录成功后重连探针
+    UIController.prototype._lwHandleAuthRequired = function (action) {
+        const loggedIn = (typeof AuthService !== 'undefined' && AuthService.isLoggedIn)
+            ? AuthService.isLoggedIn() : false;
+        if (loggedIn) { this._lwReconnectProbes(); return; }
+        if (typeof AuthPanel !== 'undefined' && AuthPanel.requireLogin) {
+            AuthPanel.requireLogin(() => {
+                this._lwReconnectProbes();
+                if (typeof this.showMessage === 'function') {
+                    this.showMessage(action === 'shout' ? '已登录，请重新发送喊话' : '已登录，请重新操作', 'success');
+                }
+            });
+        } else if (typeof this.showMessage === 'function') {
+            this.showMessage('联机功能需要先登录账号', 'warning');
+        }
+    };
+
+    // 重连全部探针：MatchLobbyController.connect() 会比对 token 变化并断开旧连接重连，
+    // 确保服务端按最新登录身份识别（登录 / 登出 / 换号后都必须调用）
+    UIController.prototype._lwReconnectProbes = function () {
+        Object.keys(this._lwProbes || {}).forEach((k) => {
+            const p = this._lwProbes[k];
+            try { if (p && typeof p.connect === 'function') p.connect(); } catch (e) { /* 忽略 */ }
+        });
+    };
+
+    // ─── 全服喊话 ──────────────────────────────────────────────
+    // 接收历史列表或新喊话（isNew=true 视为新消息，收起时计数提醒）
+    UIController.prototype._lwReceiveShouts = function (list, isNew) {
+        if (!Array.isArray(list) || !list.length) return;
+        const seen = {};
+        (this._lwShouts || []).forEach((s) => { seen[s.ts] = true; });
+        let added = false;
+        list.forEach((s) => {
+            if (!s || !s.text || seen[s.ts]) return;
+            seen[s.ts] = true;
+            this._lwShouts.push({ playerId: s.playerId || '', nickname: s.nickname || '匿名', text: String(s.text), ts: s.ts || 0 });
+            added = true;
+        });
+        if (!added) return;
+        // 只保留最近 20 条
+        if (this._lwShouts.length > 20) this._lwShouts = this._lwShouts.slice(-20);
+        this._lwShouts.sort((a, b) => (a.ts || 0) - (b.ts || 0));
+        // 新消息（而非历史回灌）→ 未读数 +1，收起时触发提示
+        if (isNew) {
+            this._lwShoutUnread = (this._lwShoutUnread || 0) + list.length;
+            this._lwNotifyShout();
+        }
+        this._lwRenderShouts();
+        this._lwRender();
+    };
+
+    // 渲染喊话 feed（最多显示最近 4 条）与未读徽标
+    UIController.prototype._lwRenderShouts = function () {
+        if (!this._lwEls) return;
+        const els = this._lwEls;
+        const feed = els.shoutFeed;
+        if (feed) {
+            feed.innerHTML = '';
+            this._lwShouts.slice(-4).forEach((s) => {
+                const row = document.createElement('div');
+                row.className = 'lw-shout-item';
+                const nick = document.createElement('span');
+                nick.className = 'lw-shout-nick';
+                nick.textContent = this._lwSafeNick(s.nickname);
+                const txt = document.createElement('span');
+                txt.className = 'lw-shout-text';
+                txt.textContent = s.text;
+                row.appendChild(nick);
+                row.appendChild(txt);
+                feed.appendChild(row);
+            });
+            // 空态提示
+            if (!this._lwShouts.length) {
+                feed.innerHTML = '<div class="lw-shout-empty">暂无喊话</div>';
+            }
+        }
+        // 未读徽标（展开时清空）
+        if (els.shoutBadge) {
+            const unread = this._lwShoutUnread || 0;
+            if (unread > 0 && els.root.style.display !== 'none') {
+                els.shoutBadge.textContent = unread > 99 ? '99+' : String(unread);
+                els.shoutBadge.style.display = '';
+            } else {
+                els.shoutBadge.style.display = 'none';
+            }
+        }
+    };
+
+    // 发送全服喊话
+    UIController.prototype._lwSendShout = function () {
+        const els = this._lwEls;
+        const input = els && els.shoutInput;
+        if (!input) return;
+        const text = input.value.trim().slice(0, 30);
+        if (!text) return;
+        // 强制登录：未登录不发送（探针连接可能建立于登录之前，服务端会回 auth_required）
+        // 注意：此处不清空输入、不进冷却，登录成功后用户可原样重发
+        if (typeof AuthService !== 'undefined' && AuthService.isLoggedIn && !AuthService.isLoggedIn()) {
+            if (typeof AuthPanel !== 'undefined' && AuthPanel.requireLogin) {
+                AuthPanel.requireLogin(() => {
+                    this._lwReconnectProbes();
+                    if (typeof this.showMessage === 'function') this.showMessage('已登录，请重新发送喊话', 'success');
+                });
+            } else if (typeof this.showMessage === 'function') {
+                this.showMessage('喊话需要先登录账号', 'warning');
+            }
+            return;
+        }
+        if (this._lwShoutCooldown) {
+            if (typeof this.showMessage === 'function') this.showMessage('喊话太频繁，请稍后再试', 'warning');
+            return;
+        }
+        const anyProbe = this._lwProbes[LW_CELLS[0].key];
+        if (!anyProbe || !anyProbe.isConnected || !anyProbe.ws || anyProbe.ws.readyState !== WebSocket.OPEN) {
+            if (typeof this.showMessage === 'function') this.showMessage('大厅未连接，无法喊话', 'error');
+            return;
+        }
+        anyProbe.sendShout(text);
+        input.value = '';
+        this._lwShoutCooldown = true;
+        if (els.shoutSend) els.shoutSend.classList.add('cooldown');
+        setTimeout(() => {
+            this._lwShoutCooldown = false;
+            if (els.shoutSend) els.shoutSend.classList.remove('cooldown');
+        }, 30000);
+    };
+
+    // 收起（mini）状态下收到新喊话：像"有房间"一样闪烁提示
+    UIController.prototype._lwNotifyShout = function () {
+        const els = this._lwEls;
+        if (!els) return;
+        // 展开状态：不额外打扰，仅未读徽标在 _lwRenderShouts 中处理
+        if (els.root.style.display !== 'none') return;
+        // 收起：迷你胶囊闪烁 + 提示音
+        els.mini.classList.add('has-shout');
+        setTimeout(() => els.mini.classList.remove('has-shout'), 2000);
+        if (window.audioManager) { try { window.audioManager.playSuccess(); } catch (e) {} }
+        this._lwRenderShouts();
+    };
+
+    // 昵称安全显示（防止注入）
+    UIController.prototype._lwSafeNick = function (s) {
+        const t = String(s || '匿名');
+        return t.length > 6 ? t.slice(0, 6) + '…' : t;
     };
 
     // ─── 渲染 ───────────────────────────────────────────────────
     UIController.prototype._lwRender = function () {
         if (!this._lwEls) return;
         const els = this._lwEls;
-        let total = 0;
+        let totalWait = 0, totalPlay = 0;
         LW_CELLS.forEach((c) => {
-            const n = this._lwCounts[c.key];
+            const n = this._lwCounts[c.key] || { wait: -1, play: -1 };
             const cell = els.cells[c.key];
-            const badge = els.badges[c.key];
-            if (n > 0) {
-                badge.textContent = n > 99 ? '99+' : String(n);
-                badge.style.display = '';
-                cell.classList.add('has-rooms');
-                cell.classList.remove('lw-unknown');
-                total += n;
+            const waitBadge = els.badges[c.key].wait;
+            const playBadge = els.badges[c.key].play;
+            const wait = n.wait;
+            const play = n.play;
+            // 红圈：等待中可进入的房间
+            if (wait > 0) {
+                waitBadge.textContent = wait > 99 ? '99+' : String(wait);
+                waitBadge.style.display = '';
+                totalWait += wait;
             } else {
-                badge.style.display = 'none';
-                cell.classList.remove('has-rooms');
-                cell.classList.toggle('lw-unknown', n < 0);
+                waitBadge.style.display = 'none';
             }
+            // 蓝圈：正在进行的对战
+            if (play > 0) {
+                playBadge.textContent = play > 99 ? '99+' : String(play);
+                playBadge.style.display = '';
+                totalPlay += play;
+            } else {
+                playBadge.style.display = 'none';
+            }
+            // 未知状态（探针未连接）：格子降灰
+            cell.classList.toggle('lw-unknown', wait < 0);
+            cell.classList.toggle('has-rooms', wait > 0);
+            cell.classList.toggle('has-battles', play > 0);
         });
-        const anyRooms = total > 0;
+        const anyRooms = totalWait > 0;
+        const anyBattles = totalPlay > 0;
         els.root.classList.toggle('has-rooms', anyRooms);
+        els.root.classList.toggle('has-battles', anyBattles);
         els.mini.classList.toggle('has-rooms', anyRooms);
-        els.miniBadge.textContent = total > 99 ? '99+' : String(total);
+        els.mini.classList.toggle('has-battles', anyBattles);
+        els.miniBadge.textContent = totalWait > 99 ? '99+' : String(totalWait);
         els.miniBadge.style.display = anyRooms ? '' : 'none';
+        // 迷你胶囊蓝点：有进行中战局时显示（与红点可并存）
+        if (!els.miniPlayBadge) {
+            els.miniPlayBadge = document.createElement('span');
+            els.miniPlayBadge.className = 'lw-mini-badge lw-mini-badge-play';
+            els.mini.appendChild(els.miniPlayBadge);
+        }
+        els.miniPlayBadge.textContent = totalPlay > 99 ? '99+' : String(totalPlay);
+        els.miniPlayBadge.style.display = anyBattles ? '' : 'none';
+        this._lwRenderOnline();
+    };
+
+    // 在线人数渲染：展开态标题栏 + 收起态迷你胶囊都必须可见
+    UIController.prototype._lwRenderOnline = function () {
+        if (!this._lwEls) return;
+        const n = (typeof this._lwOnline === 'number' && this._lwOnline >= 0) ? this._lwOnline : null;
+        const txt = n == null ? '--' : (n > 999 ? '999+' : String(n));
+        if (this._lwEls.online) this._lwEls.online.textContent = txt;
+        if (this._lwEls.miniOnline) this._lwEls.miniOnline.textContent = '在线 ' + txt;
+    };
+
+    // 收到服务端在线统计（每 5s 广播；多探针用 ts 去重，只认最新）
+    UIController.prototype._lwReceiveOnlineStats = function (stats) {
+        if (!stats || typeof stats !== 'object') return;
+        const ts = Number(stats.ts) || 0;
+        if (ts && this._lwOnlineTs && ts <= this._lwOnlineTs) { this._lwRenderOnline(); return; }
+        if (ts) this._lwOnlineTs = ts;
+        this._lwOnline = Number(stats.online) || 0;
+        this._lwOnlineDetail = stats;
+        this._lwRenderOnline();
     };
 
     // ─── 点击格子：直达对应匹配大厅 ──────────────────────────────
@@ -344,7 +611,10 @@
                 message: '当前正在观战一局对局。\n\n退出观战将离开观战频道并返回主界面，观战进度不会保留。确定要退出观战吗？'
             };
         }
-        if (this.isP2PMode && this._p2pMatchStarted) {
+        // 注意：对局已结算（_p2pEloSettled）或房间已解散时不算"进行中"。
+        // 对局结束会立即断开 P2P 但保留 isP2PMode/_p2pMatchStarted 直到返回主页，
+        // 若不加这两个条件，玩家在结算弹窗期间点浮窗会被误弹「退出即判负」确认框。
+        if (this.isP2PMode && this._p2pMatchStarted && !this._p2pEloSettled && !this._p2pRoomDissolved) {
             return {
                 type: 'p2p', title: '当前正在进行联机对局',
                 message: this._p2pMatchMode === 'ranked'
@@ -423,6 +693,16 @@
 
     // 直接进入对应匹配大厅（仅在确认无占用时调用）
     UIController.prototype._lwGo = function (cell) {
+        if (!cell) return;
+        // 强制登录：未登录不允许进入联机大厅（浮窗直达是唯一绕过路径，这里补上守卫）
+        if (typeof AuthService !== 'undefined' && AuthService.isLoggedIn && !AuthService.isLoggedIn()) {
+            if (typeof AuthPanel !== 'undefined' && AuthPanel.requireLogin) {
+                AuthPanel.requireLogin(() => { this._lwGo(cell); });
+            } else if (typeof this.showMessage === 'function') {
+                this.showMessage('联机对战需要先登录账号', 'warning');
+            }
+            return;
+        }
         if (cell.isRace) this._lwOpenRace(cell.mode === 'race_ranked');
         else this._lwOpenP2P(cell.mode);
     };

@@ -483,6 +483,8 @@
 #editor-view .dot { width: 7px; height: 7px; border-radius: 50%; display:inline-block; }
 #editor-view .dot.target { background: var(--accent); }
 #editor-view .dot.forbid { background: var(--danger); }
+#editor-view .dot.d-target { background: #22d3ee; }
+#editor-view .dot.d-forbid { background: #ec4899; }
 #editor-view .dot.lock { background: var(--warn); }
 #editor-view .export-box { min-height: 70px; flex: 1; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 11px; }
 #editor-view .status { font-size: 10px; color: var(--muted); margin-top: 4px; }

@@ -60,6 +60,11 @@
             snapshot._emoji = this._spectatePendingEmoji;
             this._spectatePendingEmoji = null;
         }
+        // 观战快照附带最近一条聊天消息（一次性）：双方互发的消息经房主透传给观众展示
+        if (this._spectatePendingChat) {
+            snapshot._chat = this._spectatePendingChat;
+            this._spectatePendingChat = null;
+        }
         return snapshot;
     }
 ;

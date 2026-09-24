@@ -62,7 +62,10 @@ UIController.prototype._rbSubmitSelfScore = function(result) {
     const rank = result.list.find((item) => item.id && item.id === this._rbMyId) ||
                  result.list.find((item) => item.isMe);
     if (!rank) return;
-    const roomCode = this.raceBattleRoomCode.textContent;
+    const baseCode = this.raceBattleRoomCode.textContent;
+    // rematch 复用同一房间码：附加"#局次"维度后作为上报键，服务端按 roomCode 去重时
+    // 既能防止同一局被重复上报（局内键稳定），又不会把再战那局当成重复结算丢弃。
+    const roomCode = baseCode + (this._rbMatchSeq > 1 ? ('#' + this._rbMatchSeq) : '');
     if (!this._leaderboardService || !this._leaderboardService.submitRaceScore) return;
     this._leaderboardService.submitRaceScore({
         roomCode: roomCode,
@@ -118,6 +121,17 @@ UIController.prototype._rbHandleResultMsg = function(result) {
 
 /** 成员连接状态变化（对局中：进度面板标等待重连） */
 UIController.prototype._rbHandleMemberState = function(member) {
+    // 记录/清除断线时刻：短抖在宽限内恢复不影响对局，真掉线则在宽限后立即结算，
+    // 不必等满 60s 重连宽限（需求：只剩一人时该玩家直接获胜，无需完成剩余题目）
+    const m = this._rbMembers.find((x) => x.playerId === member.playerId);
+    if (m) {
+        if (member.connected === false) {
+            if (!m._goneAt) m._goneAt = Date.now();
+            if (this._rbIsHost && this._rbMatchStarted) this._rbScheduleSoloCheck();
+        } else {
+            m._goneAt = 0;
+        }
+    }
     if (this._rbMatchStarted && this._rbProgress[member.playerId]) {
         this._rbProgress[member.playerId].disconnected = member.connected === false;
         this.raceBattleRenderProgress();
@@ -132,6 +146,36 @@ UIController.prototype._rbHandleMemberState = function(member) {
     if (this._rbIsHost && this._rbMigrationDone && member.connected) {
         this._rbResendMigrationDone();
     }
+};
+
+/**
+ * 判定某成员是否「已退出本局」（掉线失联 / 主动弃权）。
+ * 仅看进度标记会漏掉「尚未上报过进度就掉线」的成员，因此额外看连接状态 + 宽限时间：
+ *   - 连接断开在 RB_SOLO_GRACE 内 → 视为可能只是网络抖动，仍算在场（保留重连机会）
+ *   - 超过宽限仍未恢复 → 视为退出，不再阻塞结算（剩余玩家直接获胜）
+ */
+UIController.prototype._rbIsMemberGone = function(playerId) {
+    const p = this._rbProgress[playerId] || {};
+    if (p.abandoned || p.disconnected) return true;
+    const m = this._rbMembers.find((x) => x.playerId === playerId);
+    if (!m || m.connected !== false) return false;
+    const now = Date.now();
+    const since = m._goneAt || 0;
+    return since > 0 && (now - since) >= this._RB_SOLO_GRACE_MS;
+};
+
+/** 宽限期（ms）：成员断线后等待该时长再重判结算，避免一次网络抖动就结束对局 */
+UIController.prototype._RB_SOLO_GRACE_MS = 6000;
+
+/** 房主侧：成员掉线后按宽限安排一次结算重判（"只剩一人"时立即判胜） */
+UIController.prototype._rbScheduleSoloCheck = function() {
+    if (!this._rbIsHost) return;
+    if (this._rbSoloCheckTimer) clearTimeout(this._rbSoloCheckTimer);
+    this._rbSoloCheckTimer = setTimeout(() => {
+        this._rbSoloCheckTimer = null;
+        if (!this._rbMatchStarted) return;
+        try { this._rbCheckResult(); } catch (e) { /* 忽略 */ }
+    }, this._RB_SOLO_GRACE_MS + 300);
 };
 
 /** 对局中成员被移除（60s 未重连，房主端）→ 弃权结算检查 */

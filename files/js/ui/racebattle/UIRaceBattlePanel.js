@@ -31,6 +31,8 @@ UIController.prototype.raceBattleStopMatchUI = function() {
     this._stopRaceBattleElapsedTimer();
     if (this.raceBattleOverlay) this.raceBattleOverlay.style.display = 'none';
     this.raceBattleWaitHint.style.display = 'none';
+    // 清理聊天入口与消息区
+    if (typeof this._hideBattleChatUI === 'function') this._hideBattleChatUI();
 };
 
 /**

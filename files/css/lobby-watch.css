@@ -43,9 +43,29 @@
     cursor: grab;
     background: rgba(255, 255, 255, 0.045);
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    transition: background 0.2s ease;
 }
+.lw-header:hover { background: rgba(255, 255, 255, 0.09); }
 .lw-header:active { cursor: grabbing; }
 
+/* 标题栏拖动手柄（≡ 三线图标，提示可拖动） */
+.lw-header::before {
+    content: '≡';
+    font-size: 15px;
+    line-height: 1;
+    color: #64748b;
+    letter-spacing: -2px;
+    margin-right: 1px;
+}
+
+/* 标题右侧「可拖动」小字 */
+.lw-drag-hint {
+    font-size: 10px;
+    color: #64748b;
+    letter-spacing: 0.5px;
+    margin-left: 2px;
+    white-space: nowrap;
+}
 .lw-title {
     font-size: 13px;
     font-weight: 700;
@@ -134,6 +154,13 @@
 }
 .lw-cell.has-rooms .lw-cell-name { color: #ffffff; }
 
+/* 徽标容器：红圈（可进入）与蓝圈（进行中）可并排 */
+.lw-badge-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
 .lw-badge {
     display: none;
     min-width: 19px;
@@ -148,10 +175,26 @@
     text-align: center;
     box-shadow: 0 0 8px rgba(239, 68, 68, 0.8);
 }
-.lw-cell.has-rooms .lw-badge {
+.lw-cell.has-rooms .lw-badge-wait {
     display: inline-flex;
     align-items: center;
     justify-content: center;
+}
+
+/* 蓝圈：正在进行中的对战数量 */
+.lw-badge-play {
+    background: #3b82f6;
+    box-shadow: 0 0 8px rgba(59, 130, 246, 0.8);
+}
+.lw-cell.has-battles .lw-badge-play {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+/* 仅有进行中战局、无可进入房间时格子也高亮（蓝色调） */
+.lw-cell.has-battles:not(.has-rooms) {
+    border-color: rgba(59, 130, 246, 0.85);
+    background: rgba(59, 130, 246, 0.13);
 }
 
 /* ── 隐藏态：迷你胶囊按钮（参考可拖动输入栏收起按钮） ──────────
@@ -180,6 +223,15 @@
 }
 .lobby-watch-mini:hover { transform: translateY(-1px); }
 .lobby-watch-mini:active { cursor: grabbing; }
+/* 迷你按钮拖动手柄图标（提示可拖动） */
+.lobby-watch-mini::before {
+    content: '≡';
+    font-size: 13px;
+    line-height: 1;
+    color: #64748b;
+    letter-spacing: -2px;
+    opacity: 0.75;
+}
 .lobby-watch-mini.has-rooms {
     border-color: rgba(245, 158, 11, 0.9);
     animation: lwBreath 1.6s ease-in-out infinite;
@@ -202,4 +254,185 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
+}
+/* 迷你胶囊蓝点：有进行中战局时显示 */
+.lw-mini-badge-play {
+    background: #3b82f6;
+}
+.lobby-watch-mini.has-battles .lw-mini-badge-play {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* ── 全服喊话（世界频道）── */
+.lw-shout-wrap {
+    margin-top: 8px;
+    padding: 8px;
+    border-radius: 9px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.lw-shout-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 6px;
+}
+.lw-shout-title {
+    font-size: 11px;
+    font-weight: 700;
+    color: #94a3b8;
+    letter-spacing: 0.5px;
+}
+.lw-shout-badge {
+    min-width: 17px;
+    height: 17px;
+    padding: 0 4px;
+    border-radius: 999px;
+    background: #8b5cf6;
+    color: #ffffff;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 17px;
+    text-align: center;
+    box-shadow: 0 0 6px rgba(139, 92, 246, 0.7);
+}
+.lw-shout-feed {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 110px;
+    overflow-y: auto;
+    scrollbar-width: none;
+    margin-bottom: 6px;
+}
+.lw-shout-feed::-webkit-scrollbar { display: none; }
+.lw-shout-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    font-size: 11px;
+    line-height: 1.35;
+    word-break: break-word;
+}
+.lw-shout-nick {
+    flex-shrink: 0;
+    font-weight: 700;
+    color: #a5b4fc;
+    max-width: 70px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.lw-shout-text { color: #e2e8f0; }
+.lw-shout-empty { font-size: 11px; color: #64748b; text-align: center; padding: 4px 0; }
+.lw-shout-input-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+.lw-shout-input {
+    flex: 1;
+    min-width: 0;
+    height: 28px;
+    padding: 0 8px;
+    border-radius: 7px;
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    background: rgba(30, 41, 59, 0.6);
+    color: #f1f5f9;
+    font-size: 12px;
+    outline: none;
+}
+.lw-shout-input:focus { border-color: rgba(139, 92, 246, 0.7); }
+.lw-shout-input::placeholder { color: #64748b; }
+.lw-shout-send {
+    flex-shrink: 0;
+    height: 28px;
+    padding: 0 10px;
+    border-radius: 7px;
+    border: 1px solid rgba(139, 92, 246, 0.6);
+    background: rgba(139, 92, 246, 0.2);
+    color: #ddd6fe;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+}
+.lw-shout-send:hover { background: rgba(139, 92, 246, 0.35); }
+.lw-shout-send.cooldown { opacity: 0.4; pointer-events: none; }
+
+/* 收起（mini）时收到新喊话：闪烁提醒（类似"有房间"） */
+.lobby-watch-mini.has-shout {
+    border-color: rgba(139, 92, 246, 0.9);
+    animation: lwShoutPulse 1s ease-in-out 2;
+}
+@keyframes lwShoutPulse {
+    0%, 100% { box-shadow: 0 0 8px rgba(139, 92, 246, 0.4), 0 6px 20px rgba(0, 0, 0, 0.45); }
+    50%      { box-shadow: 0 0 22px rgba(139, 92, 246, 0.9), 0 6px 20px rgba(0, 0, 0, 0.45); }
+}
+
+/* ── 在线人数（展开态标题栏 + 收起态迷你胶囊都必须可见）── */
+.lw-online {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    margin-left: 6px;
+    padding: 1px 7px;
+    border-radius: 999px;
+    background: rgba(56, 189, 248, 0.16);
+    border: 1px solid rgba(56, 189, 248, 0.45);
+    color: #7dd3fc;
+    font-size: 11px;
+    line-height: 16px;
+    white-space: nowrap;
+}
+.lw-online b { color: #e0f2fe; font-weight: 700; }
+.lw-mini-online {
+    margin-left: 4px;
+    color: #7dd3fc;
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+/* ============================================================
+   移动端 / 触屏适配（阶段二）
+   目标：触控热区 ≥44px、窄屏不横向溢出、刘海与底部指示条用 safe-area 留白。
+   仅作用于触屏与窄屏，桌面端布局零回归。
+   ============================================================ */
+
+/* 触屏设备：格子与喊话输入/发送放大到 ≥44px 的可点区域
+   （原尺寸 33px / 28px 低于 44px 触控下限，手机上容易点不中） */
+@media (pointer: coarse) {
+    .lw-cell { min-height: 46px; }
+    .lw-shout-input,
+    .lw-shout-send { height: 44px; }
+    .lw-shout-send { min-width: 58px; font-size: 13px; }
+    .lw-shout-input { font-size: 13px; }
+    /* 关闭按钮放大到可稳定点中，同时避免 hover 态在触屏残留 */
+    .lw-btn { width: 30px; height: 30px; font-size: 15px; }
+    .lw-header { padding: 10px; }
+    .lw-cell:hover { transform: none; }
+}
+
+/* 手机竖屏：浮窗按视口收缩，位置避开安全区 */
+@media (max-width: 480px) {
+    .lobby-watch {
+        width: min(80vw, 244px);
+        left: max(8px, env(safe-area-inset-left, 0px));
+        bottom: max(8px, env(safe-area-inset-bottom, 0px));
+    }
+    .lw-title { font-size: 12px; letter-spacing: 0.5px; }
+    .lw-drag-hint { display: none; } /* 手机靠长按标题栏拖动，不占位 */
+    .lw-body { padding: 6px; }
+    .lw-shout-feed { max-height: 88px; }
+    .lobby-watch-mini { max-width: 78vw; }
+}
+
+/* 手机横屏（矮屏）：浮窗可能超出可用高度，允许内部滚动 */
+@media (max-height: 420px) {
+    .lobby-watch {
+        max-height: 76vh;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+    }
 }

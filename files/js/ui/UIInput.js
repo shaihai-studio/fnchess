@@ -152,17 +152,29 @@ if (typeof UIController === 'undefined') {
             e.preventDefault();
             this.addElementToExpression('i');
         } else if (key === 's' || key === 'S') {
-            // s 键输入 sin
+            // s 键输入 sin；Shift+S 输入 asin（需解锁反三角函数）
             e.preventDefault();
-            this.addElementToExpression('sin');
+            if (e.shiftKey) {
+                this._insertAdvancedFunctionShortcut('asin');
+            } else {
+                this.addElementToExpression('sin');
+            }
         } else if (key === 'c' || key === 'C') {
-            // c 键输入 cos
+            // c 键输入 cos；Shift+C 输入 acos（需解锁反三角函数）
             e.preventDefault();
-            this.addElementToExpression('cos');
+            if (e.shiftKey) {
+                this._insertAdvancedFunctionShortcut('acos');
+            } else {
+                this.addElementToExpression('cos');
+            }
         } else if (key === 't' || key === 'T') {
-            // t 键输入 tan
+            // t 键输入 tan；Shift+T 输入 atan（需解锁反三角函数）
             e.preventDefault();
-            this.addElementToExpression('tan');
+            if (e.shiftKey) {
+                this._insertAdvancedFunctionShortcut('atan');
+            } else {
+                this.addElementToExpression('tan');
+            }
         } else if (key === 'a' || key === 'A') {
             // a 键输入 abs
             e.preventDefault();
@@ -175,6 +187,14 @@ if (typeof UIController === 'undefined') {
             // l 键输入 ln
             e.preventDefault();
             this.addElementToExpression('ln');
+        } else if (key === 'g' || key === 'G') {
+            // g 键输入 sgn（需解锁专家难度）
+            e.preventDefault();
+            this._insertAdvancedFunctionShortcut('sgn');
+        } else if (key === 'f' || key === 'F') {
+            // f 键输入 floor（需解锁无解难度）
+            e.preventDefault();
+            this._insertAdvancedFunctionShortcut('floor');
         } else if (key === 'Backspace') {
             e.preventDefault();
             // 删除光标前的一个元素
@@ -685,6 +705,56 @@ if (typeof UIController === 'undefined') {
                 }
             }
         });
+    }
+;
+
+// _insertAdvancedFunctionShortcut — 键盘快捷键插入受限函数（asin/acos/atan/sgn/floor）
+// 可用性规则与面板按钮一致：面板中停用 / 当前模式难度不可用 → 阻止并提示；
+// 功能本身未解锁（反三角需通关全部 1/2~1/20 分数关；sgn 需通关专家；floor 需通关无解）
+// → 弹出与点击锁定按钮相同的解锁提示弹窗；均已满足才真正插入表达式。
+    UIController.prototype._insertAdvancedFunctionShortcut = function(name) {
+        // 面板中已停用该函数 → 快捷键同样不可用
+        if (typeof this.getFunctionEnabled === 'function' && !this.getFunctionEnabled(name)) {
+            if (window.audioManager) window.audioManager.playError();
+            this.showMessage(`函数 ${name} 已在面板中停用，请先在开始界面启用`, 'warning');
+            return;
+        }
+        if (name === 'asin' || name === 'acos' || name === 'atan') {
+            // 反三角函数：当前难度（简单）隐藏 → 不可用
+            if (typeof this.shouldHideInverseTrigElement === 'function' && this.shouldHideInverseTrigElement(name)) {
+                if (window.audioManager) window.audioManager.playError();
+                this.showMessage('反三角函数在当前模式/难度下不可用', 'warning');
+                return;
+            }
+            // 未解锁：与点击面板锁定按钮一致，弹出解锁说明
+            if (typeof this.isInverseTrigUnlocked === 'function' && !this.isInverseTrigUnlocked()) {
+                if (typeof this.showInverseTrigLockedDialog === 'function') this.showInverseTrigLockedDialog();
+                return;
+            }
+        } else if (name === 'sgn' || name === 'floor') {
+            // 当前模式/难度下隐藏（按钮不可见）→ 不可用
+            const hidden = name === 'sgn'
+                ? (typeof this.shouldHideSgnElement === 'function' && this.shouldHideSgnElement())
+                : (typeof this.shouldHideFloorElement === 'function' && this.shouldHideFloorElement());
+            if (hidden) {
+                if (window.audioManager) window.audioManager.playError();
+                this.showMessage(`${name} 在当前模式/难度下不可用`, 'warning');
+                return;
+            }
+            // 未解锁 → 弹出解锁说明
+            const locked = name === 'sgn'
+                ? (typeof this.isSgnUnlocked === 'function' && !this.isSgnUnlocked())
+                : (typeof this.isFloorUnlocked === 'function' && !this.isFloorUnlocked());
+            if (locked) {
+                if (name === 'sgn') {
+                    if (typeof this.showSgnLockedDialog === 'function') this.showSgnLockedDialog();
+                } else {
+                    if (typeof this.showFloorLockedDialog === 'function') this.showFloorLockedDialog();
+                }
+                return;
+            }
+        }
+        this.addElementToExpression(name);
     }
 ;
 

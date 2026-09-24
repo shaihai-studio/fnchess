@@ -220,6 +220,18 @@ UIController.prototype._bindRaceBattleRoomCallbacks = function(room) {
             }
         } else if (status === 'error') {
             this._raceBattleSetStatus('error', msg || '连接错误');
+            // 网络类失败（握手超时/信令异常/链路中断）：状态栏文案较长易被忽略，再 toast 一次，
+            // 明确告诉玩家是网络问题以及如何处理（换 WiFi / 关闭 VPN）
+            if (msg && (msg.indexOf('网络异常') >= 0 || msg.indexOf('更换网络环境') >= 0)) {
+                this.raceBattleToast(msg);
+            }
+            // createRoom/joinRoom 已 resolve(true) 之后 peer 才异步报错（unavailable-id / network 等）：
+            // 此处必须恢复建房/加入按钮，否则按钮永久 disabled，用户只能关弹窗重开才能重试
+            const cBtn = document.getElementById('race-battle-create-btn');
+            if (cBtn) cBtn.disabled = false;
+            const jBtn = document.getElementById('race-battle-join-btn');
+            if (jBtn) jBtn.disabled = false;
+            if (this.raceLobbyCreateBtn) this.raceLobbyCreateBtn.disabled = false;
             // 恢复流程中连接失败（如房主已超时移除/房间关闭）：清恢复上下文并回主菜单。
             // 关键修复：仅"尚未真正进入对局"时才回主页；已在对局中（含恢复后继续比赛）的连接抖动
             // 只提示，走正常断线/迁移流程，绝不把正在对局的玩家弹回主页面。
@@ -257,6 +269,8 @@ UIController.prototype._bindRaceBattleRoomCallbacks = function(room) {
         this.raceBattleRenderMembers();
     };
     room.onMemberJoined = (member) => {
+        // 真正加入成功：清除「有人正在加入」看门狗，避免稍后误报连接失败
+        if (typeof this._rbClearPendingGuest === 'function') this._rbClearPendingGuest();
         this._rbMembers.push(member);
         this._rbReadyMap[member.playerId] = false;
         this._rbQueryRaceRanks([member.profileId || member.playerId]);
@@ -264,6 +278,9 @@ UIController.prototype._bindRaceBattleRoomCallbacks = function(room) {
         // 2026-08-12 修复重复音效：移除 click（playUIButtonSound），只保留加入成功音
         if (window.audioManager) { try { window.audioManager.playSuccess(); } catch (e) {} }
         this.raceBattleToast(member.nickname + ' 加入了房间');
+        // 跨界面提醒：房主创建房间后可能已切到其他界面（竞速弹窗隐藏），
+        // 此时有人进入必须给出醒目的提示条 + 音效，提醒回房开局。
+        this._rbNotifyGuestJoined(member);
     };
     room.onMemberState = (member) => {
         this._rbHandleMemberState(member);
@@ -346,6 +363,9 @@ UIController.prototype._bindRaceBattleRoomCallbacks = function(room) {
     };
     room.onMessage = (payload, fromPlayerId) => {
         this._raceBattleHandleMessage(payload, fromPlayerId);
+    };
+    room.onChat = (text, fromPlayerId) => {
+        this._showChatMessage(text, false);
     };
 };
 
@@ -658,5 +678,63 @@ UIController.prototype.raceBattleDeleteRoom = function() {
     // 如果同时在大厅也创建了房间，也给清理掉
     this._closeRaceLobby();
 };
+
+// ─── 竞速房跨界面加入提醒 ─────────────────────────────────────────
+// 房主建房后切到其他界面（竞速弹窗隐藏）时，有玩家进入房间：
+// 在屏幕顶部弹出醒目的常驻横幅（动画闪烁）+ 播放提示音，点击可回到竞速房间。
+UIController.prototype._rbNotifyGuestJoined = function(member) {
+    const rbModal = document.getElementById('race-battle-modal');
+    const modalVisible = rbModal && rbModal.style.display !== 'none';
+    // 若此刻正在竞速弹窗内，正常 toast 已提示，无需横幅
+    if (modalVisible) return;
+    const code = (this._rbRoom && this._rbRoom.roomCode) || '------';
+    const nick = (member && member.nickname) || '玩家';
+    // 音效：仅播一次更醒目的提示音（onMemberJoined 已播过一次 success，这里不再叠加，
+    // 否则一次加入会出现 success + alert + success 三重音效）
+    if (window.audioManager) {
+        try { window.audioManager.playRaceAlert(); } catch (e) {}
+    }
+    // 已有横幅则复用
+    let banner = this._rbGuestBanner;
+    if (!banner) {
+        banner = document.createElement('div');
+        banner.className = 'rb-guest-banner';
+        banner.setAttribute('role', 'alert');
+        document.body.appendChild(banner);
+        // 点击横幅：收起并打开竞速房间弹窗
+        banner.addEventListener('click', () => {
+            this._rbDismissGuestBanner();
+            if (typeof this._proceedRaceBattleModal === 'function') this._proceedRaceBattleModal();
+        });
+        this._rbGuestBanner = banner;
+    }
+    const membersNow = Array.isArray(this._rbMembers) ? this._rbMembers.length : 1;
+    banner.innerHTML =
+        '<span class="rb-guest-banner-icon">🚪</span>' +
+        '<span class="rb-guest-banner-text">' +
+            '<strong>' + this._rbEscapeHtml(nick) + '</strong> 进入了你的竞速房间' +
+            ' <span class="rb-guest-banner-code">[ ' + this._rbEscapeHtml(code) + ' ]</span>' +
+            '（当前 ' + membersNow + '/4）' +
+        '</span>' +
+        '<span class="rb-guest-banner-action">点击返回房间</span>';
+    banner.style.display = 'flex';
+    banner.classList.add('show');
+    banner.classList.remove('hide');
+    // 自动收起（避免长时间遮挡）。先清旧定时器：10s 内多人加入时，
+    // 否则上一个定时器会按原定时刻把横幅提前收起。
+    if (this._rbGuestBannerTimer) { clearTimeout(this._rbGuestBannerTimer); this._rbGuestBannerTimer = null; }
+    this._rbGuestBannerTimer = setTimeout(() => this._rbDismissGuestBanner(), 10000);
+};
+
+UIController.prototype._rbDismissGuestBanner = function() {
+    if (this._rbGuestBannerTimer) { clearTimeout(this._rbGuestBannerTimer); this._rbGuestBannerTimer = null; }
+    if (this._rbGuestBanner) {
+        const b = this._rbGuestBanner;
+        b.classList.add('hide');
+        b.classList.remove('show');
+        setTimeout(() => { if (b && b.style.display !== 'none') b.style.display = 'none'; }, 300);
+    }
+};
+
 // ─── 对局进度面板 ───────────────────────────────────────────────
 

@@ -376,3 +376,45 @@
     .race-battle-overlay-card { padding:24px 28px; }
     .race-battle-overlay-card.is-count { font-size:64px; }
 }
+/* ── 竞速房跨界面加入提醒横幅（房主在其他界面时，有玩家进入） ── */
+.rb-guest-banner {
+    position: fixed;
+    top: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 12000;
+    display: none;
+    align-items: center;
+    gap: 10px;
+    max-width: min(640px, calc(100vw - 24px));
+    padding: 12px 16px;
+    border-radius: 12px;
+    background: linear-gradient(90deg, rgba(15,23,42,.97), rgba(30,41,59,.97));
+    border: 1px solid rgba(34,211,238,.65);
+    box-shadow: 0 8px 30px rgba(0,0,0,.55), 0 0 24px rgba(34,211,238,.35);
+    color: var(--rb-text);
+    cursor: pointer;
+    user-select: none;
+    font-size: 14px;
+    animation: rbGuestIn .35s cubic-bezier(.175,.885,.32,1.275);
+}
+.rb-guest-banner.show { animation: rbGuestIn .35s cubic-bezier(.175,.885,.32,1.275), rbGuestFlash 1.2s ease-in-out .35s 3; }
+.rb-guest-banner.hide { animation: rbGuestOut .3s ease forwards; }
+.rb-guest-banner-icon { font-size: 22px; line-height: 1; }
+.rb-guest-banner-text { flex: 1; min-width: 0; line-height: 1.4; }
+.rb-guest-banner-text strong { color: #7ff3ff; }
+.rb-guest-banner-code { color: #fbbf24; font-weight: 700; white-space: nowrap; }
+.rb-guest-banner-action {
+    flex-shrink: 0;
+    font-size: 12px;
+    font-weight: 700;
+    color: #0ea5e9;
+    border: 1px solid rgba(14,165,233,.6);
+    border-radius: 999px;
+    padding: 4px 10px;
+    white-space: nowrap;
+}
+.rb-guest-banner:hover { border-color: #7ff3ff; }
+@keyframes rbGuestIn { from { transform: translate(-50%,-20px); opacity: 0; } to { transform: translate(-50%,0); opacity: 1; } }
+@keyframes rbGuestOut { from { transform: translate(-50%,0); opacity: 1; } to { transform: translate(-50%,-20px); opacity: 0; } }
+@keyframes rbGuestFlash { 0%,100% { box-shadow: 0 0 18px rgba(34,211,238,.35); } 50% { box-shadow: 0 0 34px rgba(34,211,238,.85); } }

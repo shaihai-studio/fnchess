@@ -324,6 +324,8 @@
         this.isP2PMode = false;
         // 清理 Summa 表情入口与残留浮层（按钮/面板/队列）
         this._hideSummaEmojiUI();
+        // 清理聊天入口与消息区
+        if (typeof this._hideBattleChatUI === 'function') this._hideBattleChatUI();
         // 离开联机模式：关闭匹配大厅连接。
         // _closeLobby 在房主有活跃房间时只暂停列表刷新（WS 常驻，房间继续存活），
         // 无活跃房间时才真正断开（断开后服务器侧会自动清理本连接登记的房间）
