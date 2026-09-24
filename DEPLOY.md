@@ -158,7 +158,7 @@ systemctl restart fnchess
 | `index.html` → `window.P2P_SIGNALING` | `{ host: 'p2p2.shaihai.cn', port: 24026, path: '/', secure: true }` |
 | `files/js/P2PController.js` → `static signaling` 默认值 | 同上（无 `P2P_SIGNALING` 时兜底） |
 | `files/js/ProgressSync.js` → `API_BASE` 兜底 | `https://p2p2.shaihai.cn:24026/api` |
-| `server/index.js` → CORS 白名单 | `https://p2p2.shaihai.cn:24026` + `p2p/p2p2.shaihai.cn` 正则 + `localhost` |
+| `server/index.js` → CORS 白名单 | `shaihai.cn` 与 `wakudemo.cn` **及其所有子域**（https）+ `null`（file:// 本地直开）+ `localhost` / `127.0.0.1`；口径与老服务器 nginx `map $http_origin` 一致 |
 
 因此：网页端 @ `p2p2.shaihai.cn:24026` 与后端同源；App（`https://localhost` / `capacitor://localhost`）
 也指向该地址，且 CORS 白名单已覆盖跨源场景。

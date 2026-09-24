@@ -44,22 +44,23 @@ app.use(express.json());
 
 // ─────────────────────────────────────────────
 // 0. CORS 跨域中间件
-//     前端（登录 / 进度同步 / notice / version）可能从 www.shaihai.cn、localhost
-//     等不同源向 p2p.shaihai.cn 的 /api 发 HTTP 请求，浏览器会拦截跨域，
-//     这里统一放行已知来源并处理 OPTIONS preflight。
+//     前端（登录 / 进度同步 / notice / version）会从 shaihai.cn 系列与 wakudemo.cn 系列
+//     域名、localhost、以及本地 file:// 打开的页面跨源访问本服务的 /api，
+//     浏览器会拦截跨域，这里统一放行已知来源并处理 OPTIONS preflight。
+//     白名单口径与老服务器 nginx 的 map $http_origin 保持一致：
+//       "~^https://(.*\.)?wakudemo\.cn$" / "~^https://(.*\.)?shaihai\.cn$" / "null"
 //     注意：WebSocket（/lobby、/peerjs）不走此中间件，本身不跨域受限。
 // ─────────────────────────────────────────────
 const ALLOWED_ORIGINS = [
-    'https://www.shaihai.cn',
-    // 生产入口（NAT 24026→443）：前端与后端同源时本不需要 CORS，
-    // 但 App(WebView 原生 HTTP 之外的 fetch) / 跨源调试 / 未来域名切换都要用到白名单
-    'https://p2p2.shaihai.cn:24026',
+    // 线上站点（含裸域与所有子域）：www.shaihai.cn / shaihai.cn / p2p.shaihai.cn /
+    // p2p2.shaihai.cn:24026 / wakudemo.cn / www.wakudemo.cn / … 均在放行之列
+    /^https:\/\/([a-z0-9_-]+\.)*shaihai\.cn(:\d+)?$/i,
+    /^https:\/\/([a-z0-9_-]+\.)*wakudemo\.cn(:\d+)?$/i,
     // 本地直接双击 index.html（file:// 协议）时浏览器发出的 Origin 是字符串 'null'。
     // 不放行 → 请求被浏览器按 CORS 拦截 → 前端只能提示"无法连接服务器，当前可能处于离线状态"。
     // 本 API 不使用 Cookie 鉴权（token 走 Authorization 头、且按源隔离的 localStorage），
     // 因此放行 null 不会带来凭据泄露，只放开了本就公开的接口。
     'null',
-    /^https?:\/\/p2p2?\.shaihai\.cn(:\d+)?$/,
     /^https?:\/\/localhost(:\d+)?$/,
     /^https?:\/\/127\.0\.0\.1(:\d+)?$/
 ];

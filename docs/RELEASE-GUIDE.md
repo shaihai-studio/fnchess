@@ -114,7 +114,7 @@ certutil -encode android\fnchess-release.keystore ks.b64
 App 内网络请求走三条路径：
 
 1. **HTTP API（公告/版本/排行榜/账号）**：已由 `CapacitorHttp.enabled=true` 经原生层转发，**不受 CORS 限制**。
-   服务端同时已放行白名单来源（`https://p2p2.shaihai.cn:24026`、`p2p/p2p2.shaihai.cn` 正则、`localhost`），跨源 fetch 亦可正常工作。
+   服务端同时已放行白名单来源（`shaihai.cn`、`wakudemo.cn` **及其所有子域**（https）、`null`（`file://` 本地直开）、`localhost` / `127.0.0.1`；见 `server/index.js` 的 `ALLOWED_ORIGINS`），跨源 fetch 亦可正常工作。
 2. **WebSocket（PeerJS 信令 / 匹配大厅 wss://p2p2.shaihai.cn:24026）**：WebSocket 不受 CORS 约束，但服务端若校验 `Origin` 头，需放行：
    - `capacitor://localhost`（iOS）
    - `https://localhost`（Android）
