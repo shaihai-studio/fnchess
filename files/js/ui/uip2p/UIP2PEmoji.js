@@ -19,7 +19,7 @@ UIController.prototype._ensureSummaEmojiUI = function() {
         cell.className = 'summa-emoji-item';
         cell.title = mood;
         const img = document.createElement('img');
-        img.src = `files/Summa形象处理/summa_image/${mood}.png`;
+        img.src = `files/summa/summa_image/${mood}.png`;
         img.alt = mood;
         img.draggable = false;
         cell.appendChild(img);
@@ -102,7 +102,7 @@ UIController.prototype._playNextSummaEmoji = function() {
     if (!pop || !img) { this._summaEmojiPlaying = false; return; }
     const moods = ['neutral', 'thinking', 'smug', 'happy', 'surprised', 'sad', 'angry', 'determined', 'exhausted'];
     const m = moods.indexOf(item.mood) !== -1 ? item.mood : 'neutral';
-    img.src = `files/Summa形象处理/summa_image/${m}.png`;
+    img.src = `files/summa/summa_image/${m}.png`;
     pop.classList.toggle('pop-left', !!item.fromOpponent);
     pop.classList.toggle('pop-right', !item.fromOpponent);
     pop.style.display = 'block';

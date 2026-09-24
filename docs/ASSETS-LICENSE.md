@@ -20,7 +20,7 @@
   rank_meteoroid（流星体）、rank_asteroid（小行星）、rank_dwarf_planet（矮行星）、
   rank_planet（行星）、rank_star（恒星）、rank_dwarf_galaxy（矮星系）、
   rank_galaxy（星系）、rank_galaxy_cluster（星系团）、rank_universe（宇宙）。
-- `Summa形象处理/summa_image/*.png` 共 **9 个 Summa 表情立绘**：
+- `summa/summa_image/*.png` 共 **9 个 Summa 表情立绘**：
   angry、determined、exhausted、happy、neutral、sad、smug、surprised、thinking。
 
 ## 字体

@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>函数棋 Git 演进 · 1.0.0 → 2.0.0.2</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; background: #04070f; }
+  body { font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+  canvas { display: block; }
+  #bar-wrap {
+    position: fixed; bottom: 26px; left: 50%; transform: translateX(-50%);
+    width: min(560px, 80vw); z-index: 5;
+  }
+  #bar { height: 6px; border-radius: 3px; background: #16233f; overflow: hidden; }
+  #bar-fill { height: 100%; width: 0%; border-radius: 3px;
+    background: linear-gradient(90deg,#0ea5e9,#22d3ee,#67e8f9); box-shadow: 0 0 12px rgba(34,211,238,.6); }
+  #bar-labels { display: flex; justify-content: space-between; margin-top: 8px; font-size: 11px; color: #64748b; }
+  #bar-labels b { color: #7dd3fc; font-weight: 600; }
+  #pct { position: fixed; bottom: 62px; left: 50%; transform: translateX(-50%);
+    font-size: 12px; color: #475569; letter-spacing: 1px; z-index: 5; }
+</style>
+</head>
+<body>
+<div id="pct">LOADING</div>
+<div id="bar-wrap">
+  <div id="bar"><div id="bar-fill"></div></div>
+  <div id="bar-labels"><span><b>1.0.0</b> 正式版</span><span><b>2.0.0.2</b> 当前版本</span></div>
+</div>
+<canvas id="c"></canvas>
+<script>
+const DATA = {"commits":[{"h":"baa0f03","d":"2026-06-25","s":"正式版1.0.0"},{"h":"5b4d20a","d":"2026-06-25","s":"1.0.1 feat: 添加竞速模式样式与移动端适配及AGPL许可证"},{"h":"4e8e6f3","d":"2026-07-05","s":"合并 排版优化Layout-optimization 到 main"},{"h":"9341723","d":"2026-07-06","s":"refactor(ui): 竞速模式增强"},{"h":"366fa00","d":"2026-07-06","s":"refactor(css): 使用CSS变量重构布局并改用内联元素栏"},{"h":"2a40700","d":"2026-07-06","s":"feat(ui): 添加移动端内联元素面板"},{"h":"6e9fc36","d":"2026-07-07","s":"refactor(UIController): 移动 funcDisplayNames 映射位置"},{"h":"c15173e","d":"2026-07-07","s":"合并 Keye3Tuido 版本功能到 main"},{"h":"542dd7b","d":"2026-07-07","s":"完成未完成任务: AGPL许可头+P2P同步基础"},{"h":"9e01d25","d":"2026-07-07","s":"fix: P2P连接后隐藏房间模态框+恢复编辑器入口"},{"h":"1ead045","d":"2026-07-08","s":"refactor(p2p): 移除P2P联机UI及TURN配置，添加关卡编辑器扩展"},{"h":"cad669f","d":"2026-07-08","s":"fix: 删除 index.html 中重复的 race-victory-modal (BUG5)"},{"h":"43c2a4b","d":"2026-07-08","s":"fix: 修复开始按钮双绑定并修正 battle 模式 gameMode (BUG4)"},{"h":"4ede2b3","d":"2026-07-08","s":"fix: startNormalGame/startP2PGame 补充 _markGameActive 标记对局活跃 (BUG7)"},{"h":"8a56b46","d":"2026-07-08","s":"fix: handleExit 增加 P2P 分支，退出时断开连接避免僵尸连接 (BUG6)"},{"h":"47471d6","d":"2026-07-08","s":"fix: 实现 GameController.finalizeRound/startNextRound 消除 P2P 崩溃 (BUG1/BUG2)"},{"h":"23819c2","d":"2026-07-08","s":"fix: 设置 isP2PMode 并统一 P2P 收发协议，避免 nack 断线 (BUG3)"},{"h":"872353b","d":"2026-07-08","s":"fix: 补充 P2P 的 onNack/onRematch 回调（BUG8）"},{"h":"c91ce70","d":"2026-07-08","s":"fix: 闯关难度按钮在手机/平板端改为弹性布局实现自适应宽度"},{"h":"723f40a","d":"2026-07-08","s":"fix: 闯关难度按钮固定宽度不拉伸，第五个按钮第三行居中"},{"h":"157b9b2","d":"2026-07-08","s":"fix: 缩小手机端闯关难度按钮尺寸"},{"h":"62f126e","d":"2026-07-08","s":"fix: 关卡编辑器从对战子菜单移为独立主模式按钮，点击即激活"},{"h":"f005a6e","d":"2026-07-08","s":"fix: 选择关卡编辑器时禁用左侧回合数/难度选择器"},{"h":"cc190f0","d":"2026-07-13","s":"联机模式完全实现：feat(p2p): 实现全量状态实时同步与回合操作互斥"},{"h":"765aa1b","d":"2026-07-13","s":"修复函数棋问题清单全部有效项（P2-P21）"},{"h":"69ecdc6","d":"2026-07-13","s":"fix(p2p): 修复状态同步引用共享及多目标禁止区检测"},{"h":"180163e","d":"2026-07-13","s":"fix(p2p): 修复同步快照乱序覆盖与高频发送问题"},{"h":"f8a8ce0","d":"2026-07-18","s":"fix(p2p): 修复远端快照回放循环及冗余重绘问题"},{"h":"ce1be17","d":"2026-07-18","s":"fix: 清空模式切换与重置时的历史函数与格子"},{"h":"0b5775f","d":"2026-07-18","s":"fix(p2p): 动作确认期间允许发送状态同步"},{"h":"b9cec04","d":"2026-07-29","s":"fix: 修复表达式求值与竞速重试状态残留"},{"h":"8f7d198","d":"2026-07-29","s":"refactor: 统一 prepareInputPhase 清理机制"},{"h":"bf67725","d":"2026-07-29","s":"何意味"},{"h":"d68798c","d":"2026-07-29","s":"fix: 修复UI交互与联机掉线恢复等多项问题"},{"h":"1ce5167","d":"2026-07-29","s":"fix: 修复界面滚动条与保留解析式问题并拆分UIController代码"},{"h":"1d54ad3","d":"2026-07-30","s":"feat: 懒加载 PeerJS 并支持保留解析式"},{"h":"4463dc9","d":"2026-07-30","s":"Merge branch '1.2.0h版本'"},{"h":"7ff0ef3","d":"2026-07-30","s":"fix(campaign): 修复分数关按钮颜色及解锁逻辑"},{"h":"28e5f7f","d":"2026-07-30","s":"feat(p2p): 添加联机对战独立选项并简化断线弹窗"},{"h":"d97f87f","d":"2026-07-30","s":"feat: 优化P2P模式下对手函数同步与绘制过程"},{"h":"84687a1","d":"2026-07-31","s":"feat: 支持反三角函数并新增 KaTeX 预览"},{"h":"a927db8","d":"2026-07-31","s":"feat: 添加联机信令服务器配置"},{"h":"507c590","d":"2026-07-31","s":"fix(p2p): 修复操作同步滞后，确保每次变更立即生效"},{"h":"6e5f1eb","d":"2026-07-31","s":"feat(campaign): 添加反三角函数解锁机制"},{"h":"547b549","d":"2026-07-31","s":"chore(p2p): 切换信令服务器为自托管地址并简化房间码为纯数字"},{"h":"f04a79d","d":"2026-07-31","s":"fix(UIP2P): P2P选项与主界面独立并修复重复绑定"},{"h":"11e3033","d":"2026-07-31","s":"feat(p2p): 添加匹配大厅功能"},{"h":"859f115","d":"2026-07-31","s":"feat(ui): 优化联机模式大厅连接管理与性能"},{"h":"d7a8851","d":"2026-08-01","s":"feat(p2p): 增强联机稳定性和移动端适配"},{"h":"b73b8fb","d":"2026-08-02","s":"fix: 修复 P2P 模式回合推进死锁与状态覆盖回滚问题"},{"h":"ae7c9e3","d":"2026-08-02","s":"fix(p2p): 修复P2P联机状态同步卡死及历史函数性能问题"},{"h":"75df2c2","d":"2026-08-02","s":"fix: 修复P2P房间超时、UI残留及交互反馈问题"},{"h":"ad2c84a","d":"2026-08-03","s":"feat: 添加观战功能"},{"h":"7e3448c","d":"2026-08-03","s":"Merge branch '1.3.1h+'"},{"h":"1bdf354","d":"2026-08-03","s":"chore: 删除关卡编辑器和无用字体文件"},{"h":"03a137b","d":"2026-08-03","s":"docs(license): 更新资源许可说明，补充 KaTeX、PeerJS 及信令服务器依赖信息"},{"h":"5437c02","d":"2026-08-03","s":"docs(游戏规则): 更新自定义关卡、联机大厅与编辑器说明"},{"h":"203026b","d":"2026-08-04","s":"fix(GameController): 自定义关卡包分数关不再强制锁定小数点"},{"h":"2756765","d":"2026-08-04","s":"feat: 添加在线排行榜功能"},{"h":"de6cac3","d":"2026-08-04","s":"feat(p2p): 新增联机对战开场VS动画、中途退出ELO判负及首次昵称引导"},{"h":"87d9364","d":"2026-08-04","s":"feat(p2p): 添加断线重连、房间解散及退出确认机制"},{"h":"1939995","d":"2026-08-04","s":"refactor(ui): 简化P2P退出流程，移除二次确认弹窗"},{"h":"dc1d5df","d":"2026-08-04","s":"feat(p2p): 新增排位与休闲模式，休闲模式不计ELO且无重连"},{"h":"8387d4b","d":"2026-08-04","s":"feat(p2p): 增加排位/休闲模式选择，大厅按模式隔离房间"},{"h":"23872c8","d":"2026-08-04","s":"fix: 修复移动端视口适配与UI交互问题"},{"h":"b15e368","d":"2026-08-04","s":"feat(leaderboard): 提交积分后自动刷新已打开的排行榜"},{"h":"18754a5","d":"2026-08-05","s":"feat(leaderboard): 新增竞速分关Time Attack榜并优化P2P结算逻辑"},{"h":"599a9c1","d":"2026-08-05","s":"refactor: 删除排行榜防作弊方案评估文档"},{"h":"6758a20","d":"2026-08-05","s":"feat(leaderboard): 实现排行榜防作弊方案A，支持签名、核验与举报"},{"h":"dbeb7b1","d":"2026-08-05","s":"feat(leaderboard): 实现彗星分关榜与胜利弹窗彗星进度条"},{"h":"421294a","d":"2026-08-05","s":"fix(server): 修复 ELO 排行榜排序逻辑"},{"h":"6dc99c6","d":"2026-08-05","s":"fix(server): 修复总分核验逻辑并优化错误提示"},{"h":"58d8cdd","d":"2026-08-05","s":"fix: 修复排行榜LRΣ上报逻辑、ELO签名及老玩家兼容问题"},{"h":"2e64832","d":"2026-08-05","s":"feat(leaderboard): 添加签名诊断日志和加密自测功能"},{"h":"6291c14","d":"2026-08-05","s":"feat(排行榜): 支持重置进度时选择性清除排行榜成绩"},{"h":"8426622","d":"2026-08-07","s":"P2P 联机优化与多模块整合：访客大退可恢复、断线结算/休闲文案修复、竞速分关榜、角色与 AI 调整"},{"h":"0eea44f","d":"2026-08-07","s":"feat(ui): 添加跳过子阶段按钮、修复P2P结算与重连问题"},{"h":"d1a88c8","d":"2026-08-07","s":"feat(lobby): 排位房间增加 ELO 距离过滤与排序"},{"h":"a41258b","d":"2026-08-07","s":"fix(ui): ELO过滤输入框添加实时钳制并默认开启"},{"h":"36bdbc2","d":"2026-08-07","s":"feat(ui): 完善多人联机交互体验，新增对方主动退出通知、观战昵称展示和退出弹窗"},{"h":"9e45469","d":"2026-08-08","s":"fix(p2p): 修复P2P断线判罚对称性与主动退出消息丢失"},{"h":"da28b35","d":"2026-08-08","s":"chore: 移除未使用的死代码和调试方法"},{"h":"ec482c3","d":"2026-08-08","s":"Merge UI branch (7695b2638d) into main"},{"h":"94d7bd0","d":"2026-08-08","s":"feat(ui): 新增 Summa 表情系统、测试函数面板与多项 UI 优化"},{"h":"d70bb2b","d":"2026-08-09","s":"style(ui): 统一游戏色调并优化交互细节"},{"h":"8746549","d":"2026-08-10","s":"feat(竞速): 新增多人联机竞速对战模式"},{"h":"61bd75b","d":"2026-08-11","s":"fix: 修复竞速房间成员列表为空、大厅连接状态错误等问题"},{"h":"9de0955","d":"2026-08-11","s":"feat(对战): 优化竞速对战换关卡死与选格超时逻辑，新增面板折叠"},{"h":"7f15db5","d":"2026-08-12","s":"feat(race): 增加房主迁移、模式隔离、心跳检测及UI优化"},{"h":"90772aa","d":"2026-08-13","s":"fix(MathLatex): 修复 π 后接字母时生成未定义 LaTeX 命令"},{"h":"2f61b9e","d":"2026-08-13","s":"fix: 修复重连计时、房间确认与竞速 UI 问题"},{"h":"7c905b7","d":"2026-08-13","s":"feat: 新增服务器通知与版本检查，优化竞速同步与心跳"},{"h":"4a79b72","d":"2026-08-14","s":"feat(竞速): 新增段位查询与多玩家进度显示"},{"h":"5b97e05","d":"2026-08-15","s":"大重构计划！ fix: 修复音频音量、回合轮换与排行榜签名并发等问题"},{"h":"e121d95","d":"2026-08-15","s":"feat(race): 竞速排行榜改为服务端权威计时并更新段位图标"},{"h":"3e8b6a7","d":"2026-08-15","s":"fix(race-battle): 修复匹配大厅退出处理并新增被踢提示"},{"h":"e9b99fb","d":"2026-08-15","s":"feat(ui): 添加联机排位对局恢复统一守卫"},{"h":"9a6a670","d":"2026-08-16","s":"refactor(ui): 移除开始按钮，改为模式按钮直接启动"},{"h":"53eb7d1","d":"2026-08-16","s":"正式版2.0.0！"},{"h":"d348c21","d":"2026-08-19","s":"fix(ui): 修复排行榜弹窗状态残留导致打不开的问题"},{"h":"e1619ee","d":"2026-08-19","s":"Merge branch 'ui2'"},{"h":"ea2395f","d":"2026-08-19","s":"Merge branch '2.0.0.1'"},{"h":"b3f48a8","d":"2026-08-19","s":"版本更新2.0.0.2"}],"branches":[{"idx":2,"name":"排版优化Layout-optimization"},{"idx":7,"name":"Keye3Tuido"},{"idx":36,"name":"1.2.0h版本"},{"idx":53,"name":"1.3.1h+"},{"idx":82,"name":"UI"},{"idx":100,"name":"ui2"},{"idx":101,"name":"2.0.0.1"}],"milestones":[{"hash":"baa0f03","label":"1.0.0","idx":0},{"hash":"5b4d20a","label":"1.0.1","idx":1},{"hash":"4463dc9","label":"1.2.0h","idx":36},{"hash":"7e3448c","label":"1.3.1h+","idx":53},{"hash":"53eb7d1","label":"2.0.0","idx":98},{"hash":"b3f48a8","label":"2.0.0.2","idx":102}],"total":103};
+// ---------- 工具 ----------
+if (!CanvasRenderingContext2D.prototype.roundRect) {
+  CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
+    r = Math.min(r, w/2, h/2);
+    this.moveTo(x+r, y);
+    this.arcTo(x+w, y, x+w, y+h, r);
+    this.arcTo(x+w, y+h, x, y+h, r);
+    this.arcTo(x, y+h, x, y, r);
+    this.arcTo(x, y, x+w, y, r);
+    this.closePath();
+    return this;
+  };
+}
+const easeInOut = t => t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2, 3)/2; // 慢-快-慢
+const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
+const lerp=(a,b,t)=>a+(b-a)*t;
+const N = DATA.commits.length;
+const BRANCH_COLORS = ['#f472b6','#a78bfa','#f59e0b','#34d399','#fb7185','#eab308','#22c55e','#38bdf8'];
+const MERGE_COLOR = '#f59e0b';
+const NODE_ACTIVE = '#22d3ee';
+const NODE_IDLE = 'rgba(71,105,145,0.55)';
+const DURATION = 5000;
+const HOLD = 1200;
+const DY = 34;            // 纵向节点间距（世界单位）
+const FOCUS_Y = 0.62;     // 光标锁定的屏幕纵向位置（占比，偏下 → 起点在下方，从下往上滚）
+
+const cv = document.getElementById('c');
+const ctx = cv.getContext('2d');
+const pctEl = document.getElementById('pct');
+
+let W=0, H=0, DPR=1;
+const layout = { trunkX: 0, y: [], camY: 0 };
+let stars = [];
+
+function resize() {
+  DPR = Math.min(2, window.devicePixelRatio||1);
+  W = window.innerWidth; H = window.innerHeight;
+  cv.width = W*DPR; cv.height = H*DPR;
+  cv.style.width = W+'px'; cv.style.height = H+'px';
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  layout.trunkX = Math.round(W*0.5);
+  layout.y = Array.from({length:N}, (_,i)=> (N-1-i)*DY);  // 反转：1.0.0 在最下方，向上演进
+  stars = Array.from({length:120}, ()=> ({
+    x: Math.random()*W, y: Math.random()*H,
+    r: Math.random()*1.1+0.3, a: Math.random()*0.32+0.07, tw: Math.random()*6.28
+  }));
+}
+window.addEventListener('resize', resize);
+resize();
+
+function worldY(idx) {
+  const i0 = clamp(Math.floor(idx), 0, N-2);
+  const f = clamp(idx - i0, 0, 1);
+  return lerp(layout.y[i0], layout.y[i0+1], f);
+}
+function camYFor(idx){ return worldY(idx) - H*FOCUS_Y; }
+
+// ---------- 绘制 ----------
+function drawBackground(t) {
+  const g = ctx.createRadialGradient(W/2, H*0.30, 80, W/2, H/2, Math.max(W,H)*0.8);
+  g.addColorStop(0, '#0b1830');
+  g.addColorStop(0.55, '#070e1e');
+  g.addColorStop(1, '#04070f');
+  ctx.fillStyle = g;
+  ctx.fillRect(0,0,W,H);
+  for (const s of stars) {
+    const tw = 0.6 + 0.4*Math.sin(t*0.0012 + s.tw);
+    ctx.globalAlpha = s.a*tw;
+    ctx.fillStyle = '#cfe8ff';
+    ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, 6.283); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  // 上下淡出带（景深）
+  const topG = ctx.createLinearGradient(0,0,0,H*0.20);
+  topG.addColorStop(0,'rgba(4,7,15,0.9)'); topG.addColorStop(1,'rgba(4,7,15,0)');
+  ctx.fillStyle = topG; ctx.fillRect(0,0,W,H*0.20);
+  const botG = ctx.createLinearGradient(0,H*0.86,0,H);
+  botG.addColorStop(0,'rgba(4,7,15,0)'); botG.addColorStop(1,'rgba(4,7,15,0.92)');
+  ctx.fillStyle = botG; ctx.fillRect(0,H*0.86,W,H*0.14);
+}
+
+function drawBranches() {
+  DATA.branches.forEach((b, bi) => {
+    const span = Math.min(6, b.idx);
+    const start = Math.max(0, b.idx - span);
+    const y0 = layout.y[start], y1 = layout.y[b.idx];
+    const side = bi % 2 === 0 ? -1 : 1;   // 左右交替
+    const amp = 78 + (b.name.length % 3) * 24;
+    const c1x = layout.trunkX + side*amp, c2x = layout.trunkX + side*amp;
+    ctx.strokeStyle = BRANCH_COLORS[bi % BRANCH_COLORS.length];
+    ctx.lineWidth = 1.5; ctx.globalAlpha = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(layout.trunkX, y0);
+    ctx.bezierCurveTo(c1x, y0, c2x, y1, layout.trunkX, y1);
+    ctx.stroke();
+    // 分支提交小点
+    for (let k=1; k<=3; k++) {
+      const tt = k/4;
+      const bpx = (1-tt)**3*layout.trunkX + 3*(1-tt)**2*tt*c1x + 3*(1-tt)*tt*tt*c2x + tt**3*layout.trunkX;
+      const bpy = (1-tt)**3*y0 + 3*(1-tt)**2*tt*y0 + 3*(1-tt)*tt*tt*y1 + tt**3*y1;
+      ctx.fillStyle = BRANCH_COLORS[bi % BRANCH_COLORS.length];
+      ctx.globalAlpha = 0.55;
+      ctx.beginPath(); ctx.arc(bpx, bpy, 2.3, 0, 6.283); ctx.fill();
+    }
+    // 分支名（弧线外侧）
+    ctx.globalAlpha = 0.85;
+    ctx.fillStyle = BRANCH_COLORS[bi % BRANCH_COLORS.length];
+    ctx.font = '10.5px "Segoe UI","Microsoft YaHei",sans-serif';
+    ctx.textAlign = side < 0 ? 'right' : 'left';
+    const nx = clamp(layout.trunkX + side*(amp + 34), 46, W-46);
+    ctx.fillText(b.name, nx, (y0+y1)/2 + 3);
+    ctx.globalAlpha = 1;
+  });
+}
+
+function drawTrunkLine(progressIdx) {
+  const yEnd = worldY(progressIdx);
+  // 未走部分
+  ctx.strokeStyle = 'rgba(56,94,140,0.35)';
+  ctx.lineWidth = 1.8;
+  ctx.beginPath();
+  ctx.moveTo(layout.trunkX, layout.y[0]);
+  ctx.lineTo(layout.trunkX, layout.y[N-1]);
+  ctx.stroke();
+  // 已走部分
+  if (progressIdx > 0.01) {
+    const g = ctx.createLinearGradient(0, layout.y[0], 0, Math.max(yEnd, layout.y[1]));
+    g.addColorStop(0, 'rgba(14,165,233,0.9)');
+    g.addColorStop(1, 'rgba(103,232,249,0.95)');
+    ctx.strokeStyle = g;
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.moveTo(layout.trunkX, layout.y[0]);
+    ctx.lineTo(layout.trunkX, yEnd);
+    ctx.stroke();
+  }
+}
+
+function drawNodes(progressIdx, elapsed) {
+  for (let i=0; i<N; i++) {
+    const isMerge = DATA.branches.some(b=>b.idx===i);
+    const isMilestone = DATA.milestones.some(m=>m.idx===i);
+    const passed = i <= progressIdx;
+    const near = Math.abs(i - progressIdx) < 1;
+    let r = 3.2;
+    if (isMilestone) r = 5.2;
+    else if (isMerge) r = 4;
+    if (isMilestone && passed) {
+      ctx.fillStyle = '#a5f3fc';
+      ctx.shadowColor = 'rgba(34,211,238,0.9)'; ctx.shadowBlur = 12;
+    } else if (passed) {
+      ctx.fillStyle = isMerge ? MERGE_COLOR : NODE_ACTIVE;
+      ctx.shadowColor = isMerge ? 'rgba(245,158,11,0.8)' : 'rgba(34,211,238,0.8)';
+      ctx.shadowBlur = near ? 14 : 7;
+    } else {
+      ctx.fillStyle = isMilestone ? 'rgba(125,211,252,0.65)' : NODE_IDLE;
+      ctx.shadowBlur = 0;
+    }
+    ctx.beginPath();
+    ctx.arc(layout.trunkX, layout.y[i], r, 0, 6.283);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    // 里程碑标签（左右交错；当前节点由光标信息条展示，跳过避免重叠）
+    if (isMilestone) {
+      if (i === Math.round(progressIdx)) continue;
+      const m = DATA.milestones.find(x=>x.idx===i);
+      const left = (i % 2 === 1) && i !== N-1;
+      const tx = clamp(layout.trunkX + (left ? -12 : 12), 30, W-30);
+      ctx.textAlign = left ? 'right' : 'left';
+      ctx.font = '600 11.5px "Segoe UI","Microsoft YaHei",sans-serif';
+      ctx.fillStyle = passed ? '#7dd3fc' : 'rgba(125,211,252,0.5)';
+      ctx.fillText(m.label, tx, layout.y[i] - 3);
+      ctx.font = '9.5px "Segoe UI","Microsoft YaHei",sans-serif';
+      ctx.fillStyle = 'rgba(148,163,184,0.4)';
+      ctx.fillText(DATA.commits[i].d, tx, layout.y[i] + 11);
+    }
+  }
+}
+
+function drawCursorScreen(progressIdx, elapsed) {
+  const x = layout.trunkX;
+  const y = H*FOCUS_Y;
+  const pulse = 1 + 0.12*Math.sin(elapsed*0.012);
+  // 外光晕
+  const g = ctx.createRadialGradient(x, y, 1, x, y, 30*pulse);
+  g.addColorStop(0, 'rgba(186,240,255,0.85)');
+  g.addColorStop(0.35, 'rgba(56,189,248,0.35)');
+  g.addColorStop(1, 'rgba(56,189,248,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(x, y, 30*pulse, 0, 6.283); ctx.fill();
+  // 核心
+  ctx.fillStyle = '#e0f7ff';
+  ctx.shadowColor = '#7dd3fc'; ctx.shadowBlur = 18;
+  ctx.beginPath(); ctx.arc(x, y, 4.8*pulse, 0, 6.283); ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = 'rgba(255,255,255,0.75)';
+  ctx.lineWidth = 1.2;
+  ctx.beginPath(); ctx.arc(x, y, 8, 0, 6.283); ctx.stroke();
+  // 左侧：日期在左、ID 在右（单行）
+  const ci = Math.round(progressIdx);
+  const c = DATA.commits[ci];
+  ctx.font = '10px "Segoe UI","Microsoft YaHei",sans-serif';
+  const dateTxt = c.d;
+  const dw = ctx.measureText(dateTxt).width;
+  ctx.font = '600 13px "Consolas","Courier New",monospace';
+  const hashTxt = c.h;
+  const hw = ctx.measureText(hashTxt).width;
+  const gap = 10;
+  const lw = dw + gap + hw + 26;
+  const lx = Math.max(12, x - 20 - lw);
+  ctx.fillStyle = 'rgba(6,14,28,0.9)';
+  ctx.strokeStyle = 'rgba(56,189,248,0.45)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.roundRect(lx, y-15, lw, 30, 8);
+  ctx.fill(); ctx.stroke();
+  // 日期（左）
+  ctx.fillStyle = 'rgba(148,163,184,0.85)';
+  ctx.font = '10px "Segoe UI","Microsoft YaHei",sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText(dateTxt, lx+13, y+3);
+  // ID（右）
+  ctx.fillStyle = '#7dd3fc';
+  ctx.font = '600 13px "Consolas","Courier New",monospace';
+  ctx.fillText(hashTxt, lx + 13 + dw + gap, y+3);
+
+  // 右侧：提交标题（里程碑节点带版本徽标）
+  const isMilestone = DATA.milestones.some(m=>m.idx===ci);
+  const mil = DATA.milestones.find(m=>m.idx===ci);
+  const badgeW = isMilestone ? 48 : 0;
+  const maxRightW = Math.max(90, W - (x + 20) - 16);
+  let msg = c.s;
+  ctx.font = '600 12.5px "Segoe UI","Microsoft YaHei",sans-serif';
+  let mw = ctx.measureText(msg).width;
+  while (mw + badgeW + 26 > maxRightW && msg.length > 4) {
+    msg = msg.slice(0, -1);
+    mw = ctx.measureText(msg + '…').width;
+  }
+  if (msg !== c.s) msg += '…';
+  const rw = mw + badgeW + 26;
+  const rx = x + 20;
+  ctx.fillStyle = 'rgba(6,14,28,0.9)';
+  ctx.strokeStyle = isMilestone ? 'rgba(245,158,11,0.5)' : 'rgba(56,189,248,0.45)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.roundRect(rx, y-19, rw, 32, 8);
+  ctx.fill(); ctx.stroke();
+  if (isMilestone) {
+    ctx.fillStyle = 'rgba(245,158,11,0.2)';
+    ctx.beginPath();
+    ctx.roundRect(rx+5, y-13, 40, 21, 5);
+    ctx.fill();
+    ctx.fillStyle = '#fbbf24';
+    ctx.font = '600 10.5px "Segoe UI","Microsoft YaHei",sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(mil.label, rx+25, y+3);
+  }
+  ctx.fillStyle = '#e2e8f0';
+  ctx.font = '600 12.5px "Segoe UI","Microsoft YaHei",sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText(msg, rx + badgeW + (isMilestone ? 2 : 13), y+3);
+}
+
+// ---------- 动画循环 ----------
+let startTime = 0, playing = false;
+function frame(now) {
+  if (!playing) {
+    if (now - startTime > HOLD) { startTime = now; playing = true; }
+    drawScene(now, 1);
+    requestAnimationFrame(frame);
+    return;
+  }
+  const el = now - startTime;
+  const t = clamp(el / DURATION, 0, 1);
+  const e = easeInOut(t);
+  drawScene(now, e);
+  if (t >= 1) { playing = false; startTime = now; pctEl.textContent = '100%'; }
+  requestAnimationFrame(frame);
+}
+
+function drawScene(now, e) {
+  drawBackground(now);
+  const progressIdx = e * (N-1);
+  ctx.save();
+  ctx.translate(0, -camYFor(progressIdx));   // 相机锁定光标
+  drawBranches();
+  drawTrunkLine(progressIdx);
+  drawNodes(progressIdx, now);
+  ctx.restore();
+  drawCursorScreen(progressIdx, now);        // 光标固定在屏幕
+  const pct = Math.round(e*100);
+  document.getElementById('bar-fill').style.width = pct + '%';
+  if (playing) pctEl.textContent = pct + '% · ' + progressIdx.toFixed(1) + '/' + (N-1);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
