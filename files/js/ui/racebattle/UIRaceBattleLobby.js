@@ -308,13 +308,17 @@ UIController.prototype._renderRaceLobbyRooms = function() {
         const tierTag = hostTier
             ? `<span class="lobby-room-tier">${this._rbEscapeHtml(hostTier)}</span>`
             : '';
-        return `<div class="lobby-room-row">
+        // 自己创建的房间：列表可见但不可加入（服务端 join_request 亦会拦截）
+        const isMine = !!r.mine;
+        const mineTag = isMine ? '<span class="lobby-room-mine-tag">我的房间</span>' : '';
+        return `<div class="lobby-room-row${isMine ? ' lobby-room-mine' : ''}">
             <div class="lobby-room-info">
                 <span class="lobby-room-code">${r.code}</span>
+                ${mineTag}
                 <span class="lobby-room-desc">${modeTag}${players} 人 · 耐力 ${st} · ${diffName}</span>
                 <span class="lobby-room-host">${host}${tierTag}</span>
             </div>
-            <button class="btn btn-small lobby-join-btn" data-code="${r.code}">加入</button>
+            <button class="btn btn-small lobby-join-btn" data-code="${r.code}"${isMine ? ' disabled title="这是你自己创建的房间"' : ''}>${isMine ? '我的房间' : '加入'}</button>
         </div>`;
     }).join('');
     el.innerHTML = items;
@@ -322,7 +326,12 @@ UIController.prototype._renderRaceLobbyRooms = function() {
         btn.addEventListener('click', () => {
             if (window.audioManager) window.audioManager.playClick();
             const code = btn.getAttribute('data-code');
-            if (code) this._joinRaceLobbyRoom(code);
+            if (!code) return;
+            if (btn.disabled) {
+                this.showMessage('这是你自己创建的房间，不能加入自己的房间', 'warning');
+                return;
+            }
+            this._joinRaceLobbyRoom(code);
         });
     });
 };

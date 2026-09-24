@@ -83,17 +83,32 @@ class LeaderboardService {
     }
 
     /**
-     * 单机成绩上报不做登录拦截。
+     * 成绩上报要求登录：**未登录不上榜**（2026-09 起）。
      *
-     * 排行榜本身支持匿名身份（playerId 为主键、签名的 sigId 也用 playerId），
-     * 玩家登录后服务端会把该 UUID 名下的成绩并入账号（auth.js 的 migrateUuidToUser），
-     * 因此「闯关通关 / 竞速单机」等单机流程不应弹出登录框打断游戏。
-     * 需要强制登录的只有联机能力（建房/入房/观战/喊话），由服务端 auth_required 守卫。
+     * 单机流程仍然不被登录框打断（不弹 modal），只是本次成绩不上传；
+     * 每个会话最多提示一次「未登录 → 成绩不计入排行榜」。
+     * 服务端亦作同样校验（handleSubmitScore / handleRaceStart），匿名成绩一律拒绝。
      *
-     * @returns {boolean} 恒为 true（允许上报）
+     * @returns {boolean} 是否已登录（可上报）
      */
     _requireLoginForSubmit() {
-        return true;
+        const A = window.AuthService;
+        const logged = !!(A && typeof A.isLoggedIn === 'function' && A.isLoggedIn());
+        if (!logged) this._warnLoginRequiredOnce();
+        return logged;
+    }
+
+    /** 未登录且尝试上报时的单次提示（不弹登录框，避免打断单机流程） */
+    _warnLoginRequiredOnce() {
+        if (this._loginWarned) return;
+        this._loginWarned = true;
+        try {
+            const ui = window.uiController;
+            if (ui && typeof ui.showMessage === 'function') {
+                ui.showMessage('未登录：本次成绩不计入排行榜，登录后成绩正常上榜', 'warning');
+            }
+        } catch (e) { /* 忽略 */ }
+        try { console.log('[LB] 未登录，跳过成绩上报（不上榜）'); } catch (e) { /* 忽略 */ }
     }
 
     /**
@@ -265,6 +280,8 @@ class LeaderboardService {
 
     /** 通用上报（不签名消息用；ELO 走 submitEloScore 签名版） */
     submitScore(payload) {
+        // 未登录不上榜
+        if (!this._requireLoginForSubmit()) return;
         this._send(Object.assign({ type: 'submit_score' }, payload || {}));
     }
 
@@ -322,6 +339,8 @@ class LeaderboardService {
      * @returns {Promise<string|null>} raceSessionId（服务器未连/被限流/超时返回 null）
      */
     startRaceSession(levelId) {
+        // 未登录不上榜：不申请竞速权威计时会话（服务端同样会拒绝）
+        if (!this._requireLoginForSubmit()) return Promise.resolve(null);
         return new Promise((resolve) => {
             const id = 'rs' + (++this._querySeq);
             const waiter = (data) => {

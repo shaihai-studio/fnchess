@@ -1150,6 +1150,11 @@ function handleRaceStart(ws, msg) {
     // 回执统一带上请求 id：客户端按 id 配对（历史缺陷：不带 id 时客户端会直接丢弃回执，
     // 导致"竞速权威计时会话申请永远超时 → rtN 上报被拒 → 竞速分关榜为空"）
     const reqId = String(msg.id || '');
+    // 未登录不上榜：匿名不发放竞速权威计时会话（无会话的 rtN 上报本就会被拒）
+    if (!ws || !ws._userId) {
+        send(ws, { type: 'race_start_result', ok: false, id: reqId, code: 'login_required' });
+        return;
+    }
     const levelId = Number(msg.levelId);
     if (!Number.isFinite(levelId) || levelId < 1 || levelId > 30) {
         send(ws, { type: 'race_start_result', ok: false, id: reqId, code: 'bad_level' });
@@ -1178,6 +1183,12 @@ function handleSubmitScore(ws, msg) {
     const playerId = String(msg.playerId || '').slice(0, 64);
     const nickname = String(msg.nickname || '棋手').trim().slice(0, 10) || '棋手';
     if (!playerId) return;
+    // 未登录不上榜：所有榜单成绩（lr / rtN / plN / elo / rsc）都必须来自登录账号
+    if (!ws || !ws._userId) {
+        sendSubmitResultBT(ws, false, boardType, { code: 'login_required' });
+        console.log(`[LB] 拒绝未登录上报：boardType=${boardType} playerId=${playerId}`);
+        return;
+    }
     const ip = ws && ws._ip ? ws._ip : '';
     const now = Date.now();
     // 阶段3：排行榜主键改用"身份键"（登录 'u'+userId，未登录 playerId）
@@ -1615,10 +1626,11 @@ lobbyWss.on('connection', (ws, req) => {
                         rooms.delete(code);
                         continue;
                     }
-                    // 自己的房间不下发：同账号双端不能自己加入/观战自己的房间
-                    if (room.hostWs === ws) continue;
-                    if (room.hostUserId && ws._userId && String(room.hostUserId) === String(ws._userId)) continue;
-                    if (room.hostPlayerId && visitorId && String(room.hostPlayerId) === String(visitorId)) continue;
+                    // 自己的房间仍然下发（自己创建的房间自己能看到），只标记 isMine →
+                    // 前端把「加入/观战」置灰并提示；真正加入会被 join_request / spectate_join 拦截
+                    const isMine = room.hostWs === ws
+                        || (room.hostUserId && ws._userId && String(room.hostUserId) === String(ws._userId))
+                        || (room.hostPlayerId && visitorId && String(room.hostPlayerId) === String(visitorId));
                     const isWaiting = room.status === 'waiting';
                     const isPlaying = room.status === 'playing';
                     // 等待中的房间 + 对局中的房间都返回（用于大厅速览统计进行中数量）；
@@ -1662,7 +1674,9 @@ lobbyWss.on('connection', (ws, req) => {
                         hostNickname: room.hostNickname || '',
                         isRace: !!room.isRace,
                         maxPlayers: room.maxPlayers || 2,
-                        currentPlayers: 1 + guestCount
+                        currentPlayers: 1 + guestCount,
+                        // 是否是我自己创建的房间（前端据此置灰「加入/观战」）
+                        mine: !!isMine
                     });
                 }
                 send(ws, { type: 'rooms_list', rooms: list });
