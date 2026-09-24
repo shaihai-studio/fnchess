@@ -54,8 +54,14 @@ app.use(express.json());
 const ALLOWED_ORIGINS = [
     // 线上站点（含裸域与所有子域）：www.shaihai.cn / shaihai.cn / p2p.shaihai.cn /
     // p2p2.shaihai.cn:24026 / wakudemo.cn / www.wakudemo.cn / … 均在放行之列
-    /^https:\/\/([a-z0-9_-]+\.)*shaihai\.cn(:\d+)?$/i,
-    /^https:\/\/([a-z0-9_-]+\.)*wakudemo\.cn(:\d+)?$/i,
+    //
+    // http 也必须放行：手机浏览器地址栏输入「shaihai.cn/fnchess」（不带协议）时，
+    // 首访可能先走 http（站点未强制跳转，且新设备没有 HSTS 缓存），
+    // 此时页面里的 /api 请求带的是 Origin: http://shaihai.cn —— 只放行 https 就会
+    // 被浏览器按 CORS 拦掉，前端只能报「无法连接服务器」（电脑因已缓存 HSTS 走 https 而正常）。
+    // 站点侧已同时配置 http→https 强制跳转，这里放行 http 只是兜底。
+    /^https?:\/\/([a-z0-9_-]+\.)*shaihai\.cn(:\d+)?$/i,
+    /^https?:\/\/([a-z0-9_-]+\.)*wakudemo\.cn(:\d+)?$/i,
     // 本地直接双击 index.html（file:// 协议）时浏览器发出的 Origin 是字符串 'null'。
     // 不放行 → 请求被浏览器按 CORS 拦截 → 前端只能提示"无法连接服务器，当前可能处于离线状态"。
     // 本 API 不使用 Cookie 鉴权（token 走 Authorization 头、且按源隔离的 localStorage），
