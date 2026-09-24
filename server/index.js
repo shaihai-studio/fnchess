@@ -44,22 +44,29 @@ app.use(express.json());
 
 // ─────────────────────────────────────────────
 // 0. CORS 跨域中间件
-//     前端（登录 / 进度同步 / notice / version）可能从 www.shaihai.cn、localhost
-//     等不同源向 p2p.shaihai.cn 的 /api 发 HTTP 请求，浏览器会拦截跨域，
+//     前端（登录 / 进度同步 / notice / version）可能与 API 不同源
+//     （例如静态站挂在 443、API 挂在独立域名或 9000 端口），浏览器会拦截跨域，
 //     这里统一放行已知来源并处理 OPTIONS preflight。
+//     ⚠️ 自建服务器：把你的前端地址填进环境变量 FNCHESS_ALLOWED_ORIGINS（逗号分隔），例如
+//        FNCHESS_ALLOWED_ORIGINS=https://your-game.example.com,http://192.168.1.10:8137
+//        下面标了"作者部署示例"的几条留着不影响自建，但也帮不上你，可直接删除。
 //     注意：WebSocket（/lobby、/peerjs）不走此中间件，本身不跨域受限。
 // ─────────────────────────────────────────────
+const EXTRA_ORIGINS = String(process.env.FNCHESS_ALLOWED_ORIGINS || '')
+    .split(',').map((s) => s.trim()).filter(Boolean);
 const ALLOWED_ORIGINS = [
+    ...EXTRA_ORIGINS,
+    // ── 作者部署示例（静态站 www.shaihai.cn + API 独立入口 p2p2.shaihai.cn:24026）──
+    // 前端与后端同源时本不需要 CORS，但 App(WebView fetch) / 跨源调试 / 域名切换都要用到白名单
     'https://www.shaihai.cn',
-    // 生产入口（NAT 24026→443）：前端与后端同源时本不需要 CORS，
-    // 但 App(WebView 原生 HTTP 之外的 fetch) / 跨源调试 / 未来域名切换都要用到白名单
     'https://p2p2.shaihai.cn:24026',
+    /^https?:\/\/p2p2?\.shaihai\.cn(:\d+)?$/,
+    // ── 作者部署示例结束（自建可整段删除）──
     // 本地直接双击 index.html（file:// 协议）时浏览器发出的 Origin 是字符串 'null'。
     // 不放行 → 请求被浏览器按 CORS 拦截 → 前端只能提示"无法连接服务器，当前可能处于离线状态"。
     // 本 API 不使用 Cookie 鉴权（token 走 Authorization 头、且按源隔离的 localStorage），
     // 因此放行 null 不会带来凭据泄露，只放开了本就公开的接口。
     'null',
-    /^https?:\/\/p2p2?\.shaihai\.cn(:\d+)?$/,
     /^https?:\/\/localhost(:\d+)?$/,
     /^https?:\/\/127\.0\.0\.1(:\d+)?$/
 ];
@@ -104,8 +111,9 @@ app.use('/api/sync', syncRouter);
 //    username = 过期时间戳；credential = base64(HMAC-SHA1(secret, username))）。
 //    密钥来源：环境变量 FNCHESS_TURN_SECRET > server/.turn-secret 文件（不入库）。
 //    未配置密钥时只下发 STUN，避免给客户端无效的中继凭证。
+//    ⚠️ 自建：TURN 中继域名填 FNCHESS_TURN_HOST；没部署 coturn 可留空（只走公共 STUN）。
 // ─────────────────────────────────────────────
-const TURN_HOST = 'p2p2.shaihai.cn';
+const TURN_HOST = process.env.FNCHESS_TURN_HOST || 'p2p2.shaihai.cn';
 const TURN_SECRET_FILE = path.join(__dirname, '.turn-secret');
 let _turnSecret = null;
 function getTurnSecret() {
@@ -115,14 +123,14 @@ function getTurnSecret() {
     return _turnSecret;
 }
 app.get('/api/ice', (req, res) => {
-    const stun = {
-        urls: [
-            'stun:' + TURN_HOST + ':3478',
-            'stun:stun.cloudflare.com:3478',
-            'stun:stun.qq.com:3478',
-            'stun:stun.miwifi.com:3478'
-        ]
-    };
+    // 公共 STUN 免费且无需部署；配置了 TURN_HOST 时把它自带的 STUN 放在最前
+    const stunUrls = [
+        'stun:stun.cloudflare.com:3478',
+        'stun:stun.qq.com:3478',
+        'stun:stun.miwifi.com:3478'
+    ];
+    if (TURN_HOST) stunUrls.unshift('stun:' + TURN_HOST + ':3478');
+    const stun = { urls: stunUrls };
     const secret = getTurnSecret();
     const ttl = 3600;
     if (!secret) return res.json({ ok: true, turn: false, ttl: 0, iceServers: [stun] });

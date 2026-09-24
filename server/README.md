@@ -36,11 +36,14 @@ npm start
 3. 玩家B 进入「匹配大厅」，房间列表会显示 A 的房间（难度/回合/时间限制）
 4. 玩家B 点击「加入」→ 服务器通知 A，双方自动建立连接并按房主配置开局
 
-## 跨互联网部署
+## 跨互联网部署（自建）
 
-将本目录部署到公网服务器（如云主机）即可。前端已默认指向自托管服务器：
+完整步骤见 **`server/DEPLOY.md`**，环境变量空白清单见 **`server/.env.example`**，
+Nginx 反代示例见 **`server/Nginx/nginx.conf.example`**。
 
-- 信令服务器地址：`https://p2p2.shaihai.cn:24026/`（HTTP 侧亦可用；前端统一从 `P2PController.signaling` 推导）
+> ⚠️ **前端默认指向的是作者自建的服务器**（`P2PController.signaling` 中的 `p2p2.shaihai.cn:24026`）。
+> 自建后必须改成你自己的地址，否则你的服务器不会被使用。
+
 - 前端配置位于 `files/js/P2PController.js` 的 `P2PController.signaling`，
   也可通过 `index.html` 中的 `window.P2P_SIGNALING` 覆盖，例如：
 
@@ -52,6 +55,17 @@ window.P2P_SIGNALING = {
     debug: 0
 };
 ```
+
+自建要点速览：
+
+| 要改的地方 | 在哪 |
+|---|---|
+| 端口 / 监听地址 | `.env.example` → `P2P_PORT` / `P2P_HOST` |
+| 跨域白名单 | `.env.example` → `FNCHESS_ALLOWED_ORIGINS` |
+| 排行榜签名密钥 | `.env.example` → `FNCHESS_LB_SECRET`（留空会自动生成 `server/.lb-secret`） |
+| TURN 中继（可选） | `.env.example` → `FNCHESS_TURN_HOST` / `FNCHESS_TURN_SECRET` |
+| 前端指向哪台服务器 | `files/js/P2PController.js` 或 `index.html` 的 `window.P2P_SIGNALING` |
+| Nginx 反代 | 参考 `Nginx/nginx.conf.example`（**WebSocket 升级头不能缺**） |
 
 大厅 WebSocket 地址由前端从 `P2PController.signaling` 自动派生：
 `ws(s)://<host>:<port>/lobby`，与信令共用端口，无需额外开放端口。
@@ -82,7 +96,9 @@ location / {
 数据与行为：
 
 - 玩家身份 = 浏览器 localStorage 中的随机 UUID（`function_chess_player_profile`），昵称可随时改；
-  服务器以 UUID 为主键，昵称跟随展示。换浏览器/清缓存即新身份（休闲向设计，无账号系统）。
+  服务器以 UUID 为主键，昵称跟随展示。换浏览器/清缓存即新身份（休闲向设计）。
+- v2 起另有**可选**的账号体系（`/api/auth`，见 `auth.js`）：登录后进度可跨设备同步；
+  不登录也能正常玩，榜单依旧按上面的 UUID 计分。
 - 榜单保存到 `leaderboard.json`（运行时自动生成，变更后防抖 2s 落盘，重启不丢）。
 - 服务器对上报数值做范围校验（防伪造脏数据），并以 IP 为辅助风控：同一 IP 在 60 分钟内出现
   超过 5 个新身份时，忽略该 IP 的新身份上报（防刷榜；不影响正常玩家与已有身份）。

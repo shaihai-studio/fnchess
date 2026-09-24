@@ -1,0 +1,80 @@
+# ════════════════════════════════════════════════════════════════════
+# 函数棋服务端 · Nginx 反向代理示例（空白蓝图）
+#
+# 用法：复制本文件为你的站点配置，例如
+#         /etc/nginx/conf.d/fnchess.conf        （不要放进 server/Nginx/ 提交）
+#       然后把所有 <尖括号占位符> 换成你自己的值，再
+#         nginx -t && systemctl reload nginx
+#
+# 本文件不含任何真实域名、证书或密钥，可安全提交到版本库。
+#
+# 为什么要反代：Node 服务监听 9000，前端要经 443/80 访问它，且 **WebSocket
+# （/peerjs 信令、/lobby 大厅）必须带 Upgrade 头被代理**，否则联机完全连不上。
+# ════════════════════════════════════════════════════════════════════
+
+# ── ① HTTP：仅用于跳转 HTTPS（有证书后启用） ────────────────────────
+server {
+    listen 80;
+    server_name <你的域名>;
+
+    # 还没配 HTTPS 时，把下面 3 行注释掉，直接保留 ② 里的 location 反代即可
+    location /.well-known/acme-challenge/ { root /var/www/certbot; }
+    location / { return 301 https://$host$request_uri; }
+}
+
+# ── ② HTTPS 主站：静态前端 + 反代 Node 服务（推荐同源部署） ─────────
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name <你的域名>;
+
+    # 证书：用 certbot / acme.sh / 宝塔面板申请，路径换成自己的
+    ssl_certificate     /path/to/your/fullchain.pem;
+    ssl_certificate_key /path/to/your/privkey.key;
+
+    # 前端静态文件 = 仓库根目录（含 index.html 和 files/）
+    root /path/to/fnchess;
+    index index.html;
+    charset utf-8;
+
+    # 静态资源
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # 后端：信令 /peerjs、大厅 /lobby、接口 /api（账号、进度、榜单、ICE、版本）
+    location ~ ^/(peerjs|peer|api|lobby) {
+        proxy_pass http://127.0.0.1:9000;
+        proxy_http_version 1.1;
+
+        # ↓ WebSocket 升级必需，缺一不可
+        proxy_set_header Upgrade    $http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # WebSocket 长连接，别用默认 60s 掐断对局
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+        proxy_buffering off;
+    }
+
+    # 打包产物/数据库不该被公网访问（即使误传到根目录也挡住）
+    location ~ ^/(server/db|server/.*\.secret|node_modules|\.git) {
+        deny all;
+        return 404;
+    }
+}
+
+# ── ③ 可选：让 Node 只监听本机（更安全） ─────────────────────────────
+# 若上面用 Nginx 反代，建议启动时设 P2P_HOST=127.0.0.1，
+# 这样 9000 端口不直接暴露到公网，只允许本机 Nginx 访问。
+#
+# ── ④ 可选：TURN 中继（coturn）需要额外开放的端口 ───────────────────
+# TURN 走 UDP，不能靠 Nginx 反代，需在防火墙/安全组放行：
+#   3478/udp（STUN/TURN 信令）  49152-65535/udp（中继媒体流）
+# 并在 coturn 配置里设置 static-auth-secret，把同一个值填进
+# 服务端环境变量 FNCHESS_TURN_SECRET。
