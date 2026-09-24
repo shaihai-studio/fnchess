@@ -44,6 +44,19 @@ async function launchBrowser() {
   }
 }
 
+/** 屏蔽可能挡住点击的全局弹窗（公告/版本说明/观战提示等）
+ *  公告弹窗是异步拉取后才弹出的，因此用样式永久隐藏，避免与点击竞争 */
+async function dismissBlockingModals(page) {
+  await page.evaluate(() => {
+    if (document.getElementById('smoke-hide-modals')) return;
+    const st = document.createElement('style');
+    st.id = 'smoke-hide-modals';
+    st.textContent = '#notice-modal, #spectator-notice-modal, #version-modal { display: none !important; }';
+    (document.head || document.documentElement).appendChild(st);
+  });
+  await page.waitForTimeout(150);
+}
+
 async function testIphoneFlow(browser) {
   console.log('\n=== iPhone 仿真全流程（390x844, DPR=3, 触屏） ===');
   const ctx = await browser.newContext({
@@ -74,6 +87,7 @@ async function testIphoneFlow(browser) {
   await page.waitForTimeout(400);
   await page.click('#start-go-btn');
   await page.waitForTimeout(400);
+  await dismissBlockingModals(page);
   await page.click('#mode-battle');
   await page.waitForTimeout(400);
   await page.click('#mode-submenu-list button');
@@ -146,6 +160,7 @@ async function testViewports(browser) {
   await page.waitForTimeout(400);
   await page.click('#start-go-btn');
   await page.waitForTimeout(500);
+  await dismissBlockingModals(page);
 
   let overflowIssues = 0;
   for (const vp of viewports) {
@@ -180,6 +195,7 @@ async function testRotation(browser) {
   await page.waitForTimeout(400);
   await page.click('#start-go-btn');
   await page.waitForTimeout(400);
+  await dismissBlockingModals(page);
   await page.click('#mode-battle');
   await page.waitForTimeout(400);
   await page.click('#mode-submenu-list button');
@@ -234,6 +250,7 @@ async function testModals(browser) {
     await page.waitForTimeout(400);
     await page.click('#start-go-btn');
     await page.waitForTimeout(400);
+    await dismissBlockingModals(page);
   };
 
   // 模态框可见性与可视区域溢出检测

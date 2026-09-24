@@ -44,24 +44,30 @@ app.use(express.json());
 
 // ─────────────────────────────────────────────
 // 0. CORS 跨域中间件
-//     前端（登录 / 进度同步 / notice / version）可能与 API 不同源
-//     （例如静态站挂在 443、API 挂在独立域名或 9000 端口），浏览器会拦截跨域，
-//     这里统一放行已知来源并处理 OPTIONS preflight。
+//     前端（登录 / 进度同步 / notice / version）会从 shaihai.cn 系列与 wakudemo.cn 系列
+//     域名、localhost、以及本地 file:// 打开的页面跨源访问本服务的 /api，
+//     浏览器会拦截跨域，这里统一放行已知来源并处理 OPTIONS preflight。
+//     白名单口径与老服务器 nginx 的 map $http_origin 保持一致：
+//       "~^https://(.*\.)?wakudemo\.cn$" / "~^https://(.*\.)?shaihai\.cn$" / "null"
 //     ⚠️ 自建服务器：把你的前端地址填进环境变量 FNCHESS_ALLOWED_ORIGINS（逗号分隔），例如
 //        FNCHESS_ALLOWED_ORIGINS=https://your-game.example.com,http://192.168.1.10:8137
-//        下面标了"作者部署示例"的几条留着不影响自建，但也帮不上你，可直接删除。
+//        上面两条官方域名正则留着不影响自建，也可自行删掉。
 //     注意：WebSocket（/lobby、/peerjs）不走此中间件，本身不跨域受限。
 // ─────────────────────────────────────────────
 const EXTRA_ORIGINS = String(process.env.FNCHESS_ALLOWED_ORIGINS || '')
     .split(',').map((s) => s.trim()).filter(Boolean);
 const ALLOWED_ORIGINS = [
     ...EXTRA_ORIGINS,
-    // ── 作者部署示例（静态站 www.shaihai.cn + API 独立入口 p2p2.shaihai.cn:24026）──
-    // 前端与后端同源时本不需要 CORS，但 App(WebView fetch) / 跨源调试 / 域名切换都要用到白名单
-    'https://www.shaihai.cn',
-    'https://p2p2.shaihai.cn:24026',
-    /^https?:\/\/p2p2?\.shaihai\.cn(:\d+)?$/,
-    // ── 作者部署示例结束（自建可整段删除）──
+    // 线上站点（含裸域与所有子域）：www.shaihai.cn / shaihai.cn / p2p.shaihai.cn /
+    // p2p2.shaihai.cn:24026 / wakudemo.cn / www.wakudemo.cn / … 均在放行之列
+    //
+    // http 也必须放行：手机浏览器地址栏输入「shaihai.cn/fnchess」（不带协议）时，
+    // 首访可能先走 http（站点未强制跳转，且新设备没有 HSTS 缓存），
+    // 此时页面里的 /api 请求带的是 Origin: http://shaihai.cn —— 只放行 https 就会
+    // 被浏览器按 CORS 拦掉，前端只能报「无法连接服务器」（电脑因已缓存 HSTS 走 https 而正常）。
+    // 站点侧已同时配置 http→https 强制跳转，这里放行 http 只是兜底。
+    /^https?:\/\/([a-z0-9_-]+\.)*shaihai\.cn(:\d+)?$/i,
+    /^https?:\/\/([a-z0-9_-]+\.)*wakudemo\.cn(:\d+)?$/i,
     // 本地直接双击 index.html（file:// 协议）时浏览器发出的 Origin 是字符串 'null'。
     // 不放行 → 请求被浏览器按 CORS 拦截 → 前端只能提示"无法连接服务器，当前可能处于离线状态"。
     // 本 API 不使用 Cookie 鉴权（token 走 Authorization 头、且按源隔离的 localStorage），
@@ -1158,6 +1164,11 @@ function handleRaceStart(ws, msg) {
     // 回执统一带上请求 id：客户端按 id 配对（历史缺陷：不带 id 时客户端会直接丢弃回执，
     // 导致"竞速权威计时会话申请永远超时 → rtN 上报被拒 → 竞速分关榜为空"）
     const reqId = String(msg.id || '');
+    // 未登录不上榜：匿名不发放竞速权威计时会话（无会话的 rtN 上报本就会被拒）
+    if (!ws || !ws._userId) {
+        send(ws, { type: 'race_start_result', ok: false, id: reqId, code: 'login_required' });
+        return;
+    }
     const levelId = Number(msg.levelId);
     if (!Number.isFinite(levelId) || levelId < 1 || levelId > 30) {
         send(ws, { type: 'race_start_result', ok: false, id: reqId, code: 'bad_level' });
@@ -1186,6 +1197,12 @@ function handleSubmitScore(ws, msg) {
     const playerId = String(msg.playerId || '').slice(0, 64);
     const nickname = String(msg.nickname || '棋手').trim().slice(0, 10) || '棋手';
     if (!playerId) return;
+    // 未登录不上榜：所有榜单成绩（lr / rtN / plN / elo / rsc）都必须来自登录账号
+    if (!ws || !ws._userId) {
+        sendSubmitResultBT(ws, false, boardType, { code: 'login_required' });
+        console.log(`[LB] 拒绝未登录上报：boardType=${boardType} playerId=${playerId}`);
+        return;
+    }
     const ip = ws && ws._ip ? ws._ip : '';
     const now = Date.now();
     // 阶段3：排行榜主键改用"身份键"（登录 'u'+userId，未登录 playerId）
@@ -1623,10 +1640,11 @@ lobbyWss.on('connection', (ws, req) => {
                         rooms.delete(code);
                         continue;
                     }
-                    // 自己的房间不下发：同账号双端不能自己加入/观战自己的房间
-                    if (room.hostWs === ws) continue;
-                    if (room.hostUserId && ws._userId && String(room.hostUserId) === String(ws._userId)) continue;
-                    if (room.hostPlayerId && visitorId && String(room.hostPlayerId) === String(visitorId)) continue;
+                    // 自己的房间仍然下发（自己创建的房间自己能看到），只标记 isMine →
+                    // 前端把「加入/观战」置灰并提示；真正加入会被 join_request / spectate_join 拦截
+                    const isMine = room.hostWs === ws
+                        || (room.hostUserId && ws._userId && String(room.hostUserId) === String(ws._userId))
+                        || (room.hostPlayerId && visitorId && String(room.hostPlayerId) === String(visitorId));
                     const isWaiting = room.status === 'waiting';
                     const isPlaying = room.status === 'playing';
                     // 等待中的房间 + 对局中的房间都返回（用于大厅速览统计进行中数量）；
@@ -1670,7 +1688,9 @@ lobbyWss.on('connection', (ws, req) => {
                         hostNickname: room.hostNickname || '',
                         isRace: !!room.isRace,
                         maxPlayers: room.maxPlayers || 2,
-                        currentPlayers: 1 + guestCount
+                        currentPlayers: 1 + guestCount,
+                        // 是否是我自己创建的房间（前端据此置灰「加入/观战」）
+                        mine: !!isMine
                     });
                 }
                 send(ws, { type: 'rooms_list', rooms: list });

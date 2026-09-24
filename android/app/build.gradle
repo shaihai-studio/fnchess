@@ -1,5 +1,16 @@
 apply plugin: 'com.android.application'
 
+// ── 发布签名（android/keystore.properties，切勿入库） ──────────────
+// 缺失时 release 产物不签名（仍可构建，便于本地验证 / CI 未配密钥时的降级）
+def keystorePropertiesFile = rootProject.file("keystore.properties")
+def keystoreProperties = new Properties()
+def hasReleaseKeystore = keystorePropertiesFile.exists()
+if (hasReleaseKeystore) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+} else {
+    logger.lifecycle("[fnchess] 未找到 android/keystore.properties → release 构建将不签名（参见 docs/RELEASE-GUIDE.md §3.1）")
+}
+
 android {
     namespace = "cn.shaihai.fnchess"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -8,7 +19,7 @@ android {
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         // 与前端 GAME_VERSION / package.json 同步（见 docs/RELEASE-GUIDE.md §6）
-        versionCode 3
+        versionCode 924
         versionName "2.0.0.924"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
@@ -17,10 +28,23 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        if (hasReleaseKeystore) {
+            release {
+                storeFile file(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (hasReleaseKeystore) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 }

@@ -158,10 +158,33 @@ systemctl restart fnchess
 | `index.html` → `window.P2P_SIGNALING` | `{ host: 'p2p2.shaihai.cn', port: 24026, path: '/', secure: true }` |
 | `files/js/P2PController.js` → `static signaling` 默认值 | 同上（无 `P2P_SIGNALING` 时兜底） |
 | `files/js/ProgressSync.js` → `API_BASE` 兜底 | `https://p2p2.shaihai.cn:24026/api` |
-| `server/index.js` → CORS 白名单 | `https://p2p2.shaihai.cn:24026` + `p2p/p2p2.shaihai.cn` 正则 + `localhost` |
+| `server/index.js` → CORS 白名单 | `shaihai.cn` 与 `wakudemo.cn` **及其所有子域**（http/https 都放行，手机首访走 http 时不会因 CORS 报「无法连接服务器」）+ `null`（file:// 本地直开）+ `localhost` / `127.0.0.1` |
+| 站点侧（`shaihai.cn` 的 nginx） | 已配置 http→https 强制跳转（`if ($server_port !~ 443) { rewrite ^(/.*)$ https://$host$1 permanent; }`），保证页面与 API 同走 https |
 
 因此：网页端 @ `p2p2.shaihai.cn:24026` 与后端同源；App（`https://localhost` / `capacitor://localhost`）
 也指向该地址，且 CORS 白名单已覆盖跨源场景。
+
+### 10.0.1 前端有两份副本，改完要分别部署
+
+| 副本 | 服务入口 | 部署命令 |
+|---|---|---|
+| 旧服务器 `124.222.7.170`（`/www/wwwroot/Shaihai/fnchess`） | `https://shaihai.cn/fnchess`、`https://www.shaihai.cn/fnchess`（用户手机端在玩的就是这份） | `python scripts/deploy-www.py frontend` |
+| 新服务器 `111.170.33.2`（`/www/wwwroot/Shaihai/fnchess/server1`） | `https://p2p2.shaihai.cn:24026`（API / WS / App 用） | `npm run build:web` + `python scripts/deploy.py frontend` |
+
+只部署一侧会看到「某一端有修复、另一端没有」；两侧都跑 `node scripts/e2e-race-room.cjs <站点根>` 才算验证完。
+
+老服务器 nginx 另有两处运维改动（不在仓库里，重装/迁移时需恢复）：
+
+```nginx
+# /www/server/panel/vhost/nginx/extension/www.shaihai.cn/zz-force-https.conf
+# 手机浏览器首访可能先走 http，http 来源调 API 会被跨域拦（报「无法连接服务器」）
+if ($server_port !~ 443) {
+    rewrite ^(/.*)$ https://$host$1 permanent;
+}
+```
+
+- `node_p2p_shaihai.conf` 里同一个 server 块曾有 `listen 443;` + `listen 443 ssl http2;` 两行，
+  会让 `nginx -t` 直接 emerg（nginx 无法 reload/重启，重启即全站宕）——已删掉多余那行。
 
 ## 10.1 TURN / STUN 中继（自建 coturn）
 

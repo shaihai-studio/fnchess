@@ -55,6 +55,8 @@ android-shots/
 *.jks
 *.p12
 *.mobileprovision
+android/keystore.properties
+android/key.properties
 
 # ── 密钥/凭据与本地机密（切勿入库） ────────────────────────────
 # .secrets/ 存放 SSH 口令、宝塔面板凭据、ACME 账户私钥、服务端私钥备份等
@@ -72,6 +74,7 @@ scripts/tmp-*
 
 # ── 运维脚本（不入库：含服务器地址/账号/部署路径等运维信息） ───
 scripts/deploy.py
+scripts/deploy-www.py
 scripts/ssh-connect.ps1
 scripts/ssh-run.ps1
 scripts/acme_issue.py

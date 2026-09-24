@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     一键构建函数棋 Android 调试包（APK）。
 .DESCRIPTION
