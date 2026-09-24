@@ -196,7 +196,8 @@ class FunctionRenderer {
      * 返回 geogebra-lite 格式: [{x, y}, {break: true}, {x, y}, ...]
      */
     _buildLnPoints(expr, xMin, xMax) {
-        const width = Math.max(1, this.gridSystem.canvas.width || 800);
+        // 采样密度以 CSS 像素为基准：DPR 高分屏不增加采样量（避免 3 倍计算开销）
+        const width = Math.max(1, this.gridSystem.cssSize || this.gridSystem.canvas.width || 800);
         const baseStep = Math.max((xMax - xMin) / Math.max(7000, width * 30), (xMax - xMin) / 60000);
         const points = [];
         let lastValid = false;
@@ -370,7 +371,8 @@ class FunctionRenderer {
      * 基于已解析的 AST 采样（供导数绘制等场景直接使用，避免重复 parse）
      */
     _denseResampleSegmentsFromAst(ast, xMin, xMax) {
-        const width = Math.max(1, this.gridSystem.canvas.width || 800);
+        // 采样密度以 CSS 像素为基准：DPR 高分屏不增加采样量（避免 3 倍计算开销）
+        const width = Math.max(1, this.gridSystem.cssSize || this.gridSystem.canvas.width || 800);
         const span = xMax - xMin;
         const targetPixelGap = 12;
         const dyThreshold = 8;

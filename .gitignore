@@ -1,10 +1,21 @@
-node_modules/
-www/
-*.log
-.DS_Store
+# 操作系统文件
 Thumbs.db
+Desktop.ini
+.DS_Store
 
-# 本地构建工具（JDK/Android SDK/Gradle，约 4GB，切勿入库）
+# IDE 文件
+.idea/
+.vscode/
+*.swp
+*.swo
+.cursor/
+.qoder/
+
+# 项目缓存
+node_modules/
+.workbuddy/
+
+# ── 本地构建工具（JDK/Android SDK/Gradle，约 4GB，切勿入库） ────
 tools/
 
 # 原生构建产物
@@ -76,8 +87,20 @@ server/.lb-secret
 # TLS 证书（私钥/证书链均为服务器产物）
 server/Nginx/*.pem
 
+# ── 其它工作流的临时/内部文件（沿用远端规则） ──────────────────
+_NODE_~
+*.backup*
+fc_run.js
+.server/
+问题清单与待解决项.md
+问题清单与待解决项.txt
+Goal.md
+server.md
+markdowns/
+版本更新日志-1.0.0至最新.md
+大重构计划.md
+大重构计划-后续批次.md
+
 # ── Python / 编辑器缓存 ────────────────────────────────────────
 __pycache__/
 *.pyc
-.idea/
-.vscode/

@@ -90,9 +90,11 @@ class RaceRoomController {
         });
     }
 
-    /** 拉取 STUN/TURN 配置（复用 P2PController 的 HTTP 端点，失败则用公共 STUN） */
+    /** 拉取 STUN/TURN 配置（与 P2PController 共享同一来源，失败则用公共 STUN） */
     static async _fetchIceServers() {
         try {
+            // 与 P2PController 共享：优先服务端 /api/ice 下发的「STUN + 限时 TURN 凭证」，
+            // 失败时 P2PController 内部回落静态 STUN 列表。
             if (typeof P2PController !== 'undefined' && P2PController._fetchIceServers) {
                 return await P2PController._fetchIceServers();
             }
