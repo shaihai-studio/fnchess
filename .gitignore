@@ -15,6 +15,10 @@ Desktop.ini
 node_modules/
 .workbuddy/
 
+# 构建产物与日志
+www/
+*.log
+
 # ── 本地构建工具（JDK/Android SDK/Gradle，约 4GB，切勿入库） ────
 tools/
 
